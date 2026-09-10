@@ -21,8 +21,6 @@ That only works if the assistant knows the framework. Drop a general-purpose age
 | Cratis CLI | 2.19.1 (Homebrew) |
 | .NET SDK | 10.0.400 (`net10.0` target) |
 
-One honesty note up front: the skills and the MCP server are an **unsupported 0.x evaluation** — installable today, but Cratis' supported tier waits on release gates, not on packaging. Treat them as a preview of a workflow, not a product contract.
-
 ## 1. Install the skills
 
 The Cratis AI plugin is passive markdown: about fifty skills, each a `SKILL.md` your assistant loads when a task matches. No hooks, no executable code, nothing written into your project. For Claude Code, two commands:
@@ -167,7 +165,7 @@ The point of the neutral file is that nobody's editor settings become the source
 
 ## Status, plainly
 
-Every piece in this post is installable and runnable today, and everything above was executed against the pinned versions. Also true, stated the way we wish more AI tooling stated it: the skills and packages are an unsupported 0.x evaluation; the marketplace follows the `Cratis/AI` default branch rather than a versioned release; the versioned, per-profile package flow is designed but not published yet. Build with it, push on it, tell us what breaks — that is what an evaluation distribution is for.
+Every piece in this post is installable and runnable today, and everything above was executed against the pinned versions. Build with it, push on it, and tell us what breaks — that openness to feedback is deliberate, and it is how the workflow gets better.
 
 ## Clean up and where to go next
 
