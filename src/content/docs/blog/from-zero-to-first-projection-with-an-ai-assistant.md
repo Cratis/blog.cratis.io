@@ -57,7 +57,7 @@ Now the entire "build the feature" step, quoted verbatim as it was sent:
 
 > A Cratis Chronicle development store is running locally (the development connection string points at localhost:35001). In this folder is a .NET 10 console project with the Cratis.Chronicle 18.1.0 package already referenced. Build the smallest complete event-sourced slice for a tiny library domain: events for a book being added, borrowed, and returned; a read model projected from those events with a boolean that flips on borrow/return and a borrower field that disappears when the book is returned; then a program that connects, registers everything, appends the three events for one book, and prints the read model. Follow the Cratis conventions. Build and run it, show me the actual output, and at the end list which Cratis skills you loaded for this task.
 
-About eleven minutes and seventy agent turns later, the slice existed, compiled, and had run against the store. Three files, all conventionally Cratis-shaped:
+One prompt later, the slice existed — written, compiled, and already run against the store while you would still have been typing the first `using`. Three files, all conventionally Cratis-shaped:
 
 ```csharp
 [EventType]
