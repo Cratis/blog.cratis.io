@@ -4,10 +4,11 @@ This repository is the **Cratis blog**, published at <https://blog.cratis.io>. I
 
 ## Layout
 
-- `astro.config.mjs` — site config; `site` is `https://blog.cratis.io`, the root redirects to `/blog`.
+- `astro.config.mjs` — site config; `site` is `https://blog.cratis.io`. The blog lives at the site root: starlight-blog still builds under its required `/blog` prefix, and `src/integrations/root-blog-urls.ts` relocates the output (`/blog/<slug>` → `/<slug>`, landing at `/`, RSS at `/rss.xml`) and emits permanent redirects for every old `/blog/*` URL.
 - `src/content/docs/blog/` — the posts (Markdown/MDX with `starlight-blog` frontmatter; `excerpt` feeds the landing cards).
 - `src/data/authors.mjs` — author registry: byline data for `starlight-blog` plus each author's personal `signature` text and the `picture` used on landing cards.
 - `src/routeData.ts` — route middleware that strips docs chrome everywhere: no sidebar, no table of contents, no docs-style footer pagination.
+- `src/integrations/root-blog-urls.ts` — build-time integration that moves the built blog from `/blog/*` to `/*` and permanently redirects the old URLs (instant meta refresh + canonical + noindex, the strongest signal GitHub Pages can serve). Runs only on builds; `npm run dev` still serves `/blog/*`.
 - `src/components/Head.astro` — brand-font loading (no cold-load swap reflow), mirrored from the documentation site.
 - `src/components/Header.astro` — editorial masthead: logo, Blog/cratis.io links, social icons (GitHub, Discord, RSS), theme switch.
 - `src/components/MarkdownContent.astro` — renders the blog landing as a hero plus large post cards; delegates other routes to `starlight-blog`.
@@ -22,7 +23,7 @@ This repository is the **Cratis blog**, published at <https://blog.cratis.io>. I
 1. Write posts with the `.agents/skills/write-blog-post` skill; review drafts with `.agents/skills/review-blog-post`.
 2. One post per file in `src/content/docs/blog/`, frontmatter `authors` referencing keys in `src/data/authors.mjs` (`einar`, `sindre`, `cratis-team`). Posts carry the author's personal voice; the byline and signature block render automatically.
 3. Claims about Cratis products must be true of released, public behavior and link to <https://cratis.io>. Links to the documentation site are absolute URLs — this is a separate site.
-4. Verify locally: `npm install && npm run build` must pass; `npm run dev` to preview. RSS is at `/blog/rss.xml`; sitemap and `robots.txt` ship with the build.
+4. Verify locally: `npm install && npm run build` must pass; `npm run dev` to preview. RSS is at `/rss.xml`; sitemap and `robots.txt` ship with the build.
 5. Open a pull request. **Humans review and merge.** Merging to `main` deploys automatically; nothing else deploys.
 
 ## Local AI work artifacts — `.ai-work/` only

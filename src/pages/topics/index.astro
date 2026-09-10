@@ -1,9 +1,11 @@
 ---
 // The topics index at /topics/ — starlight-blog only generates per-tag
-// archive pages (/blog/tags/[tag]), so this page provides the catalogue the
-// masthead "Topics" link points at. It lives outside the /blog prefix because
-// starlight-blog's route middleware treats every unknown /blog/* path as a
-// post slug (and fails the build); /blog/tags redirects here instead.
+// archive pages, so this page provides the catalogue the masthead "Topics"
+// link points at. It lives outside starlight-blog's /blog prefix because
+// the plugin's route middleware treats every unknown /blog/* path as a
+// post slug (and fails the build). At build time the per-tag pages move to
+// /tags/<tag> (see src/integrations/root-blog-urls.ts); /blog/tags keeps
+// redirecting here.
 // Styled like the blog landing: the same hero treatment, then topic pills.
 import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
 
