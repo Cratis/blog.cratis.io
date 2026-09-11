@@ -150,7 +150,7 @@ public class BookReturnedNotifier : IReactor
 }
 ```
 
-The two static members are there only so the console program can wait for this reactor to run before it exits; a hosted application just leaves the reactor running. Printing a line is not the same as sending a notification — a real one has to be safe to retry, because the reactor can see the event again.
+The two static members are there only so the console program can wait for the reactor before it exits; a hosted application just leaves it running. And printing a line is not the same as sending a notification — a real one has to be safe to retry, because the reactor can see the event again.
 
 ## 6. Connect, append, and query
 
@@ -162,77 +162,63 @@ using Cratis.Chronicle.Connections;
 
 using var client = new ChronicleClient(ChronicleConnectionString.Development);
 var eventStore = await client.GetEventStore("Quickstart");
-var bookId = Guid.NewGuid();
-const string title = "The Pragmatic Programmer";
-const string isbn = "978-0135957059";
-BookReturnedNotifier.BookToObserve = bookId;
+Console.WriteLine($"Connected to event store: {eventStore.Name}");
 
 await eventStore.DiscoverAll();
 await eventStore.RegisterAll();
 
-var appendResult = await eventStore.EventLog.Append(bookId, new BookAdded(title, isbn));
+var bookId = Guid.NewGuid();
+BookReturnedNotifier.BookToObserve = bookId;
+
+var appendResult = await eventStore.EventLog.Append(
+    bookId,
+    new BookAdded("The Pragmatic Programmer", "978-0135957059"));
 Console.WriteLine($"Appended BookAdded at sequence {appendResult.SequenceNumber} (success: {appendResult.IsSuccess})");
-await WaitFor(
-    () => eventStore.ReadModels.GetInstances<Book>(),
-    books => books.Any(book => Matches(book, onLoan: false, borrowedBy: null)),
-    "the book to appear");
-Console.WriteLine("Book read model: OnLoan=False BorrowedBy=");
 
 appendResult = await eventStore.EventLog.Append(bookId, new BookBorrowed("Jane Doe"));
 Console.WriteLine($"Appended BookBorrowed at sequence {appendResult.SequenceNumber} (success: {appendResult.IsSuccess})");
-await WaitFor(
-    () => eventStore.ReadModels.GetInstances<Book>(),
-    books => books.Any(book => Matches(book, onLoan: true, borrowedBy: "Jane Doe")),
-    "the book to go on loan");
-await WaitFor(
-    () => eventStore.ReadModels.GetInstances<BorrowedBook>(),
-    loans => loans.Any(loan => loan.Id == bookId && loan.MemberName == "Jane Doe"),
-    "the loan to appear");
-Console.WriteLine("Book read model: OnLoan=True BorrowedBy=Jane Doe, BorrowedBook present");
+
+var book = await WaitFor(TheBook, book => book is { OnLoan: true });
+Console.WriteLine($"Book read model: {book!.Title} ({book.Isbn}) OnLoan={book.OnLoan} BorrowedBy={book.BorrowedBy}");
+
+var borrowed = await WaitFor(BorrowedBooks, loans => loans.Any());
+foreach (var loan in borrowed)
+{
+    Console.WriteLine($"BorrowedBook read model: {loan.Id} borrowed by {loan.MemberName}");
+}
 
 appendResult = await eventStore.EventLog.Append(bookId, new BookReturned());
 Console.WriteLine($"Appended BookReturned at sequence {appendResult.SequenceNumber} (success: {appendResult.IsSuccess})");
-await WaitFor(
-    () => eventStore.ReadModels.GetInstances<Book>(),
-    books => books.Any(book => Matches(book, onLoan: false, borrowedBy: null)),
-    "the book to come back");
-await WaitFor(
-    () => eventStore.ReadModels.GetInstances<BorrowedBook>(),
-    loans => loans.All(loan => loan.Id != bookId),
-    "the loan to disappear");
-Console.WriteLine("Book read model: OnLoan=False BorrowedBy=, BorrowedBook gone");
+
+book = await WaitFor(TheBook, book => book is { OnLoan: false });
+Console.WriteLine($"Book read model after return: {book!.Title} OnLoan={book.OnLoan} BorrowedBy={book.BorrowedBy}");
+
+borrowed = await WaitFor(BorrowedBooks, loans => !loans.Any());
+Console.WriteLine($"BorrowedBook read models after return: {borrowed.Count()}");
 
 await BookReturnedNotifier.Observed.Task.WaitAsync(TimeSpan.FromSeconds(30));
 
-bool Matches(Book book, bool onLoan, string? borrowedBy) =>
-    book.Id == bookId && book.Title == title && book.Isbn == isbn &&
-    book.OnLoan == onLoan && book.BorrowedBy == borrowedBy;
+async Task<Book?> TheBook() =>
+    (await eventStore.ReadModels.GetInstances<Book>()).FirstOrDefault(book => book.Id == bookId);
 
-static async Task WaitFor<T>(Func<Task<T>> read, Func<T, bool> ready, string description)
+async Task<IEnumerable<BorrowedBook>> BorrowedBooks() =>
+    (await eventStore.ReadModels.GetInstances<BorrowedBook>()).Where(loan => loan.Id == bookId);
+
+static async Task<T> WaitFor<T>(Func<Task<T>> read, Func<T, bool> isReady)
 {
-    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-    try
+    using var giveUp = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+    while (true)
     {
-        while (true)
-        {
-            var state = await read().WaitAsync(timeout.Token);
-            if (ready(state))
-            {
-                return;
-            }
-            await Task.Delay(200, timeout.Token);
-        }
-    }
-    catch (OperationCanceledException) when (timeout.IsCancellationRequested)
-    {
-        throw new TimeoutException($"Timed out waiting for {description}.");
+        var value = await read();
+        if (isReady(value)) return value;
+        await Task.Delay(200, giveUp.Token);
     }
 }
 ```
 
 `ChronicleConnectionString.Development` points at the local development kernel on `chronicle://localhost:35000` with the built-in development credentials — the same connection `new ChronicleClient()` uses with no arguments. The event source id (`bookId`) is the identity of the thing each fact is about; every event appended against it becomes part of that book's stream of history.
 
-The `WaitFor` calls deserve honesty: appending and projecting are separate steps, so a read model can lag a successful append — at startup and afterwards. `GetInstances` reads the projected [read models](https://cratis.io/chronicle/read-models/) rather than replaying the log on every call, so waiting for the state you expect is the honest way to check it. Reading every instance keeps the example short; a real store wants a narrower query.
+The `WaitFor` calls deserve honesty: appending and projecting are separate steps, so a [read model](https://cratis.io/chronicle/read-models/) can lag a successful append — at startup and at any point after it. Rather than sleeping and hoping, the program asks for the state it expects and gives up after thirty seconds.
 
 Put the five files in the project and run it:
 
@@ -241,16 +227,18 @@ dotnet run
 ```
 
 ```text
+Connected to event store: Quickstart
 Appended BookAdded at sequence 0 (success: True)
-Book read model: OnLoan=False BorrowedBy=
 Appended BookBorrowed at sequence 1 (success: True)
-Book read model: OnLoan=True BorrowedBy=Jane Doe, BorrowedBook present
+Book read model: The Pragmatic Programmer (978-0135957059) OnLoan=True BorrowedBy=Jane Doe
+BorrowedBook read model: bdd3a21a-e614-480b-8c9a-c9af911b7663 borrowed by Jane Doe
 Appended BookReturned at sequence 2 (success: True)
-Reactor: book 6807ca47-0aee-4ede-934d-c287d1c7201a was returned — notify the next member in line.
-Book read model: OnLoan=False BorrowedBy=, BorrowedBook gone
+Reactor: book bdd3a21a-e614-480b-8c9a-c9af911b7663 was returned — notify the next member in line.
+Book read model after return: The Pragmatic Programmer OnLoan=False BorrowedBy=
+BorrowedBook read models after return: 0
 ```
 
-That is the whole loop — append, project, react. The book's `OnLoan` flag flipped, `BorrowedBy` filled in and cleared, the `BorrowedBook` appeared and disappeared, and the reactor fired — and you never wrote an update statement. The reactor line can land before or after the last read-model line; the two observers run independently. Run it again and you get a new book id, appended to the same log.
+That is the whole loop — append, project, react. The book's `OnLoan` flag flipped, `BorrowedBy` filled in and cleared, the `BorrowedBook` appeared and disappeared, and the reactor fired — and you never wrote an update statement. The reactor line can land anywhere after the return; it runs independently of the projections. Run it again and you get a new book id, appended to the same log.
 
 ## 7. See the history
 
