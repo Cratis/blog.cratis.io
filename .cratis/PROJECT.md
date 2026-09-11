@@ -20,11 +20,30 @@ This repository is the **Cratis blog**, published at <https://blog.cratis.io>. I
 
 ## Blog workflow
 
-1. Write posts with the `.agents/skills/write-blog-post` skill; review drafts with `.agents/skills/review-blog-post`.
+1. Author and revise with [write-blog-post](../.agents/skills/write-blog-post/SKILL.md). Identify the genre, reader, and intended message. For revisions, start from the original post and the user's feedback, not an intervening AI rewrite.
 2. One post per file in `src/content/docs/blog/`, frontmatter `authors` referencing keys in `src/data/authors.mjs` (`einar`, `sindre`, `cratis-team`). Posts carry the author's personal voice; the byline and signature block render automatically.
-3. Claims about Cratis products must be true of released, public behavior and link to <https://cratis.io>. Links to the documentation site are absolute URLs — this is a separate site.
-4. Verify locally: `npm install && npm run build` must pass; `npm run dev` to preview. RSS is at `/rss.xml`; sitemap and `robots.txt` ship with the build.
-5. Open a pull request. **Humans review and merge.** Merging to `main` deploys automatically; nothing else deploys.
+3. Build the evidence alongside the content: released public sources for product claims, exact-snippet compilation for runnable examples, and runtime assertions for the behavior demonstrated. The writing skill defines these distinct evidence levels.
+4. Review the **whole resulting post** with [review-blog-post](../.agents/skills/review-blog-post/SKILL.md), including a reader walkthrough. This is required after substantive revisions as well as for new posts; a diff-only review is insufficient.
+5. For content changes, use the locked dependencies (`npm ci`) and `npm run build`; preview the relevant pages, code, and navigation. A site build does not compile embedded samples or verify product claims. Rules-only changes need relevant instruction/configuration checks, not an application build. Production RSS is at `/rss.xml`; the development server still uses `/blog/...`.
+6. Report what was fixed, which checks actually ran, and any remaining findings. Commit, push, or open a pull request only when requested. **Humans review and merge.** Merging to `main` deploys automatically; nothing else deploys.
+
+## Editorial foundation
+
+These are the defaults for all blog content; the local skills turn them into authoring steps and review gates:
+
+- **Preserve editorial intent.** The author's original thesis, opening, tone, emphasis, and recognizable phrasing are the baseline. Fix factual errors and reader obstacles locally. Do not substitute a different argument, generic lesson, caution-first stance, or scenario template without an explicit request. Review every diff hunk against the original; revert changes that have no purpose beyond rewriting in the assistant's preferred style.
+- **Support the post's actual purpose.** A tutorial, mechanism explainer, opinionated comparison, and concise ecosystem showcase are different forms. Improve each on its own terms. A companion post can point to a separate comparison; an overview need not become an application walkthrough.
+- **Help the intended reader.** Clarify unfamiliar terms and important steps where needed, with useful next steps and supporting links. Reader review should improve how the existing message comes across, not replace it. If a necessary technical correction conflicts with the central argument, raise it with the author.
+- **Use evidence without turning it into boilerplate.** Product claims must match released, public behavior and link to the relevant documentation on <https://cratis.io>, supplemented by release sources where necessary. Keep evidence records under `.ai-work/`; put only useful sources and verification limits in the article. Never inflate "compiled" into "verified end-to-end".
+- **Keep the author's voice.** Preserve personality, rhythm, and confident observations. Do not flatten the writing into generic instructional prose or add caveats to every paragraph. Correct specific misleading claims; do not treat expressive phrasing as a defect. Omit irrelevant roadmap asides and label experimental functionality plainly when it matters.
+- **Keep prose version-independent.** Use product names without version numbers in titles, excerpts, and general explanations. Exact versions belong in setup and a compact tested-environment note, except when a release-specific change or migration is the subject. Release-pinned evidence links remain appropriate.
+- **Make readiness an evidence-based decision.** A post is ready for human review only after its reader walkthrough and applicable technical, evidence, voice, and rendering checks have no unresolved blockers. A wording cleanup or successful build alone does not meet that threshold. State unavailable checks and distinguish non-blocking limitations from unresolved defects.
+
+### Demonstrated stack
+
+Every .NET example targets .NET 10 (`net10.0`) and is verified with the current .NET 10 SDK. Chronicle examples use the latest mutually compatible stable public packages and images available when written or materially revised. Resolve these from their release sources, not from an older article or an unverified local installation.
+
+This is an implementation and verification rule, not a request to repeat release numbers in the prose. Pin packages, SDK selection, and executable container commands for reproduction. Record the image digest and **observed** server version; assert that it matches the stated baseline. Packages and image variants may finish publishing at different times. Do not silently mix releases or present a moving tag as an immutable pin.
 
 ## Local AI work artifacts — `.ai-work/` only
 
@@ -40,13 +59,17 @@ AI-assisted sessions produce working artifacts: plans, handover documents, sessi
 
 This repository uses the Cratis AI contract:
 
-- **`.cratis/ai.json`** records the subscription — `cratis/documentation` plus the `cratis/engineering/typescript` maintainer cell for the Astro site code.
+- **`.cratis/ai.json`** records the focused subscription:
+  - `cratis/documentation` — shared documentation-writing guidance;
+  - `cratis/application/chronicle-dotnet` — Chronicle's .NET client, event/projection/reactor modeling, concepts, and specification guidance for the runnable examples;
+  - `cratis/engineering/typescript` — maintainer guidance for the Astro site code.
+  These profiles do not make the blog an application repository. Load the guidance relevant to the post or code being changed; do not scaffold unrelated application layers or turn examples into framework catalogs.
 - **`.cratis/PROJECT.md`** (this file) is the canonical project context; the root `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md` are minimal bootstraps that point here and do nothing else.
 - There is **no local AI corpus and no generated tool adapters** in this repository. Shared skills arrive through the Cratis AI marketplace plugins (Claude Code, Codex, GitHub Copilot, Cursor, and Pi are installable today — see the [harness guide](https://www.cratis.io/ai/harnesses/)).
 
 For contributors:
 
-1. Install the Cratis plugin for your harness once (per the harness guide); the subscribed profiles' skills then load automatically when tasks match.
-2. General, reusable improvements are proposed in [`Cratis/AI`](https://github.com/Cratis/AI) — never copied into, or synchronized from, this repository.
+1. Install the Cratis plugin for your harness once (per the harness guide); it uses the subscription to select shared guidance. The JSON declaration alone is not proof that a plugin is installed or that a running session has reloaded it. The local blog skills remain explicit entry points through the links above. If shared guidance is unavailable, report that gap and use released documentation, source inspection, and native verification rather than guessing APIs or installing a second setup as a side effect.
+2. General, reusable improvements are proposed in [`Cratis/AI`](https://github.com/Cratis/AI) — never copied into, or synchronized from, this repository. Keep blog-specific editorial policy here and its procedures in the local blog skills; do not create a competing foundation or duplicate shared product guidance.
 3. Repository-specific facts and conventions belong in this file; repository-local skills live under `.agents/skills/`.
 4. AI session work records (plans, handovers, session notes, scratch analyses) stay in the untracked `.ai-work/` folder and never enter git; a durable follow-up becomes a GitHub issue.
