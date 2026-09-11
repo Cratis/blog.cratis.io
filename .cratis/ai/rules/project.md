@@ -6,7 +6,7 @@ This repository is the **Cratis blog**, published at <https://blog.cratis.io>. I
 
 Read every concern below before working in this repository. Together they are the project-owned instructions and override conflicting shared guidance.
 
-- [Layout](project/layout.md)
-- [Blog workflow](project/blog-workflow.md)
-- [Local AI work artifacts — `.ai-work/` only](project/local-ai-work-artifacts-ai-work-only.md)
-- [AI-assisted development](project/ai-assisted-development.md)
+- [Layout](.cratis/ai/rules/project/layout.md)
+- [Blog workflow](.cratis/ai/rules/project/blog-workflow.md)
+- [Local AI work artifacts — `.ai-work/` only](.cratis/ai/rules/project/local-ai-work-artifacts-ai-work-only.md)
+- [AI-assisted development](.cratis/ai/rules/project/ai-assisted-development.md)
