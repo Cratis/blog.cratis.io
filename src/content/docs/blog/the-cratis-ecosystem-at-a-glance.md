@@ -11,9 +11,7 @@ Cratis is an open-source, MIT-licensed platform for building event-sourced and C
 
 ## Chronicle: the center of the stack
 
-At the center is [Chronicle](https://cratis.io/chronicle/), an event-sourcing database and processing runtime with a first-class client SDK for .NET and additional TypeScript, Kotlin/Java (JVM), and Elixir clients.
-
-Storage is pluggable, with implementations including MongoDB (default), PostgreSQL, SQL Server, and SQLite.
+At the center is [Chronicle](https://cratis.io/chronicle/), an event-sourcing database and processing runtime with a first-class client SDK for .NET and additional TypeScript, Kotlin/Java (JVM), and Elixir clients — plus pluggable storage-provider implementations including MongoDB (default), PostgreSQL, SQL Server, and SQLite.
 
 Chronicle's kernel runs on Microsoft Orleans and exposes a language-agnostic gRPC/protobuf boundary, so any language can implement the contract. AI agents can connect to a running Chronicle through the [Chronicle MCP server](https://cratis.io/chronicle-mcp/), regardless of client language.
 

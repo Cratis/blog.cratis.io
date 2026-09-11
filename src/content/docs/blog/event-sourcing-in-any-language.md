@@ -2,7 +2,7 @@
 title: "Event sourcing in any language: how Chronicle's gRPC contract works"
 date: 2026-08-28T12:00:00Z
 authors: cratis-team
-excerpt: Chronicle's kernel sits behind a language-agnostic gRPC/protobuf boundary that any language can implement. Here's how the contract is layered, how the existing clients are built on it, and what a new client implements.
+excerpt: Chronicle's kernel sits behind a language-agnostic gRPC/protobuf boundary — 26 canonical .proto contracts that any language can implement. Here's how the contract is layered, how the existing clients are built on it, and what a new client implements.
 tags:
   - chronicle
   - clients
@@ -16,7 +16,7 @@ This post walks through how that contract works: what the server exposes, how th
 
 Chronicle uses a .NET/Orleans actor-based kernel behind gRPC/HTTP surfaces and supports multiple event stores, namespaces, and persistent event-store subscriptions with outbox/inbox sequences. The kernel is where the event-sourcing behavior lives; clients talk to it over the network.
 
-The contract itself is a set of `.proto` files in the Chronicle repository, under [`Source/Kernel/Protobuf`](https://github.com/Cratis/Chronicle/tree/v18.1.5/Source/Kernel/Protobuf). Together they describe the full client-facing surface: event types and event sequences, event stores and namespaces, observation (reactors, reducers, and event-store subscriptions), projections and read models, jobs, constraints, compliance, identities, recommendations, and the host and client handshake itself.
+The contract itself is a set of **26 canonical `.proto` files** in the Chronicle repository, under [`Source/Kernel/Protobuf`](https://github.com/Cratis/Chronicle/tree/v18.1.5/Source/Kernel/Protobuf). Together they describe the full client-facing surface: event types and event sequences, event stores and namespaces, observation (reactors, reducers, and event-store subscriptions), projections and read models, jobs, constraints, compliance, identities, recommendations, and the host and client handshake itself.
 
 Because the boundary is protobuf over gRPC, any language with a gRPC implementation can talk to it. Chronicle's client SDK for .NET uses the same contract as everyone else. A client still has to honor its value encodings: for example, the append envelope uses protobuf-net's `.bcl.Guid` for `CorrelationId`, while `EventSourceId` is a string.
 
@@ -33,7 +33,7 @@ Chronicle's TypeScript, Kotlin/Java, and Elixir clients follow the layering docu
 
 The .NET client has a different build and packaging path: Chronicle exports its C# contract surface as `.proto` files, while the .NET client references the C# contracts project and packages those contracts internally. The [layering guide](https://cratis.io/chronicle/building-a-client/layering-an-idiomatic-client/) explains that exception.
 
-The result is that "event sourcing in language X" doesn't mean porting a database. It means generating bindings from the same contract and writing the idiomatic layer that makes them feel native.
+The result is that "event sourcing in language X" doesn't mean porting a database. It means generating bindings from the same contracts and writing the idiomatic layer that makes them feel native.
 
 ## What a new client implements
 
@@ -56,7 +56,7 @@ Each shipped client has its own landing page with installation and a first taste
 - [Elixir](https://cratis.io/event-sourcing/elixir/) — `cratis_chronicle` on Hex.
 - [Python](https://cratis.io/event-sourcing/python/) — in development: the idiomatic client is pre-alpha and not yet published.
 
-All of them are built on the same wire contract, with an idiomatic client layered on top. The operations exposed by each client can differ; check the relevant client documentation for the features you need.
+All of them are built on the same wire contract: the same 26 canonical `.proto` files, with an idiomatic client layered on top. What each client exposes on top of that contract can differ — check its own documentation for the features you need.
 
 ## Free and open source
 
