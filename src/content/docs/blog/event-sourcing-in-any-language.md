@@ -2,66 +2,95 @@
 title: "Event sourcing in any language: how Chronicle's gRPC contract works"
 date: 2026-08-28T12:00:00Z
 authors: cratis-team
-excerpt: Chronicle's .NET 10 kernel sits behind a language-agnostic gRPC/protobuf boundary — 26 canonical .proto contracts that any language can implement. Here's how the contract is layered, how the existing clients are built on it, and what a new client implements.
+excerpt: Follow an event from a client call to an append response. The wire contract makes that exchange portable; serialization, compatibility, and asynchronous processing are the details a client still has to handle.
 tags:
   - chronicle
   - clients
 ---
 
-Event sourcing libraries are usually tied to one language: the store, the client, and the programming model ship as a single package for a single ecosystem. [Chronicle](https://cratis.io/chronicle/) takes a different shape. In Chronicle 18.1.3 — the latest stable release when this post was revised — the kernel runs on .NET 10, with a first-class .NET 10 SDK and additional TypeScript, Kotlin/Java (JVM), and Elixir clients. A Python client is in pre-alpha development, with no commitment implied. The boundary between the server and every client is a wire contract, not a language binding.
+An event written by a .NET application should not require a .NET application to read or process it. [Chronicle](https://cratis.io/chronicle/) separates those concerns: the server implements event storage and processing, while applications connect through a gRPC/protobuf contract.
 
-This post walks through how that contract works: what the server exposes, how the shipped clients are layered on top of it, and what a new client for another language actually has to implement.
+That boundary is useful, but "it uses gRPC" is not the whole explanation. A client still needs to know how to represent an event, establish compatibility, interpret a result, and distinguish a completed append from the processing that follows it.
 
-## One kernel, one wire contract
+Consider a library application recording that a member borrowed a book. Following that one operation makes the responsibilities clearer.
 
-Chronicle uses a .NET 10/Orleans actor-based kernel behind gRPC/HTTP surfaces and supports multiple event stores, namespaces, and persistent event-store subscriptions with outbox/inbox sequences. The kernel is where the event-sourcing behavior lives; clients talk to it over the network.
+## From a language object to an append request
 
-The 18.1.3 contract is a set of **26 Chronicle-owned `.proto` files** in the Chronicle repository, under [`Source/Kernel/Protobuf`](https://github.com/Cratis/Chronicle/tree/v18.1.3/Source/Kernel/Protobuf), plus protobuf-net's supporting `bcl.proto`. Together they describe the full client-facing surface: event types and event sequences, event stores and namespaces, observation (reactors, reducers, event-store subscriptions, and webhooks), projections and read models, jobs, constraints, compliance, identities, recommendations, security, seeding, and the host and client handshake itself.
+The application starts with an event such as `BookBorrowed`, containing a member name, and the event-source identifier of the book. In a .NET application that event can be a C# record. Another client can offer a different language-native representation without changing the server operation.
 
-Because the boundary is protobuf over gRPC, any language with a gRPC implementation can talk to it. There is nothing .NET-specific on the wire — the .NET 10 SDK is a client of the same contract as everyone else.
+The client maps the call onto the append contract in [`sequences.proto`](https://github.com/Cratis/Chronicle/blob/v18.1.5/Source/Kernel/Protobuf/sequences.proto). Selected fields from `AppendRequest` show the separation of concerns:
 
-## How every client is layered
+| Field | What it identifies or carries |
+| --- | --- |
+| `EventStore`, `Namespace` | The runtime scope receiving the event. |
+| `EventSequenceId` | The sequence being appended to. |
+| `EventSourceId` | The thing whose history this fact belongs to—in this example, the book. |
+| `EventType` | The event's type identity and generation. |
+| `Content` | The serialized event content, carried as a string in the protobuf message. |
+| `CorrelationId`, `Causation`, `CausedBy` | Context about the operation and its origin. |
 
-Every client Chronicle has shipped follows the same layering, documented in the [Building a Chronicle Client](https://cratis.io/chronicle/building-a-client/) guide:
+This is a field summary, not a complete request. The contract also carries stream information, tags, occurrence time, subject, and concurrency scope. A new client must implement the relevant contract, not copy the subset in this table.
 
-1. **The canonical `.proto` files** — owned by the kernel, versioned with it.
-2. **A generated contracts package per language** — strongly-typed bindings generated from the protos and published as an ordinary package. It is regenerated by Chronicle's own pipeline on every kernel release and treated as read-only.
-3. **An idiomatic client** — the hand-maintained package developers actually import. This is where the language's own idioms live: decorators in TypeScript, annotations on the JVM, processes and supervision in Elixir, attributes in .NET 10. It depends on the contracts package; its users never have to.
-4. **Optional convenience packages** — hosting integrations such as ASP.NET Core or Spring Boot support, layered above the idiomatic client.
+There are two distinct representations here: the language-level event the application uses and the wire message the server accepts. A field named `MemberName` in an application is not itself a new gRPC method. Appending different event types uses the same append operation with different event metadata and content.
 
-The result is that "event sourcing in language X" doesn't mean porting a database. It means generating bindings from the same 26 Chronicle contracts and writing the idiomatic layer that makes them feel native.
+## What comes back—and what does not
 
-## What a new client implements
+The service operation returns a command-result wrapper around `AppendResponse`. That response includes a sequence number, success information, and fields describing constraint violations, concurrency violations, or errors. The [append documentation](https://cratis.io/chronicle/events/appending/) explains the application-facing operation; the [wire definition](https://github.com/Cratis/Chronicle/blob/v18.1.5/Source/Kernel/Protobuf/sequences.proto) makes the envelope explicit.
 
-Hand-rolling a client means solving the same handful of plumbing problems every existing client has solved before it can do anything useful:
+The interaction is:
 
-- **Typed bindings** generated from the wire contract, kept in a separate contracts package rather than hand-edited.
-- **Authentication** — parsing the connection string's authentication modes and exchanging credentials for a token, keeping it fresh.
-- **Connection lifecycle** — discovering servers, reconnecting when a connection drops.
-- **Contract-version checking** — rejecting a server whose contract has drifted instead of silently sending it garbage.
+```text
+Application event + book identifier
+    → client maps the event and request context
+    → protobuf request sent over gRPC
+    → server handles the append
+    → command result returned to the client
+    → client exposes the result to the application
+```
 
-None of that is domain logic, and all of it is written down: the [Building a Chronicle Client](https://cratis.io/chronicle/building-a-client/) section of the documentation is the experience of building the TypeScript, Kotlin, and Elixir clients distilled into a checklist, with a page explaining the *why* behind each item.
+A transport-successful call is not enough to conclude that the append succeeded: the client must interpret the returned result. And a successful append is not a promise that every projection or reactor has finished. The library screen may read a materialized view that is still catching up, while a notification reactor runs separately.
 
-## Chronicle in your language today
+That is the useful boundary: clients share an operation and its result semantics, not a guarantee that all downstream work happens before the response arrives.
 
-Each shipped client has its own landing page with installation and a first taste of the API:
+## Portable transport still needs precise value mappings
 
-- [.NET 10](https://cratis.io/event-sourcing/dotnet/) — the first-class SDK, [`Cratis.Chronicle` 18.1.3](https://www.nuget.org/packages/Cratis.Chronicle/18.1.3) on NuGet.
+Protobuf lets clients generate bindings in different languages. It does not make every language's value types interchangeable.
+
+For example, the append envelope's `CorrelationId` uses protobuf-net's `.bcl.Guid` representation, while `EventSourceId` is a string. The [protobuf definition](https://github.com/Cratis/Chronicle/blob/v18.1.5/Source/Kernel/Protobuf/sequences.proto) determines those field encodings; two values that both represent identifiers need not have the same wire type.
+
+Event content has its own serialization rules. Chronicle's [value contract](https://cratis.io/chronicle/contributing/clients/value-contract/) specifies canonical strings for UUID values and matching property names between event schemas and payloads. Do not confuse those domain-value rules with the protobuf envelope's field types. Generated bindings handle the envelope; the client must also serialize the event content correctly.
+
+The portability is in shared, implementable representations. It is not the absence of implementation-specific conventions on the wire.
+
+## Compatibility is not version equality
+
+Before relying on that representation, a client establishes whether the server can serve the contract it expects. The [`CheckCompatibility` exchange](https://github.com/Cratis/Chronicle/blob/v18.1.5/Source/Kernel/Protobuf/clients.proto) includes the client's descriptor set; the response reports compatibility and any incompatibilities.
+
+The server's [structural checker](https://github.com/Cratis/Chronicle/blob/v18.1.5/Source/Kernel/Compatibility/WireCompatibilityChecker.cs) asks whether the expected services, methods, messages, and fields remain compatible. Additions are allowed: a server can expose an extra operation without forcing an older client to use it. Incompatible changes to the expected surface are different and must be reported.
+
+A new client should therefore follow the compatibility exchange, not reject every unequal version string or assume that a matching product name is sufficient.
+
+## Where generated code ends and a client begins
+
+For TypeScript, Kotlin/Java, and Elixir, generated contracts packages provide the wire-level bindings. The hand-maintained client above them adds the language's own conventions: decorators, annotations, asynchronous APIs, and artifact discovery. Optional hosting integrations sit above that client.
+
+C# takes a different build and packaging path. Chronicle exports its C# contract surface as `.proto` definitions; its .NET client references the C# contracts project and packages the internal contracts with the SDK. It does not consume a separately published proto-generated contracts package in the same way as those other languages. The [layering guide](https://cratis.io/chronicle/building-a-client/layering-an-idiomatic-client/) explains this exception.
+
+That distinction matters to contributors. Generated wire bindings are not the place to add a hand-written convenience API, and a new client should not assume C#'s packaging strategy is the pattern to copy.
+
+## What implementing another client entails
+
+Generating bindings gives you the transport types, not a finished SDK. The [client-building checklist](https://cratis.io/chronicle/building-a-client/checklist/) also covers authentication, token renewal, connection lifecycle, discovery, and reconnecting. An application-friendly client must expose failures in a way its users can handle.
+
+Start with one narrow operation: authenticate, establish compatibility, register the necessary event metadata, append one event, and inspect the result. Then test an unsuccessful append and a disconnected server. Expand the idiomatic API only once the underlying exchanges behave as expected.
+
+If your language already has a client, use its [SDK documentation](https://cratis.io/chronicle/clients/) rather than implementing this plumbing again:
+
+- [.NET](https://cratis.io/event-sourcing/dotnet/) — `Cratis.Chronicle` on NuGet.
 - [TypeScript and Node.js](https://cratis.io/event-sourcing/typescript/) — `@cratis/chronicle` on npm.
-- [Kotlin and Java (JVM)](https://cratis.io/event-sourcing/kotlin/) — `io.cratis:chronicle` on Maven Central, including a Spring Boot starter.
+- [Kotlin and Java](https://cratis.io/event-sourcing/kotlin/) — `io.cratis:chronicle` on Maven Central.
 - [Elixir](https://cratis.io/event-sourcing/elixir/) — `cratis_chronicle` on Hex.
-- [Python](https://cratis.io/event-sourcing/python/) — coming soon: the contracts are generated by Chronicle's release pipeline, but the idiomatic client is pre-alpha and unpublished; no commitment is implied.
 
-All of them are built on the same wire contract: the same 26 Chronicle-owned `.proto` files, generated into a contracts package for each language, with an idiomatic client layered on top.
+Those clients share a wire contract, not an identical feature set. Check the operations you need. The reason to use the boundary is to avoid porting a database—not to pretend that implementing and maintaining a client has no cost.
 
-## Free and open source
-
-Chronicle is MIT licensed and free to use, and so is everything Cratis publishes today.
-
-## Where to go next
-
-- [Get started with Chronicle](https://cratis.io/chronicle/get-started/) — your first event-sourced application.
-- [Building a Chronicle Client](https://cratis.io/chronicle/building-a-client/) — the full guide and checklist for bringing Chronicle to a new language.
-- [Chronicle architecture](https://cratis.io/chronicle/architecture/) — how the kernel is put together.
-- [Chronicle on GitHub](https://github.com/Cratis/Chronicle) — the .NET 10 kernel, the contracts, and the .NET 10 SDK.
-- [Community and help](https://cratis.io/community/) — where to ask questions and follow along.
+*Updated September 11, 2026.*

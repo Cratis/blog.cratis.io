@@ -1,64 +1,69 @@
 ---
-title: "Event sourcing in .NET 10 with Chronicle: from zero to first projection"
+title: "Event sourcing in .NET with Chronicle: from zero to first projection"
 date: 2026-08-28T18:00:00Z
 authors: cratis-team
-excerpt: Run Chronicle 18.1.3 locally in one container, append your first events from a plain .NET 10 console app, and watch them become read models — every command in this post was executed against the exact versions it names.
+excerpt: Append events from a console app, check the resulting read models, and observe a reactor. Follow a book from arrival through borrowing and return—with explicit checks instead of timing assumptions.
 tags:
   - chronicle
   - event-sourcing
 ---
 
-Event sourcing has a reputation for heavy setup: a store, a bus, projections infrastructure, and a day of wiring before the first event lands. This post takes the shortest honest path instead: one Docker container, one console project, and about ninety lines of C# that append events, project them into read models, and react to them — with the full event history inspectable in a browser at the end.
+A library needs to know which books are on loan. Storing only an `OnLoan` flag answers that question, but loses the sequence of borrowing and return that produced it. With event sourcing, the facts are stored separately from the views used to answer questions.
 
-Everything below was executed as written. The versions are pinned so you can reproduce the run exactly:
+This example appends three facts—`BookAdded`, `BookBorrowed`, and `BookReturned`—to [Chronicle](https://cratis.io/chronicle/). Two projections turn them into read models, and a reactor observes the return. We will check the state after each step rather than assume that a successful append means every observer has finished.
 
-| Piece | Version |
+## Prerequisites and tested environment
+
+You need Docker, the .NET SDK named below, and a terminal with `curl`. Keep the five source files in the same console project. No application framework or frontend is required.
+
+Verified on **2026-09-11** using Linux/arm64 containers: the five source files below compiled without warnings and ran twice against the same server, checking the projection states and reactor signal. Exact versions are recorded here for reproduction, not as a requirement to use them indefinitely.
+
+| Piece | Tested version |
 | --- | --- |
-| Chronicle kernel container | `cratis/chronicle:latest-development`, digest `sha256:5f24b51803ada5f959a3fd401fd0d7a96d67b9c387ddbf04d5e0a6e23085c1a7` (Chronicle Server 18.1.3) |
-| Client package | [`Cratis.Chronicle`](https://www.nuget.org/packages/Cratis.Chronicle) 18.1.3 |
-| .NET SDK | 10.0.400 (`net10.0` target) |
+| Chronicle server | [18.1.5](https://github.com/Cratis/Chronicle/releases/tag/v18.1.5), bundled development image |
+| Image manifest digest | `sha256:360cf3a31216d15d61cc2dae27ad1ac3435fb44c2de7936ac20be4be39596554` |
+| Client package | [`Cratis.Chronicle` 18.1.5](https://www.nuget.org/packages/Cratis.Chronicle/18.1.5) |
+| .NET SDK / target | `10.0.401` / `net10.0` |
 
-`latest-development` is a moving tag; if you pull it later you may get a newer kernel. The digest above is the exact image this post was verified against. [Chronicle](https://cratis.io/chronicle/) and its bundled local Workbench are MIT-licensed, self-hosted software — what you run here is yours to run.
+## 1. Start the local server
 
-## What you will build
-
-A minimal .NET 10 console application for a tiny library domain: a book arrives, gets borrowed, and comes back. Each of those facts is an event appended to Chronicle's event log. Two read models are projected from those events — declaratively, with no update code — and a reactor performs a side effect when a book is returned. At the end you open the bundled Workbench and see the whole history.
-
-## 1. Run Chronicle
-
-The development image bundles the Chronicle kernel and its MongoDB storage in a single container — no separate database setup. Start it bound to loopback only, so nothing outside your machine can reach it:
+The development image bundles Chronicle and MongoDB. Bind its HTTPS port to loopback so it is not published to the surrounding network. The digest pins the image rather than relying on a moving tag:
 
 ```shell
-docker run -d --name chronicle \
+docker run -d --name chronicle-blog-demo \
   -p 127.0.0.1:35000:35000 \
-  cratis/chronicle:latest-development
+  cratis/chronicle@sha256:360cf3a31216d15d61cc2dae27ad1ac3435fb44c2de7936ac20be4be39596554
 ```
 
-Port `35000` carries gRPC, the REST API, and the Workbench on a single TLS port, using a self-signed development certificate the container generates at startup. Give it a few seconds, then confirm it is up:
+Wait for the HTTP endpoint to respond:
 
 ```shell
-docker logs chronicle 2>&1 | grep "Starting Cratis Chronicle Server"
+curl --insecure --fail --silent --show-error \
+  --retry 30 --retry-all-errors --retry-delay 1 --retry-max-time 60 \
+  --connect-timeout 2 --max-time 5 \
+  https://localhost:35000/ --output /dev/null
 ```
 
-```text
-Starting Cratis Chronicle Server - Version 18.1.3.0
-```
+This requires a `curl` installation with `--retry-all-errors` support. That flag also retries temporary TLS handshake failures during startup; the retry window is bounded to a minute, with each request limited to five seconds. `--insecure` is for this loopback-only development server's self-signed certificate. Do not carry that setting into a production connection. An HTTP response confirms the endpoint is up, not that all event processing is complete; the application checks below cover the specific operations we need.
+
+If startup fails, inspect `docker logs chronicle-blog-demo`. If port `35000` or that container name is already occupied, resolve the conflict without removing another application's container. The [hosting documentation](https://cratis.io/chronicle/hosting/) covers deployment beyond this local setup.
 
 ## 2. Create the application
 
-Create a console project and add the Chronicle client at the pinned version:
+Select the tested SDK explicitly and install the matching client:
 
 ```shell
 mkdir Quickstart && cd Quickstart
+dotnet new globaljson --sdk-version 10.0.401 --roll-forward disable
 dotnet new console --framework net10.0
-dotnet add package Cratis.Chronicle --version 18.1.3
+dotnet add package Cratis.Chronicle --version 18.1.5
 ```
 
-The example targets .NET 10 and uses the matching current Chronicle client without compatibility-only package additions.
+If the SDK is missing, install it before continuing; `global.json` deliberately prevents silently using another SDK. Leave the generated project settings, including implicit usings, enabled.
 
-## 3. Define the events
+## 3. Define the facts
 
-Events are immutable facts, modeled as records marked with `[EventType]`. The attribute is how Chronicle discovers the type — the type name is the identity, so there is nothing else to configure. Save this as `Events.cs`:
+Save this as `Events.cs`:
 
 ```csharp
 using Cratis.Chronicle.Events;
@@ -73,11 +78,13 @@ public record BookBorrowed(string MemberName);
 public record BookReturned;
 ```
 
-`BookReturned` carries no data at all. That it happened, on a particular book's stream, is the whole story — not every fact needs a payload.
+The `[EventType]` attribute makes the records discoverable by Chronicle. The event-source identifier, passed separately when appending, ties all three facts to the same book. `BookReturned` needs no payload in this example: the event type and book identifier are enough to say what happened.
 
-## 4. Declare the read models
+These records describe facts, not permission to perform an action. A real borrowing workflow must first decide whether the loan is allowed; the example does not implement business rules such as rejecting a second simultaneous borrower.
 
-Events are the write side. To read current state, you declare the shape you want and which events feed each field, and Chronicle keeps it in sync — you never write an `UPDATE`. Save this as `Book.cs`:
+## 4. Define the views
+
+Save this as `Book.cs`:
 
 ```csharp
 using Cratis.Chronicle.Keys;
@@ -98,12 +105,13 @@ public record Book(
     bool OnLoan,
 
     [SetFrom<BookBorrowed>(nameof(BookBorrowed.MemberName))]
+    [ClearWith<BookReturned>]
     string? BorrowedBy);
 ```
 
-Read the attributes as a sentence: a book enters the view from `BookAdded`; `OnLoan` flips with each borrow and return; `BorrowedBy` is whoever borrowed it. `Title` and `Isbn` map from the event by naming convention — no per-property attributes needed when the names match.
+`BookAdded` creates the view. `Title` and `Isbn` map by name. Borrowing sets `OnLoan` and the current borrower; returning clears both. Clearing `BorrowedBy` matters: leaving it unchanged would turn a field that appears to describe the current loan into an undocumented record of the last borrower.
 
-The second read model answers "what is out on loan right now?" by existing only while a loan is active. Save this as `BorrowedBook.cs`:
+The second view contains only active loans. Save this as `BorrowedBook.cs`:
 
 ```csharp
 using Cratis.Chronicle.Keys;
@@ -118,11 +126,11 @@ public record BorrowedBook(
     string MemberName);
 ```
 
-When a `BookBorrowed` lands, a `BorrowedBook` appears; when the matching `BookReturned` arrives, it is removed. No flag to maintain, no filter to remember.
+A borrow creates the entry; the matching return removes it. The view changes, but the original events remain in the event log. These are [model-bound projections](https://cratis.io/chronicle/projections/), not application code issuing database updates.
 
-## 5. React to an event
+## 5. Observe the return
 
-When you need to do something the moment a fact lands — notify someone, call another system — you write a reactor. `IReactor` is a marker interface; add a method whose first parameter is the event you care about, and Chronicle routes matching events to it. Save this as `BookReturnedNotifier.cs`:
+Save this as `BookReturnedNotifier.cs`:
 
 ```csharp
 using Cratis.Chronicle.Events;
@@ -130,17 +138,30 @@ using Cratis.Chronicle.Reactors;
 
 public class BookReturnedNotifier : IReactor
 {
+    public static Guid BookToObserve { get; set; }
+
+    public static TaskCompletionSource Observed { get; } =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+
     public Task Returned(BookReturned @event, EventContext context)
     {
-        Console.WriteLine($"Reactor: book {context.EventSourceId} was returned — notify the next member in line.");
+        if (context.EventSourceId.ToString() == BookToObserve.ToString())
+        {
+            Console.WriteLine("Reactor observed the book return.");
+            Observed.TrySetResult();
+        }
         return Task.CompletedTask;
     }
 }
 ```
 
-## 6. Connect, append, and query
+The [reactor](https://cratis.io/chronicle/reactors/) method receives the event and its context. Here it only prints a message and signals that this process observed the return for the current book. The signal is test scaffolding, not persistent application state or a notification-delivery mechanism.
 
-Now the program that ties it together. Replace the generated `Program.cs` with this code. In this .NET 10 console app there is no host or DI container, so you create the `ChronicleClient` yourself, open an event store, and explicitly ask Chronicle to discover and register the artifacts you just defined:
+Sending an email or calling another service would introduce another failure boundary. Design those effects for retries and idempotency; this console example does not demonstrate exactly-once delivery.
+
+## 6. Append, wait for the expected state, and check it
+
+Replace `Program.cs` with the following. It checks each append result, then waits for the corresponding materialized views. Every wait has a timeout so a failure does not silently become a successful-looking run.
 
 ```csharp
 using Cratis.Chronicle;
@@ -148,94 +169,124 @@ using Cratis.Chronicle.Connections;
 
 using var client = new ChronicleClient(ChronicleConnectionString.Development);
 var eventStore = await client.GetEventStore("Quickstart");
-Console.WriteLine($"Connected to event store: {eventStore.Name}");
+var bookId = Guid.NewGuid();
+const string title = "The Pragmatic Programmer";
+const string isbn = "978-0135957059";
+BookReturnedNotifier.BookToObserve = bookId;
 
 await eventStore.DiscoverAll();
 await eventStore.RegisterAll();
 
-var bookId = Guid.NewGuid();
-
-var appendResult = await eventStore.EventLog.Append(
-    bookId,
-    new BookAdded("The Pragmatic Programmer", "978-0135957059"));
-Console.WriteLine($"Appended BookAdded at sequence {appendResult.SequenceNumber} (success: {appendResult.IsSuccess})");
-
-appendResult = await eventStore.EventLog.Append(bookId, new BookBorrowed("Jane Doe"));
-Console.WriteLine($"Appended BookBorrowed at sequence {appendResult.SequenceNumber} (success: {appendResult.IsSuccess})");
-
-// Give the freshly registered read models a moment to come online before the first query.
-await Task.Delay(TimeSpan.FromSeconds(5));
-
-var books = await eventStore.ReadModels.GetInstances<Book>();
-foreach (var book in books)
+var result = await eventStore.EventLog.Append(bookId, new BookAdded(title, isbn));
+if (!result.IsSuccess)
 {
-    Console.WriteLine($"Book read model: {book.Title} ({book.Isbn}) OnLoan={book.OnLoan} BorrowedBy={book.BorrowedBy}");
+    throw new InvalidOperationException("BookAdded was not accepted.");
 }
+await WaitFor(
+    () => eventStore.ReadModels.GetInstances<Book>(),
+    books => books.Any(book => MatchesBook(book, false, null)),
+    "the newly added book");
+Console.WriteLine("Added: title and ISBN match; OnLoan=False; BorrowedBy=null.");
 
-var borrowed = await eventStore.ReadModels.GetInstances<BorrowedBook>();
-foreach (var loan in borrowed)
+result = await eventStore.EventLog.Append(bookId, new BookBorrowed("Jane Doe"));
+if (!result.IsSuccess)
 {
-    Console.WriteLine($"BorrowedBook read model: {loan.Id} borrowed by {loan.MemberName}");
+    throw new InvalidOperationException("BookBorrowed was not accepted.");
 }
+await WaitFor(
+    () => eventStore.ReadModels.GetInstances<Book>(),
+    books => books.Any(book => MatchesBook(book, true, "Jane Doe")),
+    "the borrowed book");
+await WaitFor(
+    () => eventStore.ReadModels.GetInstances<BorrowedBook>(),
+    loans => loans.Any(loan => loan.Id == bookId && loan.MemberName == "Jane Doe"),
+    "the active loan");
+Console.WriteLine("Borrowed: OnLoan=True; BorrowedBy=Jane Doe; active loan exists.");
 
-appendResult = await eventStore.EventLog.Append(bookId, new BookReturned());
-Console.WriteLine($"Appended BookReturned at sequence {appendResult.SequenceNumber} (success: {appendResult.IsSuccess})");
-
-// Give the reactor a moment to observe the event.
-await Task.Delay(TimeSpan.FromSeconds(5));
-
-books = await eventStore.ReadModels.GetInstances<Book>();
-foreach (var book in books)
+result = await eventStore.EventLog.Append(bookId, new BookReturned());
+if (!result.IsSuccess)
 {
-    Console.WriteLine($"Book read model after return: {book.Title} OnLoan={book.OnLoan}");
+    throw new InvalidOperationException("BookReturned was not accepted.");
 }
+await WaitFor(
+    () => eventStore.ReadModels.GetInstances<Book>(),
+    books => books.Any(book => MatchesBook(book, false, null)),
+    "the returned book with its borrower cleared");
+await WaitFor(
+    () => eventStore.ReadModels.GetInstances<BorrowedBook>(),
+    loans => loans.All(loan => loan.Id != bookId),
+    "removal of the active loan");
+Console.WriteLine("Returned: OnLoan=False; BorrowedBy=null; active loan removed.");
 
-borrowed = await eventStore.ReadModels.GetInstances<BorrowedBook>();
-Console.WriteLine($"BorrowedBook read models after return: {borrowed.Count()}");
+await BookReturnedNotifier.Observed.Task.WaitAsync(TimeSpan.FromSeconds(30));
+Console.WriteLine("Verified projection states and reactor observation.");
+
+bool MatchesBook(Book book, bool onLoan, string? borrowedBy) =>
+    book.Id == bookId && book.Title == title && book.Isbn == isbn &&
+    book.OnLoan == onLoan && book.BorrowedBy == borrowedBy;
+
+static async Task WaitFor<T>(Func<Task<T>> read, Func<T, bool> ready, string description)
+{
+    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+    try
+    {
+        while (true)
+        {
+            var state = await read().WaitAsync(timeout.Token);
+            if (ready(state))
+            {
+                return;
+            }
+            await Task.Delay(200, timeout.Token);
+        }
+    }
+    catch (OperationCanceledException) when (timeout.IsCancellationRequested)
+    {
+        throw new TimeoutException($"Timed out waiting for {description}.");
+    }
+}
 ```
 
-`ChronicleConnectionString.Development` points at the local development kernel on `chronicle://localhost:35000` with the built-in development credentials — the same connection `new ChronicleClient()` uses with no arguments. The event source id (`bookId`) is the identity of the thing each fact is about; every event appended against it becomes part of that book's stream of history.
+`ChronicleConnectionString.Development` selects the local development endpoint and credentials. Discovery and registration make the event types, projections, and reactor known to Chronicle.
 
-The two `Task.Delay` calls deserve honesty: `GetInstances` replays events on demand, but registration of freshly declared read models and delivery to reactors are asynchronous. On our machine, querying immediately after the very first registration returned empty results; five seconds was comfortably enough. In a long-running application this is a non-issue — registration happens once at startup.
+For these materialized models, `GetInstances` reads the stored projection results; it does **not** replay the full history on every call. Other read-model modes have different behavior, described in the [read-model documentation](https://cratis.io/chronicle/read-models/). An append and a projection update are separate operations, so lag can occur after any append—not only during startup.
 
-With `Events.cs`, `Book.cs`, `BorrowedBook.cs`, `BookReturnedNotifier.cs`, and `Program.cs` in the project, run it:
+The helper polls for a specific state rather than sleeping once and hoping. Its timeout is a demo limit, not a performance promise. It bounds how long this program waits; it does not guarantee cancellation of an underlying request already in flight. Reading all instances is convenient for this small example, not an efficient polling strategy for a large store.
+
+## 7. Run it and interpret the result
+
+With the five files in the project, run:
 
 ```shell
 dotnet run
 ```
 
+The application prints these checkpoints. The reactor line can appear before or after the returned-view line because those observers run independently:
+
 ```text
-Connected to event store: Quickstart
-Appended BookAdded at sequence 0 (success: True)
-Appended BookBorrowed at sequence 1 (success: True)
-Book read model: The Pragmatic Programmer (978-0135957059) OnLoan=True BorrowedBy=Jane Doe
-BorrowedBook read model: c6dc1472-3d85-4dd9-97bf-60e009e29caf borrowed by Jane Doe
-Appended BookReturned at sequence 2 (success: True)
-Reactor: book c6dc1472-3d85-4dd9-97bf-60e009e29caf was returned — notify the next member in line.
-Book read model after return: The Pragmatic Programmer OnLoan=False
-BorrowedBook read models after return: 0
+Added: title and ISBN match; OnLoan=False; BorrowedBy=null.
+Borrowed: OnLoan=True; BorrowedBy=Jane Doe; active loan exists.
+Reactor observed the book return.
+Returned: OnLoan=False; BorrowedBy=null; active loan removed.
+Verified projection states and reactor observation.
 ```
 
-That is the whole loop — append, project, react. The book's `OnLoan` flag flipped, the `BorrowedBook` appeared and disappeared, and the reactor fired — and you never wrote an update statement.
+A second run creates a new book identifier and checks only that book. It adds more history to the same store; it does not reset or deduplicate the previous run.
 
-## 7. See the history
+If an append is rejected, the program stops rather than querying as though it succeeded. If a view or reactor does not reach the expected state before the timeout, inspect the container logs and observer state. Increasing the timeout alone does not establish that the processing is correct. The example checks the happy-path state transitions; it is not a test suite for rejected business commands, server outages, or external notification delivery.
 
-State-based storage shows you what the data is. Chronicle also shows you every fact that made it so. Open the bundled Workbench at <https://localhost:35000> — your browser will warn about the self-signed development certificate; that is expected for the local development image. Log in with the development image's default credentials (username `Admin`, password `ChangeMeNow!` — see [Workbench development mode](https://cratis.io/chronicle/workbench/development/)), pick the `Quickstart` event store, and select **Sequences**: your `BookAdded`, `BookBorrowed`, and `BookReturned` are sitting there in order, permanent, with their event source id and timestamps. The Workbench is a bundled local browser surface for authorized inspection of Chronicle runtime state — run the program again and watch new events arrive.
+## Inspect the history and clean up
 
-## Clean up
+Open the bundled Workbench at <https://localhost:35000>. Its self-signed certificate may trigger a browser warning; this is the local development endpoint, not a production certificate configuration. Sign in with the development image's defaults: username `Admin`, password `ChangeMeNow!`.
 
-When you are done, remove the container and the image:
+Select `Quickstart`, keep the `Default` namespace selected, and open **Sequences** with `event-log` selected. You should see the three event types in append order for each book created by the runs. These credentials are for the local exercise only; the [Workbench development guide](https://cratis.io/chronicle/workbench/development/) explains that setup.
+
+When finished, remove only the container created for this exercise:
 
 ```shell
-docker rm -f chronicle
-docker rmi cratis/chronicle:latest-development
+docker rm -fv chronicle-blog-demo
 ```
 
-Deleting your `Quickstart` folder removes everything else — event data lives inside the container, so removing it removes the data too.
+`-v` also removes anonymous volumes associated with that container. Named volumes or host-mounted directories, if you added any, need separate, deliberate handling. The command does not remove the shared Docker image. You may also delete the `Quickstart` project folder when you no longer need its source.
 
-## Where to go next
-
-- The [console quickstart](https://cratis.io/chronicle/get-started/console/) covers this same path in the documentation, including querying the materialized read models in MongoDB directly.
-- The [tutorial](https://cratis.io/chronicle/tutorial/) builds the library domain one concept at a time — strongly-typed ids, hosts, and DI included.
-- The [ASP.NET Core and Worker Service guides](https://cratis.io/chronicle/get-started/choose-hosting-model/) show the same pieces with the host's DI container doing the wiring.
-- Chronicle also ships [TypeScript, Kotlin/Java (JVM), and Elixir clients](https://cratis.io/chronicle/clients/) — with a Python client coming soon (no commitment implied) — so the event log is not a .NET-only story.
+You have now separated three concerns: the recorded facts, the views derived from them, and work triggered by them. The [full tutorial](https://cratis.io/chronicle/tutorial/) develops the application further; the [hosting-model guides](https://cratis.io/chronicle/get-started/choose-hosting-model/) show how to integrate the same pieces with an application's host and dependency injection.

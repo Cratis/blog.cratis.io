@@ -2,48 +2,61 @@
 title: The Cratis ecosystem at a glance
 date: 2026-08-28
 authors: cratis-team
-excerpt: What Cratis is, what Chronicle 18.1.3 covers on .NET 10, and how Arc, Components, the CLI, Workbench, and the experimental model-first layer fit together — all open source and MIT licensed.
+excerpt: Start with Chronicle and a client SDK, then add application and operating tools where you need them. A practical guide to which parts of Cratis do what—and which are optional.
 tags:
   - ecosystem
 ---
 
-Cratis is an open-source, MIT-licensed platform for building event-sourced and CQRS applications. This post is a quick tour of the ecosystem: what each piece does, how the pieces fit together, and where to go to learn more.
+You do not need the whole Cratis ecosystem to use event sourcing. The starting point is [Chronicle](https://cratis.io/chronicle/) and a client SDK. The other products address separate concerns: handling application requests, building a frontend, and understanding what the running system is doing.
 
-## Chronicle: the center of the stack
+To see the boundaries, consider a library application. A member borrows a book, the application records that fact, and a screen shows which books are on loan. Those are related steps, but they are not the same responsibility.
 
-At the center is [Chronicle 18.1.3](https://github.com/Cratis/Chronicle/releases/tag/v18.1.3), the latest stable release when this post was revised. It is an event-sourcing database and processing runtime with a first-class .NET 10 SDK and additional TypeScript, Kotlin/Java (JVM), and Elixir clients — with a Python client in pre-alpha (no commitment implied) — plus pluggable storage-provider implementations including MongoDB (default), PostgreSQL, SQL Server, and SQLite.
+## Store the facts: Chronicle and a client
 
-Chronicle's kernel runs on .NET 10 and Microsoft Orleans and exposes a language-agnostic gRPC/protobuf boundary, so any language can implement the contract. AI agents can connect to a running Chronicle through the [Chronicle MCP server](https://cratis.io/chronicle-mcp/), regardless of client language.
+Chronicle stores events and processes them into read models. Your application decides whether borrowing a book is allowed; after that decision, it appends a `BookBorrowed` event through a client SDK. A projection can use that event to update a view of the books currently on loan.
 
-## Building applications: Arc and Components
+The distinction matters: storing a fact is not the same as accepting a command. A useful application still needs business rules, and the reader-facing view may update asynchronously after the event is appended.
 
-- **[Arc](https://cratis.io/arc/)** — an opinionated CQRS application framework built on .NET 10 and ASP.NET Core: commands, queries, validation, authorization, and TypeScript proxy generation. Arc works without event sourcing, with optional Chronicle integration.
-- **[Components](https://cratis.io/components/)** — React components for CQRS and event-sourced applications built with Arc: command dialogs, typed forms, and query-backed data tables.
+Chronicle runs as a separate server. Its kernel uses .NET and Microsoft Orleans, while client SDKs are available for .NET, TypeScript, Kotlin/Java, and Elixir. The gRPC/protobuf boundary allows those clients to use the same server without sharing its implementation language. Client availability does not mean every SDK exposes identical features; check the [client documentation](https://cratis.io/chronicle/clients/) for the operations you need.
 
-## Inspecting and diagnosing: CLI and Workbench
+Storage is pluggable. MongoDB is the default, with PostgreSQL, SQL Server, and SQLite providers also available. That is a choice of implementations, not a promise that their operational characteristics are interchangeable.
 
-- **[CLI](https://cratis.io/cli/)** — terminal workflows for inspecting and diagnosing Chronicle: events, observers, projections, read models, and failed partitions.
-- **Workbench** — the web-based inspection surface for Chronicle event stores.
+**Start here:** the [console quickstart](https://cratis.io/chronicle/get-started/console/) demonstrates Chronicle without an application framework or frontend.
 
-## The model-first layer (experimental)
+## Handle application requests: Arc, optionally
 
-Cratis also includes an experimental model-first layer, currently in early development:
+In the library example, `BorrowBook` is a request to do something; `BookBorrowed` records that it happened. [Arc](https://cratis.io/arc/) provides a CQRS application framework for ASP.NET Core, including commands, queries, validation, authorization, and generated TypeScript proxies.
 
-- **[Studio](https://cratis.io/studio/)** — the collaborative environment for designing, visualizing, and editing Screenplay event models (experimental).
-- **[Screenplay](https://cratis.io/screenplay/)** — a model-first language for event-sourced, CQRS systems — commands, events, projections — rendered by Stage into an Arc + Chronicle application (experimental).
-- **Stage** — renders Screenplay models into reviewable Arc + Chronicle applications (experimental).
-- **Scene** — describing a user interface without describing a platform: the UI model of the model-first layer (experimental).
-- **[Prologue](https://cratis.io/prologue/)** — captures existing system behavior (SQL Server CDC, Postgres logical replication, HTTP, OTLP) into event models for the model-first layer (experimental).
+Arc gives those application-facing concerns a common structure. It does not replace the business decision about whether a member may borrow a particular book.
 
-## Free and open source
+You can use Chronicle from an existing application without adopting Arc. You can also use Arc without event sourcing. Add it when its command/query model fits the application you want to build, not because Chronicle requires it.
 
-Everything Cratis publishes today is MIT licensed and free to use.
+## Build the screen: Components, optionally
 
-## Where to go next
+The frontend needs to issue a borrowing request and display the resulting state. [Components](https://cratis.io/components/) provides React components aligned with Arc's command and query patterns, including command dialogs, typed forms, and query-backed tables.
 
-- [The Cratis Stack](https://cratis.io/cratis-stack/) — how the pieces fit together end to end.
-- [Why developers choose Cratis](https://cratis.io/why-cratis/) — the reasoning behind the stack.
-- [Get started with Chronicle](https://cratis.io/chronicle/get-started/) — your first event-sourced application.
-- [Samples](https://cratis.io/samples/) — runnable event sourcing and CQRS samples for the whole stack.
-- [Cratis on GitHub](https://github.com/Cratis) — every repository, all open source.
-- [Community and help](https://cratis.io/community/) — where to ask questions and follow along.
+That is a frontend choice, not a requirement of the event store. A console application, another UI framework, or an existing frontend can still use Chronicle through its application backend. A screen must also account for the difference between a successful command and an asynchronously updated read model.
+
+## Understand the running system
+
+Suppose the borrowing request succeeded, but the book has not appeared in the view. First distinguish the questions: was the event appended, and did the relevant processing complete?
+
+- **[Workbench](https://cratis.io/chronicle/workbench/development/)** is the browser-based inspection surface bundled with the development server. Use it to inspect event history and runtime state.
+- **[Cratis CLI](https://cratis.io/cli/)** provides terminal workflows for inspecting events, observers, projections, read models, and failed processing.
+- **[Chronicle MCP server](https://cratis.io/chronicle-mcp/)** exposes an integration point for AI-assisted interaction with Chronicle. It is optional and separate from the client SDK your application uses.
+
+These tools help explain the system's state. They do not remove the need to decide how your application handles delays and failures.
+
+## Keep experimental tooling separate from the starting path
+
+The experimental model-first tools explore a different authoring approach: describe an application model and generate application code from it. [Screenplay](https://cratis.io/screenplay/) describes event-sourced and CQRS models; Stage renders those models into applications, while [Studio](https://cratis.io/studio/) provides a modeling environment.
+
+You do not need this layer for the library example—or to adopt Chronicle, Arc, or Components. Evaluate its release status and integration compatibility separately from the established client-and-server path.
+
+## Choose the smallest useful starting point
+
+For an existing application, start by appending one event and reading one projection with [Chronicle and a client](https://cratis.io/chronicle/get-started/). Consider Arc if you also want its command/query application model, and Components if you are building a React frontend around those patterns. Add operating tools as you need to inspect and diagnose the system.
+
+Cratis is open source and MIT licensed. The [samples](https://cratis.io/samples/) and [stack guide](https://cratis.io/cratis-stack/) provide the next level of detail; use them to explore the part you need rather than adopting every product at once.
+
+*Updated September 11, 2026.*
