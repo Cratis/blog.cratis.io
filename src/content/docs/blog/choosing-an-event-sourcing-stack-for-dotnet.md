@@ -1,78 +1,67 @@
 ---
-title: "Choosing an event sourcing stack for .NET: start with the boundaries"
+title: "Choosing an event sourcing stack for .NET: an honest comparison"
 date: 2026-08-28
 authors: cratis-team
-excerpt: KurrentDB, Marten, and Cratis Chronicle put event storage and processing in different places. Work through the process, transaction, and operating boundaries before comparing feature lists.
+excerpt: "Most event sourcing comparisons reduce to popularity. We compiled a version-pinned, source-cited comparison of KurrentDB, Marten, and Cratis Chronicle instead — every row reproducible from public documentation, with the same rules applied to our own product. Here's how to use it."
 tags:
   - chronicle
   - event-sourcing
 ---
 
-Choosing an event store also means choosing where part of your application will run. Will event processing live inside your application process, or behind a separate server? Must a read model change in the same transaction as an append, or can it catch up later? Who operates each part?
+Choosing an event sourcing foundation for a .NET system is a long-lived decision. The event store outlives frameworks, UI rewrites, and often the team that chose it. Yet most comparisons available today reduce to popularity: the tools with the most blog posts win the evaluation before it starts.
 
-Those questions are more useful than a feature count. [KurrentDB](https://docs.kurrent.io), [Marten](https://martendb.io), and [Cratis Chronicle](https://cratis.io/chronicle/) all support event-sourced systems, but they do not draw the same boundaries.
+We wanted something more useful — for you and, honestly, for us. So we compiled a comparison where every factual row names the exact versions compared and is reproducible from public documentation and released packages. Where our own product appears, the same rules apply, including the limitations.
 
-This is an architectural decision guide, not a benchmark or a claim that we have tested every integration. The [source-cited comparison](https://cratis.io/compare-event-sourcing-dotnet/) records the product versions and documentation behind the detailed matrix. Check that baseline against the release and deployment you intend to use.
+The full matrix lives on cratis.io, and that page is the source of truth: **[Event sourcing in .NET: comparing KurrentDB, Marten, and Cratis Chronicle](https://cratis.io/compare-event-sourcing-dotnet/)**. This post is the walk-through.
 
-## First, compare the same responsibility
+## The rules we set ourselves
 
-| Question | KurrentDB | Marten | Chronicle |
-| --- | --- | --- | --- |
-| Where does the product run? | A separate event database server. | A .NET library inside your application, backed by PostgreSQL. | A separate event-sourcing server and processing runtime. |
-| How are read models produced? | Built-in and user-defined JavaScript projections can emit or link events; subscriptions can feed application-specific read models. | Inline, asynchronous, and live projections support different consistency needs. | Declarative projections and reducers produce read models. |
-| How does application work consume events? | Catch-up or server-managed persistent subscriptions. | Subscriptions through the asynchronous daemon. | Reactors and observers, alongside projection and reducer processing. |
-| Which language boundary is exposed? | Official gRPC clients for several languages. | .NET application APIs. | Client SDKs for .NET, TypeScript, Kotlin/Java, and Elixir. |
+Before writing a single row, we fixed the method:
 
-These are summaries of the [documented product boundaries](https://cratis.io/compare-event-sourcing-dotnet/), not proof that similarly named features have identical delivery or consistency semantics. In particular, a projection that emits another event and a projection that updates a database document solve different parts of a read-model workflow.
+- **Released, verifiable facts only.** Every cell is cited from the named tool's own public documentation, repository, or package-registry listing, at a named version, with the retrieval date recorded.
+- **No performance, maturity, or superiority claims.** Not "faster", not "more mature", not "production-proven", not "best" — for any tool, including our own. Those claims need benchmarks and evidence a documentation comparison does not carry.
+- **Caveats stay visible.** The published page carries its limitations section in full: the matrix compares documentation, not behavior; a listed client package says nothing about feature parity; versions move.
+- **A refresh promise.** The matrix is re-verified when a compared tool ships a new major or minor release, changes its license or client list, or 90 days pass. If a compared tool disputes a row we cannot re-verify, we correct or remove it.
 
-## Scenario 1: the read model must change with the append
+If a comparison cannot survive those rules, it is marketing, not a comparison.
 
-Imagine an order workflow whose next operation must immediately read a summary containing the event just appended. Before choosing a product, decide whether that requirement is a transaction boundary or merely a UI preference.
+## The candidates, in one paragraph each
 
-Marten's [inline projections](https://martendb.io/events/projections/) run in the event-capture transaction. That is a concrete reason to evaluate it when both the application and its data belong in PostgreSQL. Its asynchronous and live projection options make different trade-offs; they are not interchangeable substitutes for inline processing.
+**[KurrentDB](https://docs.kurrent.io) (formerly EventStoreDB)** is a purpose-built event store database — events live in streams inside its own storage engine, with official gRPC clients for several languages. It has built-in and user-defined projections that emit or link events; application-specific read models can be fed by subscriptions. You bring your own CQRS application layer. It is licensed under the Kurrent License v1, which its own documentation notes is not an OSI-approved open source license.
 
-With a separate event server, explicitly investigate the acknowledgement and read paths. Does a successful append mean the event was accepted, or that the particular read model you are about to query is ready? In Chronicle's [projection model](https://cratis.io/chronicle/projections/), do not assume an asynchronous materialized view is current simply because the append succeeded. With KurrentDB, distinguish its [server projections](https://docs.kurrent.io/server/v26.0/features/projections/) from a separate read database maintained by your subscriber.
+**[Marten](https://martendb.io)** is a .NET library that turns PostgreSQL into a document and event store. It runs inside your application process, leans on PostgreSQL's JSON support and ACID compliance, and has rich projection support — inline, async, and live. MIT licensed; PostgreSQL is a prerequisite and .NET is the boundary.
 
-**Decision:** write down the required transaction and consistency boundary before comparing projection syntax. If eventual consistency is acceptable, decide what the application displays while a view catches up and how it detects failed processing.
+**[Cratis Chronicle](https://cratis.io/chronicle/)** is an event-sourcing database and processing runtime: a separate server with a first-class client SDK for .NET and released TypeScript, Java/Kotlin (JVM), and Elixir client packages. MIT licensed. It pairs with Arc for CQRS and generated TypeScript proxies, and a React component library.
 
-## Scenario 2: several applications need a shared event service
+The [canonical matrix](https://cratis.io/compare-event-sourcing-dotnet/) records the exact versions compared and cites every row. Check its baseline against the release you plan to use.
 
-Suppose a .NET service writes events while another application consumes them in a different language. A dedicated server becomes an explicit architectural option rather than simply another package dependency.
+## You're choosing an ecosystem, not only a database
 
-KurrentDB documents [persistent subscriptions](https://docs.kurrent.io/server/v26.0/features/persistent-subscriptions.html) with server-managed position, consumer groups, acknowledgements, retries, and parked events. Its [Connectors](https://docs.kurrent.io/server/v26.0/features/connectors/) provide another path from stored events to external systems. Those are relevant strengths when you want event infrastructure while retaining your own application architecture.
+Here is the part most comparisons skip: none of these tools lives alone. The event store is the center of a decision, but rarely the whole of it — around every store sits the layer you build applications with, the tooling you operate with, and the path events take to the rest of your architecture. Comparing the stores cell by cell and stopping there would miss where much of your time actually goes.
 
-Chronicle also places storage and processing behind a server boundary. Its client model includes [reactors](https://cratis.io/chronicle/reactors/), [reducers](https://cratis.io/chronicle/reducers/), and declarative projections. Evaluate whether that programming model fits the work your services need to perform, and check the capabilities of each [language client](https://cratis.io/chronicle/clients/) you intend to use.
+The [comparison page](https://cratis.io/compare-event-sourcing-dotnet/) also explains where these products sit within their ecosystems. The distinction matters: adjacent products are not features of the event store itself.
 
-Marten instead keeps its APIs and processing in the .NET application. That can be a useful boundary: your application owns how other services interact with it. It is not itself a language-neutral event-server API.
+- **KurrentDB** documents a server-side Connectors subsystem — pre-installed and enabled by default — that runs catch-up subscriptions and pushes filtered or transformed events to external systems through sinks, with a documented catalog covering Elasticsearch, HTTP, Kafka, MongoDB, RabbitMQ, and Serilog.
+- **Marten** is one member of JasperFx's [Critter Stack](https://jasperfx.net), described by its maintainers as one family of .NET tools for event sourcing, document storage, and messaging: Wolverine for messaging and web development, Polecat, Fisher, Weasel, Alba, and CritterWatch alongside Marten itself. Wolverine's documented persistent inbox/outbox messaging belongs in an evaluation that includes those responsibilities.
+- **Cratis Chronicle** is part of the Cratis ecosystem: [Arc](https://cratis.io/arc/) for CQRS with generated TypeScript proxies, [Components](https://cratis.io/components/) for React, the [CLI](https://cratis.io/cli/) and the Web Workbench for operating the store, released clients for .NET, TypeScript, JVM, and Elixir, and free [AI skills, rules, and diagnostics](https://cratis.io/ai/) that teach an assistant the platform's conventions.
 
-**Decision:** evaluate the exact producer and consumer paths, including authentication, retry behavior, ordering, and recovery. A client package existing in a registry does not establish feature parity or interoperability with every server release.
+None of this makes any tool better. It changes what you are evaluating. If you pick a store, you are also picking — or committing to build — everything around it: ask what surrounds each candidate, who maintains it, and how much of it you would otherwise write yourself. The comparison page's sources let you check those ecosystem relationships alongside the product capabilities.
 
-## Scenario 3: the application framework is part of the choice
+## How to actually choose
 
-The event store may be only one part of the decision. You may also want HTTP handling, durable messaging, generated frontend clients, or a shared command/query model.
+The matrix deliberately does not crown a winner. Instead, ask fit questions:
 
-Here, comparing Marten alone with the whole Cratis ecosystem would be misleading. Marten belongs to the [Critter Stack](https://jasperfx.net); [Wolverine](https://wolverinefx.net) provides messaging and web-development capabilities, including documented failure policies and persistent inbox/outbox messaging. Those are separate products, but they belong in an evaluation whose scope includes those responsibilities.
+- **Do you want a dedicated event database and your own application layer?** A purpose-built store with bring-your-own CQRS gives maximum control and maximum assembly work.
+- **Are you a PostgreSQL shop wanting minimum new infrastructure?** A library-on-PostgreSQL approach is hard to beat for operational simplicity.
+- **Do you want event sourcing, CQRS, and frontend integration designed together?** An integrated platform trades some flexibility for coherence: projections, read models, generated frontend contracts, and query updates that share one design. That trade-off is real — coherence and lock-in concerns are two views of the same property, and you should weigh both.
+- **Must the read model change in the append transaction?** Marten's inline projections run in that transaction; asynchronous views can lag behind a successful append. Compare the consistency behavior you need, not just the presence of a projections API.
+- **Is your organization polyglot?** Check which client languages are first-party and what each client actually supports. Client existence is not client parity — for any tool, including ours.
+- **Who explains the system at 3 a.m.?** Compare the operational surfaces: what does each tool show you about subscription progress, failed projections, and replay?
 
-Likewise, Chronicle is not Arc. [Arc](https://cratis.io/arc/) adds a CQRS application model and generated TypeScript proxies, while [Components](https://cratis.io/components/) supplies React components aligned with those patterns. Chronicle can be used without either. KurrentDB can sit beneath an application stack you choose independently.
+None of these questions has a universal answer. A team that answers "PostgreSQL shop, .NET only, minimal infrastructure" is describing Marten's sweet spot. A team that wants a dedicated event database under a stack they assemble themselves is describing KurrentDB's. A team that wants the store, the CQRS layer, and the frontend contract designed together is describing Chronicle's.
 
-**Decision:** compare complete candidate arrangements using the same checklist. Name which product handles commands, messages, UI contracts, and failures. Product-family membership alone does not prove integration compatibility or eliminate configuration and operational work.
+## Verify us
 
-## What the comparison cannot decide for you
+Every row on the [comparison page](https://cratis.io/compare-event-sourcing-dotnet/) carries its source and retrieval date precisely so you do not have to take our word for it. Open the cited documentation, check the cell, and if you find one that no longer matches its source, [tell us](https://cratis.io/feedback/) — we will re-verify and fix it.
 
-A documentation comparison cannot establish the performance or reliability of your deployment. For each candidate, test the same representative workload and failure cases:
-
-- append an event, then check what a reader can observe immediately and later;
-- interrupt a consumer and verify how it resumes, retries, and exposes failed work;
-- replay a projection and check its state, including handling of external side effects;
-- exercise the backup, restore, and upgrade procedures you plan to operate;
-- verify authorization, tenancy, and the treatment of sensitive event data.
-
-Check commercial boundaries separately too. Marten and Chronicle are MIT licensed. KurrentDB uses the Kurrent License v1, which its maintainers state is not OSI-approved open source; some features require a license key. The [comparison's license sources](https://cratis.io/compare-event-sourcing-dotnet/) identify those distinctions. A license label is not a substitute for reviewing the terms of the products you actually deploy.
-
-## Make the decision concrete
-
-Start with a short description of your system: its languages, accepted database dependencies, required consistency, and who owns operations. Choose two plausible arrangements, run the same small workflow through both, and deliberately interrupt it.
-
-Marten deserves attention when an in-process .NET and PostgreSQL boundary fits. KurrentDB deserves attention when a dedicated event database, subscriptions, and connectors fit. Chronicle deserves attention when its separate runtime and event-processing model fit. The useful answer is the one whose responsibilities and trade-offs your team can explain—not the one with the longest product list.
-
-*Updated September 11, 2026.*
+That is the comparison we wished existed when we started. Use it, argue with it, and hold us to the refresh promise.

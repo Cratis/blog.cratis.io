@@ -9,28 +9,40 @@ Review each gate independently. A passing build or a correct version number neve
 
 ## Review procedure
 
-1. Read `.cratis/PROJECT.md`, the full affected posts, and the PR diff. Review the reader-visible result, not only changed lines. Mark findings as introduced by the PR or pre-existing but exposed by the revision.
-2. Identify each post's genre and promised reader outcome using `write-blog-post`. An essay, tutorial, comparison, and ecosystem tour need different evidence and structure.
+1. Read `.cratis/PROJECT.md`, the original posts before AI edits, the full affected posts, the user's editorial feedback, and the entire diff. Review the reader-visible result, not only changed lines. Mark findings as introduced by the PR or pre-existing but exposed by the revision. Check every hunk for unintended changes of message, tone, emphasis, or scope; an accurate rewrite can still be an editorial regression.
+2. Identify each post's genre and promised reader outcome using [write-blog-post](../write-blog-post/SKILL.md). An essay, tutorial, comparison, and ecosystem tour need different evidence and structure. Perform the reader walkthrough below before grading the gates.
 3. Inventory consequential claims and runnable blocks. Fetch the specific cited passages and release sources for the claims being checked. Follow version-dependent calls into released implementation where documentation is insufficient. Never infer compatibility from a package existing or a shared repository name.
 4. For each suspected issue, try to refute it: check surrounding caveats, prerequisites, source semantics, and actual verification evidence. Report only substantiated findings as defects; report missing evidence as an open question, not proof of a bug.
 5. Remain read-only unless fixes are requested. Reuse relevant recorded test results with their scope and date; do not run application builds for a prose-only review or treat another run of Astro as a content review. If execution is necessary to settle a technical question, explicitly state that scope first.
 
+## Reader walkthrough — mandatory for each affected post
+
+Read the complete final post in order as the intended reader, without relying on private session context. Judge the outcome the author actually promised, not a different article you would prefer to write. A companion post can legitimately direct readers to its comparison or documentation. Ask:
+
+1. **Why am I reading this?** Can I state the question it answers and what I will be able to do or decide?
+2. **What must I know or have first?** Are prerequisites, unfamiliar terms, product boundaries, and required versus optional pieces introduced before they are used?
+3. **Can I follow the explanation?** Does the post explain its subject at the promised depth, with useful links for further detail? Would a targeted clarification help without replacing the argument or structure?
+4. **Can I recognize success and failure?** Does the post explain the result, what is asynchronous, and the limits of a demo or comparison? For a tutorial, can I place the files, run the commands, interpret the checkpoints, and clean up without guessing?
+5. **What should I do next?** Does the conclusion suit the author's purpose—trying a sample, exploring a product, reading the companion comparison, or reconsidering an idea?
+
+For each gap, identify where the reader gets stuck and a concrete change that would unblock them. A correct API reference, compiling sample, or independent review receipt does not substitute for this walkthrough. After fixes, reread the revised path and recheck affected evidence before changing the verdict.
+
 ## Gate 1 — Reader value and argument
 
 - One primary reader and one central question, with an outcome the article actually delivers.
-- The title and excerpt match the depth of the body. "How X works" requires a concrete interaction trace or worked example; a catalog of interfaces or protocol files does not suffice.
+- The title and excerpt match the body. Flag missing explanations with a specific reader consequence, not a mandatory structure. A small example may resolve the gap without rewriting the post.
 - Tutorials explain why the code works, show observable checkpoints, and distinguish demo shortcuts from production responsibilities.
 - Comparisons apply equivalent criteria at equivalent product boundaries. Give competitors their relevant strengths; do not compare one library against the entire Cratis ecosystem or claim absence because a landing page omits a feature.
-- Ecosystem tours explain relationships, optional dependencies, release status, and boundaries rather than merely naming products.
-- Trade-offs and a plausible counterexample are concrete. No invented "obvious approach" that conveniently fails; no unsupported "most comparisons" generalizations.
-- The conclusion gives a decision or useful next action, not only links, repeated licensing statements, or assurances that the article is honest.
+- Ecosystem tours explain what each product contributes; a concise product overview is a valid format. Do not require every tour to become a worked application tutorial or an argument for adopting fewer products.
+- Distinguish the author's point of view from technical claims requiring evidence. Do not invent objections or manufacture a failing alternative; do not erase an industry observation merely because it is opinionated.
+- The conclusion follows the original argument. Further-reading links, a licensing section, or an invitation to evaluate the comparison may serve that purpose.
 
 ## Gate 2 — Technical accuracy, currency, and reproducibility
 
 - Demonstrated .NET projects target `net10.0`; resolve the current .NET 10 SDK and Chronicle releases under the rule in `.cratis/PROJECT.md`.
 - Version references have a check date and source. Server, client, tool, provider, and experimental integration compatibility is established separately from availability. A version upgrade requires rechecking semantics, not merely replacing literals.
 - A reproducible command uses the recorded image digest and exact packages; a digest in prose alongside a moving `latest-development` command is not pinning. SDK-selection instructions match the claimed verification scope.
-- Compile evidence comes from the exact Markdown blocks assembled into the advertised files with the advertised setup commands. No hidden imports or dependencies and no hand-rewritten equivalent program. Pseudocode is clearly identified.
+- Compile or execution evidence uses the relevant language's tools on the exact Markdown blocks assembled into the advertised files with the advertised setup commands. No hidden imports or dependencies and no hand-rewritten equivalent program. Pseudocode and non-runnable excerpts are clearly identified.
 - Runtime evidence checks expected state transitions, failure handling, and repeat runs—not just console output or a zero exit code. All relevant fields are inspected; examples must not hide stale state by omitting fields from their output.
 - Distinguish append acknowledgement, eventual processing, on-demand replay queries, persisted read models, reactor execution, and actual external side effects. Do not claim one was demonstrated by testing another.
 - Fixed sleeps and startup banners are not readiness guarantees. Check that asynchronous verification uses bounded observable conditions and that prose acknowledges timing and retry limits.
@@ -56,7 +68,8 @@ Review each gate independently. A passing build or a correct version number neve
 - No fabricated anecdotes or test experience, including under `cratis-team`. Changing the byline does not legitimize invented experience.
 - The `authors` key exists in `src/data/authors.mjs`.
 - Titles, excerpts, and general explanations use unversioned product names. Exact versions belong in reproducible setup and tested-environment notes, not product introductions or "latest stable when revised" asides. Allow version-specific prose only when explaining a release-specific behavior or migration; retain release-pinned evidence links. Verify the demonstrated stack is current separately from this prose check.
-- Prefer concrete explanations to self-praise: "shortest honest path", "no complexity", "non-issue", and similar assurances require evidence or replacement with actual constraints.
+- Preserve the original thesis, opening, tone, rhythm, and recognizable phrasing unless a requested change or a verified defect requires an edit. Do not replace an industry observation with a generic prescription, or confident writing with repetitive caveats. A phrase is not a defect just because it would not appear in your own draft.
+- Every rewrite hunk has a concrete justification. Technical fixes do not authorize new framing, scenarios, titles, or conclusions. If the central argument cannot survive a necessary factual correction, flag that conflict for the author rather than silently choosing a new one.
 
 ## Gate 5 — Structure and repository mechanics
 
@@ -75,6 +88,8 @@ Lead with the most consequential findings, not a build-success summary. Each fin
 - evidence, reader consequence, and a concrete suggested correction;
 - a way to verify the correction.
 
-Then list each gate as **pass**, **fail**, or **unverified**, with the reason. Report checked and unchecked scope, including whether verification was a source inspection, compilation, runtime assertion, or browser check. Do not manufacture failures merely to fill every gate or issue a pass for work not inspected.
+Then list each gate as **pass**, **fail**, or **unverified**, with the reason. Within a gate, mark a check **not applicable** only with an explicit reason (for example, a conceptual essay with no runnable sample needs no compilation); do not skip reader value or claim accuracy on that basis. Report checked and unchecked scope, including whether verification was a source inspection, compilation, runtime assertion, or browser check. Do not manufacture failures merely to fill every gate or issue a pass for work not inspected.
+
+Distinguish **findings identified**, **fixes applied**, and **fixes verified** in the final status. A review report is not a repair, and a narrower follow-up must not silently close unrelated blockers. Reserve "ready for human review" for the threshold in `.cratis/PROJECT.md`; otherwise name the remaining blockers or verification gaps.
 
 Technical/evidence failures block publication. So do fabricated authorship and a materially misleading title or central argument. Smaller style issues may remain non-blocking; name them as such. A human performs the merge. Reviewing does not authorize editing posts, committing changes, posting a PR review, or merging.

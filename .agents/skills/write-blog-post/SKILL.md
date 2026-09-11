@@ -15,7 +15,17 @@ Identify before writing:
 - the author: `einar`, `sindre`, or `cratis-team` (see per-author voice below);
 - the evidence the post depends on: released, publicly verifiable behavior of Cratis products, public standards, or the author's own verifiable experience.
 
-If the author is unknown, ask. Do not invent an author or attribute experience to a person who did not have it. Read `.cratis/PROJECT.md` for current repository conventions before drafting.
+If the author is unknown, ask. Do not invent an author or attribute experience to a person who did not have it. Read `.cratis/PROJECT.md`, including its editorial foundation, before drafting. Use available shared product/client guidance for the mechanisms being demonstrated, but verify APIs against released documentation and sources: a skill is guidance, not evidence that an API has shipped. If that guidance is unavailable, report the gap rather than inventing APIs or installing a second AI setup.
+
+## Editing an existing post: preserve its intent
+
+The original post and the user's feedback are the editorial baseline. Read them before editing; do not treat an intervening AI rewrite as the author's voice.
+
+- Preserve the thesis, framing, tone, emphasis, examples, and recognizable phrasing unless the user explicitly asks to change them. Technical correction is not permission to choose a different message.
+- Default to the smallest necessary edit. Fix the inaccurate statement, missing explanation, or broken sample where it occurs; retain unaffected paragraphs and headings.
+- Do not turn an industry observation into a new prescription about how software should work, an ecosystem showcase into advice to avoid adopting the ecosystem, or a companion to a comparison into a different architectural essay.
+- Reader-focused review improves how the author's argument reaches its audience. It is not authority to replace that argument with a generic lesson, a caution-first stance, or an imposed scenario template.
+- Review every diff hunk against the original. Each change must address a specific request, factual defect, reproducibility problem, or concrete reading obstacle. Revert gratuitous rewrites. If a necessary correction would change the central argument, explain the conflict and ask rather than silently reframing it.
 
 ## 1. Establish the post contract
 
@@ -27,17 +37,17 @@ A post earns publication only when it has:
 - a narrowly earned Cratis connection — Cratis appears where it genuinely answers the problem; a deliberately scoped ecosystem tour may map products, but must explain their boundaries and relationships rather than merely list them;
 - a practical conclusion: what the reader can do next.
 
-Write down the reader's concrete outcome before drafting: "After reading, you can ___ because you understand ___." Use the genre to deliver it:
+For a new post, identify the reader's concrete outcome before drafting. For an existing post, identify and preserve the outcome it already promises. Use the genre to support it, not to impose a new structure:
 
 | Genre | Required substance |
 | --- | --- |
 | Tutorial | A runnable outcome, explicit prerequisites and filenames, observable checkpoints, a failure path, and the boundary between a demo and production. |
-| Mechanism explainer | Trace one concrete input through the components to its output. Explain responsibility, state, failure, and trade-offs; a list of APIs is not an explanation. |
-| Comparison | A real decision scenario, equivalent evaluation criteria, specific strengths and limitations for each candidate, and sources at named versions. Separate a product from its ecosystem. |
+| Mechanism explainer | Explain the mechanism at the depth the post promises; add a small concrete example where it clarifies the existing explanation. |
+| Comparison | Equivalent evaluation criteria, specific strengths and limitations for each candidate, and sources at named versions. A companion post may explain how to use a separately published matrix. |
 | Essay | One defensible thesis, evidence, and the strongest plausible objection. Do not manufacture a failing "obvious approach" just to create an opening. |
-| Ecosystem tour | A reader journey through the relevant products, what is optional, who owns which responsibility, and compatibility/release limits. |
+| Ecosystem tour | The products and relationships the author intends to showcase, with enough explanation to understand what each contributes. |
 
-Titles and excerpts must promise only what the body delivers. "How the contract works" needs a concrete contract example or interaction trace, not a file count and links. "An honest comparison" needs substantive, symmetric comparison, not repeated assurances of fairness.
+Titles and excerpts must match the body. Resolve a mismatch with a targeted clarification first; do not replace an approved title, opening, or argument merely because you prefer another framing.
 
 ## 2. Claim safety
 
@@ -46,7 +56,7 @@ Every factual claim about a Cratis product must be true of what is **released an
 - Describe only shipped, documented behavior. Link to the page on <https://cratis.io> that documents it.
 - Experimental or early-development surfaces (for example the model-first layer) must be labeled as such in the same sentence that introduces them.
 - Omit unreleased products and roadmap asides unless they are necessary to the reader's decision. When relevant, state availability plainly (for example, "experimental" or "not yet published") without implying a release promise. Do not add boilerplate such as "no commitment implied".
-- Licensing claims: everything Cratis publishes today is MIT licensed — do not promise future licensing.
+- Verify licensing claims against the named released products. Do not extend one product's license to an entire ecosystem or promise future licensing.
 - Never include customer names, private roadmap detail, internal metrics, security findings, or third-party proprietary material.
 - Numbers need a source the reader can check; no source, no number.
 
@@ -83,17 +93,16 @@ Blog examples should show Cratis on the current platform, not preserve compatibi
 
 ## 4. Structure
 
-Long-form posts follow this arc:
+Choose the sequence that delivers the genre's reader outcome; do not force every post into a problem–failed alternative–product solution template.
 
-1. a specific problem or question the reader recognizes;
-2. why the obvious approach persistently fails;
-3. one mechanism, model, or decision frame that resolves it;
-4. trade-offs, anti-fit cases, and the strongest counterargument;
-5. evidence and its limits — say what you do not know;
-6. the earned Cratis relationship;
-7. a practical conclusion with next steps.
+- Let the opening serve the author's framing. A story, an industry observation, a question, or an introduction to the ecosystem can all be appropriate.
+- Establish only the prerequisites and vocabulary needed for the next step. The reader does not share the author's session context.
+- Use examples where they help explain the subject. Do not force a new running example onto an existing article or replace the author's examples without a specific reason. Explain why important code works rather than merely restating its syntax.
+- Put limitations beside the behavior they qualify: asynchronous reads beside append/query code, client differences beside cross-language claims, optional products beside ecosystem choices.
+- Discuss alternatives or counterarguments when relevant, without inventing an "obvious approach" that must fail.
+- End with a useful action or decision and distinguish required steps from optional further reading.
 
-Use descriptive headings (`##`), connected paragraphs, and code or diagrams where they carry weight. Do not target an arbitrary length; the post is done when the argument is complete.
+Use descriptive headings (`##`), connected paragraphs, and code or diagrams where they carry weight. Do not target an arbitrary length; the post is done when it delivers its promised outcome. Supporting links and companion documentation are legitimate parts of that outcome; do not expand a short overview into a textbook.
 
 ## 5. Per-author voice
 
@@ -105,7 +114,7 @@ Match the byline to the voice — a post signed by a person must sound like that
 
 Never fabricate anecdotes or testing experience for any byline, including `cratis-team`. A verified experience may be described as a neutral observation with its source; changing the byline does not make an invented story acceptable.
 
-Prefer concrete mechanisms to slogans. Replace "the shortest honest path", "no complexity", or "a non-issue" with the actual setup, remaining responsibilities, and limits. Address retry behavior, eventual consistency, and operational costs where they affect the example rather than hiding them behind reassuring language.
+Preserve the author's personality, rhythm, and point of view. Distinguish an actual technical overclaim from an expressive turn of phrase; do not ban phrases or flatten the prose into generic instructional language. Correct misleading assurances about timing, consistency, or delivery precisely, without adding a disclaimer to every paragraph.
 
 ## 6. Author the file
 
@@ -133,13 +142,13 @@ Conventions:
 
 Follow the local artifact lifecycle instructions before creating disposable verification outputs. Keep evidence separate from disposable build files; do not delete failed-run evidence before diagnosis.
 
-1. **Extract, do not reconstruct.** Build the C# blocks directly from the Markdown into the named files. Use the article's project-creation and package commands in a fresh project with the stated SDK. No hidden global imports, extra dependencies, reordered statements, or manually improved sample. If the extraction needs a repair, fix the article and re-extract. All runnable blocks must be covered; label pseudocode explicitly.
-2. **Assert semantics separately from compilation.** For a stateful tutorial, check the demonstrated transitions (for example: added → borrowed → returned), all relevant fields, append failures, and repeat-run behavior. A successful exit or plausible log is insufficient. If claiming persisted read models, inspect that storage path rather than substituting an on-demand replay query.
+1. **Extract, do not reconstruct.** Extract runnable blocks directly from the Markdown into the named files and use the relevant compiler, interpreter, or tool. For C#, build those exact files using the article's project-creation and package commands in a fresh project with the stated SDK. No hidden global imports, extra dependencies, reordered statements, or manually improved sample. If the extraction needs a repair, fix the article and re-extract. All runnable blocks must be covered; label pseudocode explicitly.
+2. **Assert semantics separately from compilation.** For a stateful tutorial, check the demonstrated transitions (for example: added → borrowed → returned), all relevant fields, and repeat-run behavior. Exercise a relevant failure path and substantiate any claimed failure handling; state which failure cases were not tested. A successful exit or plausible log is insufficient. If claiming persisted read models, inspect that storage path rather than substituting an on-demand replay query.
 3. **Verify asynchronous behavior deliberately.** Use an observable completion condition with a bounded timeout for test verification; a fixed sleep is not readiness. Explain eventual consistency, retries and idempotency for side effects. Do not turn one successful run into a timing guarantee.
 4. **Check operations.** Verify container readiness, stated endpoint/authentication, UI actions if claimed, and cleanup ownership. Avoid broad deletes, removing shared images, or asserting data is deleted without inspecting mounts/volumes. Distinguish a log-only reactor from actual notification delivery.
 5. **Reconcile prose with results.** Recheck version sources and compatibility. State exactly which paths ran, which states were asserted, and what remains unverified. Retain concise reproduction evidence; never present a larger verification scope than the evidence supports.
 6. **Check rendering separately.** `npm run build` validates the site, not C# or product claims. Preview byline, signature, tags, code formatting and links. Production routes are `/<slug>/`, `/tags/...`, `/authors/...`, and `/rss.xml`; `npm run dev` still uses `/blog/...`. Check legacy redirects separately from the canonical pages.
-7. **Run the review skill.** Re-read the final article against `review-blog-post`, including unchanged surrounding claims affected by an upgrade. Report blockers rather than concluding "ready" from build success.
+7. **Run the review skill.** Read [review-blog-post](../review-blog-post/SKILL.md) and perform its reader walkthrough on the whole final article, not only changed lines. Include unchanged claims affected by an upgrade. Resolve blockers and recheck the affected evidence after fixes. Report remaining gaps rather than concluding "ready" from build success or wording cleanup.
 
 ## Output
 

@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "profiles": [
     "cratis/documentation",
+    "cratis/application/chronicle-dotnet",
     "cratis/engineering/typescript"
   ],
   "harnesses": [
