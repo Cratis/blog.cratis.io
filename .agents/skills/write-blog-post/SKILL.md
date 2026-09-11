@@ -39,7 +39,17 @@ Every factual claim about a Cratis product must be true of what is **released an
 
 When in doubt, weaken the claim until it is checkable, or cut it.
 
-## 3. Structure
+## 3. Keep the demonstrated stack current
+
+Blog examples should show Cratis on the current platform, not preserve compatibility with an older baseline:
+
+- Every .NET project and command targets .NET 10 (`net10.0`) and is verified with the current .NET 10 SDK. Do not present an older target framework as the default path.
+- Immediately before publication, resolve every Chronicle package, image, and tool used by the post against its public registry or release page. Use the latest mutually compatible stable releases available at that time; do not copy version numbers from an older post or documentation example.
+- Pin exact package versions in reproducible examples. If a moving container tag such as `latest-development` is required, record its manifest digest and the server version observed in the verified run.
+- Keep the server and client on the same release where possible. If they must differ, explain and verify the compatibility rather than silently mixing versions.
+- If the example only works on an older or prerelease stack, stop and ask rather than weakening this rule without editorial approval.
+
+## 4. Structure
 
 Long-form posts follow this arc:
 
@@ -53,7 +63,7 @@ Long-form posts follow this arc:
 
 Use descriptive headings (`##`), connected paragraphs, and code or diagrams where they carry weight. Do not target an arbitrary length; the post is done when the argument is complete.
 
-## 4. Per-author voice
+## 5. Per-author voice
 
 Match the byline to the voice — a post signed by a person must sound like that person:
 
@@ -63,7 +73,7 @@ Match the byline to the voice — a post signed by a person must sound like that
 
 Never fabricate personal anecdotes for a signed post. If the story is not the author's, it belongs in a `cratis-team` post as a neutral observation.
 
-## 5. Author the file
+## 6. Author the file
 
 Create `src/content/docs/blog/<kebab-case-slug>.md` (or `.mdx` when components are needed):
 
@@ -85,8 +95,10 @@ Conventions:
 - Links to Cratis documentation are absolute (`https://cratis.io/...`) — the blog is a separate site.
 - The author signature block and byline render automatically; do not sign the post in the body text.
 
-## 6. Verify
+## 7. Verify
 
+- Every .NET example builds for `net10.0` on the current .NET 10 SDK.
+- The Chronicle versions are still the latest compatible stable public releases, and every command or code path shown was exercised against those exact versions.
 - `npm run build` passes with no warnings about this post.
 - Preview with `npm run dev`: byline, signature block, tags, and reading time render; all links resolve.
 - The post appears in `/blog/`, its tag pages, its author page, and `/blog/rss.xml`.

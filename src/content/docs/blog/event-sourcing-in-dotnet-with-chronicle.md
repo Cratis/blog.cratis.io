@@ -1,8 +1,8 @@
 ---
-title: "Event sourcing in .NET with Chronicle: from zero to first projection"
+title: "Event sourcing in .NET 10 with Chronicle: from zero to first projection"
 date: 2026-08-28T18:00:00Z
 authors: cratis-team
-excerpt: Run Chronicle locally in one container, append your first events from a plain .NET console app, and watch them become read models — every command in this post was executed against the exact versions it names.
+excerpt: Run Chronicle 18.1.3 locally in one container, append your first events from a plain .NET 10 console app, and watch them become read models — every command in this post was executed against the exact versions it names.
 tags:
   - chronicle
   - event-sourcing
@@ -14,16 +14,15 @@ Everything below was executed as written. The versions are pinned so you can rep
 
 | Piece | Version |
 | --- | --- |
-| Chronicle kernel container | `cratis/chronicle:latest-development`, digest `sha256:a423610f88e088e53d3bb821fa972a35dc84e254297bf8d720653316b68e61bf` (Chronicle Server 16.38.5) |
-| Client package | [`Cratis.Chronicle`](https://www.nuget.org/packages/Cratis.Chronicle) 16.38.5 |
-| .NET SDK | 8.0.408 (`net8.0` target) |
-| Extra package on .NET 8 | `System.Collections.Immutable` 10.0.0 (see the note in step 2) |
+| Chronicle kernel container | `cratis/chronicle:latest-development`, digest `sha256:5f24b51803ada5f959a3fd401fd0d7a96d67b9c387ddbf04d5e0a6e23085c1a7` (Chronicle Server 18.1.3) |
+| Client package | [`Cratis.Chronicle`](https://www.nuget.org/packages/Cratis.Chronicle) 18.1.3 |
+| .NET SDK | 10.0.400 (`net10.0` target) |
 
 `latest-development` is a moving tag; if you pull it later you may get a newer kernel. The digest above is the exact image this post was verified against. [Chronicle](https://cratis.io/chronicle/) and its bundled local Workbench are MIT-licensed, self-hosted software — what you run here is yours to run.
 
 ## What you will build
 
-A minimal .NET console application for a tiny library domain: a book arrives, gets borrowed, and comes back. Each of those facts is an event appended to Chronicle's event log. Two read models are projected from those events — declaratively, with no update code — and a reactor performs a side effect when a book is returned. At the end you open the bundled Workbench and see the whole history.
+A minimal .NET 10 console application for a tiny library domain: a book arrives, gets borrowed, and comes back. Each of those facts is an event appended to Chronicle's event log. Two read models are projected from those events — declaratively, with no update code — and a reactor performs a side effect when a book is returned. At the end you open the bundled Workbench and see the whole history.
 
 ## 1. Run Chronicle
 
@@ -42,7 +41,7 @@ docker logs chronicle 2>&1 | grep "Starting Cratis Chronicle Server"
 ```
 
 ```text
-Starting Cratis Chronicle Server - Version 16.38.5.0
+Starting Cratis Chronicle Server - Version 18.1.3.0
 ```
 
 ## 2. Create the application
@@ -51,16 +50,15 @@ Create a console project and add the Chronicle client at the pinned version:
 
 ```shell
 mkdir Quickstart && cd Quickstart
-dotnet new console --framework net8.0
-dotnet add package Cratis.Chronicle --version 16.38.5
-dotnet add package System.Collections.Immutable --version 10.0.0
+dotnet new console --framework net10.0
+dotnet add package Cratis.Chronicle --version 18.1.3
 ```
 
-> **Why the extra package?** On a `net8.0` target, `Cratis.Chronicle` 16.38.5 fails at startup with `Could not load file or assembly 'System.Collections.Immutable, Version=10.0.0.0'` unless you add the package explicitly — the client assembly references it, but the package does not declare the dependency. On the .NET 10 SDK with a `net10.0` target and `Cratis.Chronicle` 17.0.0, the extra package is not needed; we verified both combinations against the same kernel.
+The example targets .NET 10 and uses the matching current Chronicle client without compatibility-only package additions.
 
 ## 3. Define the events
 
-Events are immutable facts, modeled as records marked with `[EventType]`. The attribute is how Chronicle discovers the type — the type name is the identity, so there is nothing else to configure:
+Events are immutable facts, modeled as records marked with `[EventType]`. The attribute is how Chronicle discovers the type — the type name is the identity, so there is nothing else to configure. Save this as `Events.cs`:
 
 ```csharp
 using Cratis.Chronicle.Events;
@@ -79,7 +77,7 @@ public record BookReturned;
 
 ## 4. Declare the read models
 
-Events are the write side. To read current state, you declare the shape you want and which events feed each field, and Chronicle keeps it in sync — you never write an `UPDATE`:
+Events are the write side. To read current state, you declare the shape you want and which events feed each field, and Chronicle keeps it in sync — you never write an `UPDATE`. Save this as `Book.cs`:
 
 ```csharp
 using Cratis.Chronicle.Keys;
@@ -105,9 +103,12 @@ public record Book(
 
 Read the attributes as a sentence: a book enters the view from `BookAdded`; `OnLoan` flips with each borrow and return; `BorrowedBy` is whoever borrowed it. `Title` and `Isbn` map from the event by naming convention — no per-property attributes needed when the names match.
 
-The second read model answers "what is out on loan right now?" by existing only while a loan is active:
+The second read model answers "what is out on loan right now?" by existing only while a loan is active. Save this as `BorrowedBook.cs`:
 
 ```csharp
+using Cratis.Chronicle.Keys;
+using Cratis.Chronicle.Projections.ModelBound;
+
 [FromEvent<BookBorrowed>]
 [RemovedWith<BookReturned>]
 public record BorrowedBook(
@@ -121,7 +122,7 @@ When a `BookBorrowed` lands, a `BorrowedBook` appears; when the matching `BookRe
 
 ## 5. React to an event
 
-When you need to do something the moment a fact lands — notify someone, call another system — you write a reactor. `IReactor` is a marker interface; add a method whose first parameter is the event you care about, and Chronicle routes matching events to it:
+When you need to do something the moment a fact lands — notify someone, call another system — you write a reactor. `IReactor` is a marker interface; add a method whose first parameter is the event you care about, and Chronicle routes matching events to it. Save this as `BookReturnedNotifier.cs`:
 
 ```csharp
 using Cratis.Chronicle.Events;
@@ -139,7 +140,7 @@ public class BookReturnedNotifier : IReactor
 
 ## 6. Connect, append, and query
 
-Now the program that ties it together. In a console app there is no host or DI container, so you create the `ChronicleClient` yourself, open an event store, and explicitly ask Chronicle to discover and register the artifacts you just defined:
+Now the program that ties it together. Replace the generated `Program.cs` with this code. In this .NET 10 console app there is no host or DI container, so you create the `ChronicleClient` yourself, open an event store, and explicitly ask Chronicle to discover and register the artifacts you just defined:
 
 ```csharp
 using Cratis.Chronicle;
@@ -197,7 +198,7 @@ Console.WriteLine($"BorrowedBook read models after return: {borrowed.Count()}");
 
 The two `Task.Delay` calls deserve honesty: `GetInstances` replays events on demand, but registration of freshly declared read models and delivery to reactors are asynchronous. On our machine, querying immediately after the very first registration returned empty results; five seconds was comfortably enough. In a long-running application this is a non-issue — registration happens once at startup.
 
-Put the event, read model, and reactor definitions after the top-level statements (or in separate files) and run it:
+With `Events.cs`, `Book.cs`, `BorrowedBook.cs`, `BookReturnedNotifier.cs`, and `Program.cs` in the project, run it:
 
 ```shell
 dotnet run

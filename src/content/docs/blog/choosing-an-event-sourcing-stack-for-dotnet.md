@@ -1,14 +1,14 @@
 ---
-title: "Choosing an event sourcing stack for .NET: an honest comparison"
+title: "Choosing an event sourcing stack for .NET 10: an honest comparison"
 date: 2026-08-28
 authors: cratis-team
-excerpt: "Most event sourcing comparisons reduce to popularity. We compiled a version-pinned, source-cited comparison of KurrentDB, Marten, and Cratis Chronicle instead — every row reproducible from public documentation, with the same rules applied to our own product. Here's how to use it."
+excerpt: "Most .NET 10 event sourcing comparisons reduce to popularity. We compiled a version-pinned, source-cited comparison of KurrentDB, Marten, and Cratis Chronicle instead — every row reproducible from public documentation, with the same rules applied to our own product. Here's how to use it."
 tags:
   - chronicle
   - event-sourcing
 ---
 
-Choosing an event sourcing foundation for a .NET system is a long-lived decision. The event store outlives frameworks, UI rewrites, and often the team that chose it. Yet most comparisons available today reduce to popularity: the tools with the most blog posts win the evaluation before it starts.
+Choosing an event sourcing foundation for a .NET 10 system is a long-lived decision. The event store outlives frameworks, UI rewrites, and often the team that chose it. Yet most comparisons available today reduce to popularity: the tools with the most blog posts win the evaluation before it starts.
 
 We wanted something more useful — for you and, honestly, for us. So we compiled a comparison where every factual row names the exact versions compared and is reproducible from public documentation and released packages. Where our own product appears, the same rules apply, including the limitations.
 
@@ -31,9 +31,9 @@ If a comparison cannot survive those rules, it is marketing, not a comparison.
 
 **[Marten](https://martendb.io)** is a .NET library that turns PostgreSQL into a document and event store. It runs inside your application process, leans on PostgreSQL's JSON support and ACID compliance, and has rich projection support — inline, async, and live. MIT licensed; PostgreSQL is a prerequisite and .NET is the boundary.
 
-**[Cratis Chronicle](https://cratis.io/chronicle/)** is an event-sourcing database and processing runtime: a separate server with a first-class .NET SDK, released TypeScript, Java/Kotlin (JVM), and Elixir client packages, and a Python client coming soon (pre-alpha, unpublished, no commitment implied). MIT licensed. It pairs with Arc for CQRS and generated TypeScript proxies, and a React component library.
+**[Cratis Chronicle](https://cratis.io/chronicle/)** is an event-sourcing database and processing runtime: a separate .NET 10 server with a first-class .NET 10 SDK, released TypeScript, Java/Kotlin (JVM), and Elixir client packages, and a Python client coming soon (pre-alpha, unpublished, no commitment implied). MIT licensed. It pairs with Arc for CQRS and generated TypeScript proxies, and a React component library.
 
-The [canonical matrix](https://cratis.io/compare-event-sourcing-dotnet/) pins the exact versions — KurrentDB server 26.0, Marten 9.30.0, Chronicle 17.0.0 — and cites every row.
+The [canonical matrix](https://cratis.io/compare-event-sourcing-dotnet/) pins the exact versions used for each row and cites every row. The Chronicle descriptions here were rechecked on .NET 10 against Chronicle Server and the .NET client at 18.1.3, the latest stable release when this post was revised.
 
 ## You're choosing an ecosystem, not only a database
 
@@ -43,7 +43,7 @@ So the [canonical matrix](https://cratis.io/compare-event-sourcing-dotnet/) now 
 
 - **KurrentDB** documents a server-side Connectors subsystem — pre-installed and enabled by default — that runs catch-up subscriptions and pushes filtered or transformed events to external systems through sinks, with a documented catalog covering Elasticsearch, HTTP, Kafka, MongoDB, RabbitMQ, and Serilog.
 - **Marten** is one member of JasperFx's [Critter Stack](https://jasperfx.net), described by its maintainers as one family of .NET tools for event sourcing, document storage, and messaging: Wolverine for messaging, Polecat, Fisher, Weasel, Alba, and CritterWatch alongside Marten itself.
-- **Cratis Chronicle** is part of the Cratis ecosystem: [Arc](https://cratis.io/arc/) for CQRS with generated TypeScript proxies, [Components](https://cratis.io/components/) for React, the [CLI](https://cratis.io/cli/) and the Web Workbench for operating the store, released clients for .NET, TypeScript, JVM, and Elixir, and free [AI skills, rules, and diagnostics](https://cratis.io/ai/) that teach an assistant the platform's conventions.
+- **Cratis Chronicle** is part of the Cratis ecosystem: [Arc](https://cratis.io/arc/) for .NET 10 CQRS with generated TypeScript proxies, [Components](https://cratis.io/components/) for React, the [CLI](https://cratis.io/cli/) and the Web Workbench for operating the store, released clients for .NET 10, TypeScript, JVM, and Elixir, and free [AI skills, rules, and diagnostics](https://cratis.io/ai/) that teach an assistant the platform's conventions.
 
 None of this makes any tool better. It changes what you are evaluating. If you pick a store, you are also picking — or committing to build — everything around it: ask what surrounds each candidate, who maintains it, and how much of it you would otherwise write yourself. The ecosystem rows on the comparison page carry citations and retrieval dates so you can verify each listing the same way you verify a storage row.
 

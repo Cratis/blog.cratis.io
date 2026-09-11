@@ -2,7 +2,7 @@
 title: The Cratis ecosystem at a glance
 date: 2026-08-28
 authors: cratis-team
-excerpt: What Cratis is, what Chronicle covers, and how Arc, Components, the CLI, Workbench, and the experimental model-first layer fit together — all open source and MIT licensed.
+excerpt: What Cratis is, what Chronicle 18.1.3 covers on .NET 10, and how Arc, Components, the CLI, Workbench, and the experimental model-first layer fit together — all open source and MIT licensed.
 tags:
   - ecosystem
 ---
@@ -11,13 +11,13 @@ Cratis is an open-source, MIT-licensed platform for building event-sourced and C
 
 ## Chronicle: the center of the stack
 
-At the center is [Chronicle](https://cratis.io/chronicle/), an event-sourcing database and processing runtime with a first-class .NET SDK and additional TypeScript, Kotlin/Java (JVM), and Elixir clients — with a Python client coming soon — plus pluggable storage-provider implementations including MongoDB (default), PostgreSQL, SQL Server, and SQLite.
+At the center is [Chronicle 18.1.3](https://github.com/Cratis/Chronicle/releases/tag/v18.1.3), the latest stable release when this post was revised. It is an event-sourcing database and processing runtime with a first-class .NET 10 SDK and additional TypeScript, Kotlin/Java (JVM), and Elixir clients — with a Python client in pre-alpha (no commitment implied) — plus pluggable storage-provider implementations including MongoDB (default), PostgreSQL, SQL Server, and SQLite.
 
-Chronicle's kernel runs on Microsoft Orleans and exposes a language-agnostic gRPC/protobuf boundary, so any language can implement the contract. AI agents can connect to a running Chronicle through the [Chronicle MCP server](https://cratis.io/chronicle-mcp/), regardless of client language.
+Chronicle's kernel runs on .NET 10 and Microsoft Orleans and exposes a language-agnostic gRPC/protobuf boundary, so any language can implement the contract. AI agents can connect to a running Chronicle through the [Chronicle MCP server](https://cratis.io/chronicle-mcp/), regardless of client language.
 
 ## Building applications: Arc and Components
 
-- **[Arc](https://cratis.io/arc/)** — an opinionated CQRS application framework for ASP.NET Core: commands, queries, validation, authorization, and TypeScript proxy generation. Arc works without event sourcing, with optional Chronicle integration.
+- **[Arc](https://cratis.io/arc/)** — an opinionated CQRS application framework built on .NET 10 and ASP.NET Core: commands, queries, validation, authorization, and TypeScript proxy generation. Arc works without event sourcing, with optional Chronicle integration.
 - **[Components](https://cratis.io/components/)** — React components for CQRS and event-sourced applications built with Arc: command dialogs, typed forms, and query-backed data tables.
 
 ## Inspecting and diagnosing: CLI and Workbench

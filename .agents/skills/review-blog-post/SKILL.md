@@ -14,9 +14,12 @@ Review each gate independently. A strong pass on one gate never compensates for 
 - The strongest counterargument or trade-off is engaged honestly.
 - The middle of the post is not a product catalog.
 
-## Gate 2 — Technical accuracy
+## Gate 2 — Technical accuracy and currency
 
 - Mechanisms are described correctly; code and wire-contract details match released behavior.
+- Every .NET example targets `net10.0`, builds with the current .NET 10 SDK, and does not present an older target framework as the default path.
+- Every Chronicle package, image, and tool shown was checked against its public registry or release page and uses the latest mutually compatible stable release available at review time.
+- Reproducible examples pin exact package versions. A moving container tag also records its manifest digest and the server version observed in the verified run; differing server and client versions have an explicit, verified compatibility reason.
 - Counterexamples and anti-fit cases are correct, not strawmen.
 - Nothing presented as fact is actually speculation.
 
