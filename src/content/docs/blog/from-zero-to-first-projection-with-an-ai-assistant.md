@@ -18,7 +18,7 @@ Like that walkthrough, this is .NET development: the slices here are C# on ASP.N
 | Cratis.Templates | 1.2.0 — scaffolds with Arc 22.13.1 and Chronicle 18.1.0 |
 | Chronicle kernel container | `cratis/chronicle:18.1.0-development`, digest `sha256:71b70f7abb62cfbaeb30a08f8ffe7896731e381d89614ddfa67a51aff3c80fdf` (Chronicle Server 18.1.0.0) |
 | Chronicle MCP server | `cratis/chronicle-mcp:1.2.0`, digest `sha256:32eae68fe2310e44b7d7ead97004873985689c86c3c0b2c077eac7c8e1fd546c` |
-| Cratis CLI | 3.1.6 (Homebrew) |
+| Cratis CLI | 3.1.6 |
 | .NET SDK | 10.0.400 (`net10.0` target) |
 
 ## 1. Install the skills and the templates
