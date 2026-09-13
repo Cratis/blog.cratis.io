@@ -2,7 +2,7 @@
 title: "From zero to first projection with an AI assistant"
 date: 2026-09-10
 authors: cratis-team
-excerpt: The zero-to-first-projection walkthrough again — same store, same domain, same destination — but this time Claude Code does the typing, using the official .NET templates and the Cratis AI skills, with Arc commands carrying the full loop. Every step was executed against the versions it names.
+excerpt: The zero-to-first-projection walkthrough again — same store, same domain, same destination — but this time Claude Code does the typing, using the official .NET templates and the Cratis AI skills installed with `cratis ai install`, with Arc commands carrying the full loop. Every step was executed against the versions it names.
 tags:
   - chronicle
   - ai
@@ -14,21 +14,24 @@ Like that walkthrough, this is .NET development: the slices here are C# on ASP.N
 
 | Piece | Version |
 | --- | --- |
-| Claude Code | 2.1.220, with the `cratis` plugin (49 skills) from the `Cratis/AI` marketplace |
+| Claude Code | 2.1.220, with skills configured by `cratis ai install` (profiles `cratis/chronicle`, `cratis/arc`) |
 | Cratis.Templates | 1.2.0 — scaffolds with Arc 22.13.1 and Chronicle 18.1.0 |
 | Chronicle kernel container | `cratis/chronicle:18.1.0-development`, digest `sha256:71b70f7abb62cfbaeb30a08f8ffe7896731e381d89614ddfa67a51aff3c80fdf` (Chronicle Server 18.1.0.0) |
 | Chronicle MCP server | `cratis/chronicle-mcp:1.2.0`, digest `sha256:32eae68fe2310e44b7d7ead97004873985689c86c3c0b2c077eac7c8e1fd546c` |
-| Cratis CLI | 2.19.1 (Homebrew) |
+| Cratis CLI | 3.1.6 (Homebrew) |
 | .NET SDK | 10.0.400 (`net10.0` target) |
 
 ## 1. Install the skills and the templates
 
-The Cratis AI plugin is passive markdown: about fifty skills, each a `SKILL.md` your assistant loads when a task matches. No hooks, no executable code, nothing written into your project:
+The skills are passive markdown — a `SKILL.md` your assistant loads when a task matches, plus rules for the conventions that are always on. The [Cratis CLI](https://cratis.io/cli/getting-started/) is the most reliable way to get them into a project, because it resolves the corpus once and configures every harness you name from the same source:
 
 ```shell
-claude plugin marketplace add Cratis/AI
-claude plugin install cratis@cratis
+cratis ai install --harnesses claude --profiles cratis/chronicle,cratis/arc --languages csharp,typescript
 ```
+
+That writes the resolved rules and skills into `.cratis/ai`, wires Claude Code's `.claude` folder to it, and records hashes so a later `cratis ai update` only touches what actually changed. Run it without flags and it prompts for harnesses, profiles, and languages instead.
+
+> Prefer a single harness with no CLI in the loop? The native path still works: `claude plugin marketplace add Cratis/AI` → `claude plugin install cratis@cratis` for Claude Code, the equivalent `plugin marketplace`/`plugin install` pair for Codex and Copilot, Cursor's committed marketplace manifest, or `pi install -l npm:@cratis/pi` for Pi. It is the quicker on-ramp for one developer, one tool — see [cratis.io/ai](https://cratis.io/ai/) for the full comparison. `cratis ai install` is what this post uses because it is the one command that stays correct across every harness on a team.
 
 The templates are an ordinary NuGet package:
 
@@ -160,21 +163,22 @@ The assistant read the read model, checked the observer's health, and interprete
 
 ## Other harnesses, same guidance
 
-Nothing above is Claude-specific except the install command. The marketplace resolves the same canonical skill bytes for every host, so two tools on one team never see different guidance:
+Nothing above is Claude-specific except the `--harnesses claude` flag. `cratis ai install` resolves the identical corpus for every harness it supports, so a team never sees two tools disagree on the conventions:
 
-| Harness | Install |
-| --- | --- |
-| Claude Code | `claude plugin marketplace add Cratis/AI` → `claude plugin install cratis@cratis` |
-| OpenAI Codex | `codex plugin marketplace add Cratis/AI` → `codex plugin install cratis@cratis` |
-| GitHub Copilot | `copilot plugin marketplace add Cratis/AI` → `copilot plugin install cratis@cratis` |
-| Cursor | resolves the same skills through its committed marketplace manifest |
-| Pi (npm) | `pi install -l npm:@cratis/ai-fundamentals` — the Fundamentals subset today |
+```shell
+cratis ai install \
+  --harnesses claude,codex,copilot,cursor,opencode,pi \
+  --profiles cratis/chronicle,cratis/arc \
+  --languages csharp,typescript
+```
 
-Kiro, Junie, and Gemini CLI are pending per-host review. The `cratis init` step writes instruction files for Claude Code, GitHub Copilot, Cursor, Windsurf, and Pi, so the operating half is harness-agnostic too.
+One run configures `.claude`, `AGENTS.md` plus `.agents/skills` for Codex, `.github` for Copilot, `.cursor`, `.opencode`, and `AGENTS.md` plus `.pi` for Pi — all pointed back at the same `.cratis/ai`. Kiro, Junie, and Gemini CLI are pending per-host review. The `cratis init` step from the previous section writes instruction files for Claude Code, GitHub Copilot, Cursor, Windsurf, and Pi, so the operating half is harness-agnostic too.
+
+> The native, plugin-per-harness path from the note above is still there if a repository only ever uses one tool — it just doesn't give you the shared `.cratis/ai` corpus, the multi-harness configuration in one command, or `cratis ai update`/`uninstall`'s hash-protected lifecycle.
 
 ## Teams and multiple harnesses
 
-A solo developer with one tool can stop reading here — the plugin and the templates alone are the whole setup. For a repository shared by people *and* tools, the [team scenario](https://cratis.io/ai/scenarios/team-repository/) commits a three-file contract: `.cratis/PROJECT.md` (project facts, never credentials), `.cratis/ai.json` (which profiles, at which version, for which harnesses), and an `AGENTS.md` bootstrap pointing at them:
+A solo developer with one tool can stop reading here — `cratis ai install` (or the native plugin, for a single harness) and the templates alone are the whole setup. For a repository shared by people *and* tools, the [team scenario](https://cratis.io/ai/scenarios/team-repository/) commits a three-file contract: `.cratis/PROJECT.md` (project facts, never credentials), `.cratis/ai.json` (which profiles, at which version, for which harnesses), and an `AGENTS.md` bootstrap pointing at them:
 
 ```json
 {
@@ -201,7 +205,7 @@ Remove the containers and the scratch folder when you are done — event data li
 docker compose down
 ```
 
-- [Cratis AI](https://cratis.io/ai/) — the overview, and the [getting-started](https://cratis.io/ai/getting-started/) page with one install block per host.
+- [Cratis AI](https://cratis.io/ai/) — the overview, and the [getting-started](https://cratis.io/ai/getting-started/) page for `cratis ai install` and the native plugin alternative.
 - The [C# templates](https://github.com/cratis/templates) — the four templates this post started from, with their documentation.
 - [Arc](https://cratis.io/arc/) — the CQRS application framework: commands, queries, validation, and proxy generation.
 - The [agent harness guide](https://cratis.io/ai/harnesses/) — install, verify, and uninstall for every harness.
