@@ -1,7 +1,7 @@
 ---
 title: "From zero to first projection with an AI assistant"
 date: 2026-09-10
-authors: cratis-team
+authors: einar
 excerpt: The zero-to-first-projection walkthrough again — same store, same domain, same destination — but this time Claude Code does the typing, using the official .NET templates and the Cratis AI `cratis/application` profile installed with `cratis ai install`, with Arc commands carrying the full loop. Every step was executed against the versions it names.
 tags:
   - chronicle

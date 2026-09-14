@@ -33,6 +33,19 @@ When the person requesting a post is not already a key in `src/data/authors.mjs`
 
 This keeps every author link honest: a name is a link only when it actually resolves to a GitHub profile a reader can visit, never a guess.
 
+### Verify a full-stack example by actually scaffolding it
+
+A post that demonstrates an Arc-plus-Chronicle application — commands, a read model, a React page, not just a bare Chronicle client — is verified by running the real thing, not by hand-authoring files that resemble what the template would produce:
+
+1. Scaffold from the official template in a scratch folder outside this repository (for example `/Volumes/Code/Playground/<name>`, never inside `.ai-work/` — that is for session records, not running applications): `dotnet new install Cratis.Templates` (or update to the version the post names), then `dotnet new cratis -n <Name>`.
+2. Bring up the pinned infrastructure exactly as the post instructs (`docker compose up -d`), then `dotnet build` and confirm zero warnings before writing a line of the feature.
+3. Replace the sample feature with the exact slices the post describes, rebuild, and check the generated TypeScript proxies land where the post says they do.
+4. Exercise the backend the way the post tells the reader to — typically the exact `curl` commands in the post — and confirm the claimed response and the resulting read-model state, checked directly against MongoDB in the container, not inferred from the C# alone.
+5. If the post also covers the frontend, run `dotnet run` and `yarn dev` for real and drive the same commands through the dev-server proxy, not only the backend directly — a proxy misconfiguration or a missing route is invisible from the backend alone.
+6. Tear the scratch project down when done, unless a human has explicitly asked to keep it running for their own review.
+
+This is what makes a version table and a curl transcript trustworthy: every command in the post was actually run against the exact versions it names, in that order, not reconstructed from memory of how the template usually behaves.
+
 ### Demonstrated stack
 
 Every .NET example targets .NET 10 (`net10.0`) and is verified with the current .NET 10 SDK. Chronicle examples use the latest mutually compatible stable public packages and images available when the post is written or materially revised, resolved from their release sources rather than copied from an older post.
