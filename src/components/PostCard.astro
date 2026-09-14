@@ -41,7 +41,11 @@ const minutes = post.metrics?.readingTime?.minutes ?? 0;
                             <img src={pictureFor(author.name)} alt="" width="40" height="40" loading="lazy" />
                         )}
                         <div>
-                            <span class="author-name">{author.name}</span>
+                            {author.url ? (
+                                <a class="author-name" href={author.url}>{author.name}</a>
+                            ) : (
+                                <span class="author-name">{author.name}</span>
+                            )}
                             {author.title && <span class="author-title">{author.title}</span>}
                         </div>
                     </div>

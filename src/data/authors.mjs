@@ -2,7 +2,7 @@
 // the per-post signature block.
 //
 // - `name`, `title`, `url`, `picture` feed starlight-blog (byline on each
-//   post and the /blog/authors/<id>/ archive pages).
+//   post and the /authors/<id>/ archive pages).
 // - `signature` is the personal sign-off rendered below each post by
 //   src/components/Footer.astro, so posts carry the author's own voice.
 export const authors = {
