@@ -1,8 +1,10 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
+import sitemap from '@astrojs/sitemap';
 import starlight from '@astrojs/starlight';
 import starlightBlog from 'starlight-blog';
 import { authors } from './src/data/authors.mjs';
+import { rootBlogUrls } from './src/integrations/root-blog-urls.ts';
 
 // starlight-blog wants only the fields it knows about; `signature` is used by
 // src/components/Footer.astro for the per-post sign-off block.
@@ -13,11 +15,25 @@ const blogAuthors = Object.fromEntries(
 // https://astro.build/config
 export default defineConfig({
     site: 'https://blog.cratis.io',
-    // The blog is the whole site — send the root straight to it. The topics
-    // catalogue lives at /topics (see src/pages/topics/index.astro); keep the
-    // intuitive /blog/tags URL working by redirecting it there.
-    redirects: { '/': '/blog', '/blog/tags': '/topics' },
+    // Keeps the dev-time root working by pointing at starlight-blog's own
+    // /blog index; the build output is relocated to the root by the
+    // rootBlogUrls integration below, which overwrites this redirect page
+    // with the real landing page. Old /blog/* URLs are permanently
+    // redirected to their root form by the same integration.
+    redirects: { '/': '/blog' },
     integrations: [
+        // Relocates the built blog from /blog/* to /* and permanently
+        // redirects the old URLs. starlight-blog itself requires the /blog
+        // prefix, so this runs on the built output instead.
+        rootBlogUrls(),
+        // Starlight would add its own sitemap; registering it here lets us
+        // rewrite the relocated URLs (posts move from /blog/<slug> to
+        // /<slug> at build time, see src/integrations/root-blog-urls.ts).
+        sitemap({
+            serialize(item) {
+                return { ...item, url: item.url.replace('/blog/', '/') };
+            },
+        }),
         starlight({
             title: 'Cratis Blog',
             description:
@@ -60,13 +76,14 @@ export default defineConfig({
             social: [
                 { icon: 'github', label: 'GitHub', href: 'https://github.com/cratis' },
                 { icon: 'discord', label: 'Discord', href: 'https://discord.gg/kt4AMpV8WV' },
-                { icon: 'rss', label: 'RSS', href: '/blog/rss.xml' },
+                { icon: 'rss', label: 'RSS', href: '/rss.xml' },
             ],
             plugins: [
                 starlightBlog({
                     title: 'Blog',
                     authors: blogAuthors,
-                    // RSS is generated at /blog/rss.xml because `site` is set.
+                    // RSS is generated at /blog/rss.xml because `site` is set;
+                    // rootBlogUrls relocates it to /rss.xml at build time.
                     metrics: { readingTime: true },
                     // The masthead has its own Blog link; skip the plugin's.
                     navigation: 'none',
