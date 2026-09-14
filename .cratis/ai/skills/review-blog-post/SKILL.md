@@ -1,6 +1,7 @@
 ---
 name: review-blog-post
 description: Reviews Cratis blog drafts and pull requests for technical correctness, reproducibility, evidence quality, reader value, author voice, and repository conventions. Distinguishes compilation from behavior and verifies findings before recommending publication. Use write-blog-post for authoring or substantial rewriting.
+license: MIT
 ---
 
 # Review a Cratis blog post

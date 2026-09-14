@@ -1,6 +1,7 @@
 ---
 name: write-blog-post
 description: Writes or substantially revises Cratis blog posts — technical tutorials, engineering explainers, comparisons, essays, and ecosystem tours. Requires a concrete reader outcome, source-backed claims, exact-snippet verification, honest limits, and per-author voice. Use review-blog-post for reviewing an existing draft.
+license: MIT
 ---
 
 # Write a Cratis blog post
@@ -140,7 +141,9 @@ Conventions:
 
 ## 7. Verify the reader's path
 
-Follow the local artifact lifecycle instructions before creating disposable verification outputs. Keep evidence separate from disposable build files; do not delete failed-run evidence before diagnosis.
+The shared `verification-discipline` and `local-work-artifacts` rules still apply; the steps below are what they mean for a post. The shared `writing-correct-examples` rule targets `Documentation/` trees, so blog snippets need the same discipline applied here.
+
+Keep evidence separate from disposable build files, and do not delete failed-run evidence before diagnosis.
 
 1. **Extract, do not reconstruct.** Extract runnable blocks directly from the Markdown into the named files and use the relevant compiler, interpreter, or tool. For C#, build those exact files using the article's project-creation and package commands in a fresh project with the stated SDK. No hidden global imports, extra dependencies, reordered statements, or manually improved sample. If the extraction needs a repair, fix the article and re-extract. All runnable blocks must be covered; label pseudocode explicitly.
 2. **Assert semantics separately from compilation.** For a stateful tutorial, check the demonstrated transitions (for example: added → borrowed → returned), all relevant fields, and repeat-run behavior. Exercise a relevant failure path and substantiate any claimed failure handling; state which failure cases were not tested. A successful exit or plausible log is insufficient. If claiming persisted read models, inspect that storage path rather than substituting an on-demand replay query.
