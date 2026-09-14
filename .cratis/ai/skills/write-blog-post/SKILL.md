@@ -13,10 +13,10 @@ Identify before writing:
 - the genre: tutorial, mechanism explainer, comparison, essay, or ecosystem tour;
 - the topic and the one central argument or mechanism the post explains;
 - the primary reader (a developer evaluating or using event sourcing, CQRS, or Cratis) and the decision or mental model the post improves for them;
-- the author: `einar`, `sindre`, or `cratis-team` (see per-author voice below);
+- the author: `einar`, `sindre`, `cratis-team`, or the requester themselves, resolved to a GitHub identity (see “Resolve the author from the requester's GitHub identity” in [`blog-workflow.md`](.cratis/ai/rules/project/blog-workflow.md) and per-author voice below);
 - the evidence the post depends on: released, publicly verifiable behavior of Cratis products, public standards, or the author's own verifiable experience.
 
-If the author is unknown, ask. Do not invent an author or attribute experience to a person who did not have it. Read the project concerns in `.cratis/ai/rules/project.md`, especially [`.cratis/ai/rules/project/blog-workflow.md`](.cratis/ai/rules/project/blog-workflow.md), before drafting. Use available shared product/client guidance for the mechanisms being demonstrated, but verify APIs against released documentation and sources: a skill is guidance, not evidence that an API has shipped. If that guidance is unavailable, report the gap rather than inventing APIs or installing a second AI setup.
+If the author is unknown, ask for their GitHub username and resolve it per `blog-workflow.md` before writing — do not default to `cratis-team` for a post someone is personally requesting, and do not invent an author or attribute experience to a person who did not have it. Read the project concerns in `.cratis/ai/rules/project.md`, especially [`.cratis/ai/rules/project/blog-workflow.md`](.cratis/ai/rules/project/blog-workflow.md), before drafting. Use available shared product/client guidance for the mechanisms being demonstrated, but verify APIs against released documentation and sources: a skill is guidance, not evidence that an API has shipped. If that guidance is unavailable, report the gap rather than inventing APIs or installing a second AI setup.
 
 ## Editing an existing post: preserve its intent
 
@@ -119,7 +119,7 @@ Preserve the author's personality, rhythm, and point of view. Distinguish an act
 
 ## 6. Author the file
 
-Create `src/content/docs/blog/<kebab-case-slug>.md` (or `.mdx` when components are needed):
+Create `src/content/docs/blog/<kebab-case-slug>/index.md` (or `index.mdx` when components are needed) — one folder per post, so post-specific images can live beside it and be referenced with relative paths (`./cover.png`); Astro's content-collection image pipeline optimizes and hashes them at build time. Do not add a flat `<kebab-case-slug>.md` file at the top level of `src/content/docs/blog/`:
 
 ```markdown
 ---
@@ -134,7 +134,7 @@ tags:
 
 Conventions:
 
-- `authors` keys must exist in `src/data/authors.mjs`; add a new author there (with a signature) before referencing them.
+- `authors` keys must exist in `src/data/authors.mjs`; add a new author there (with a signature) before referencing them — for a requester who is not already `einar`, `sindre`, or `cratis-team`, resolve them per “Resolve the author from the requester's GitHub identity” in `blog-workflow.md` first.
 - Reuse existing tags where possible (check other posts) before minting new ones.
 - Links to Cratis documentation are absolute (`https://cratis.io/...`) — the blog is a separate site.
 - The author signature block and byline render automatically; do not sign the post in the body text.

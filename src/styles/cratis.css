@@ -453,6 +453,12 @@
     font-size: var(--sl-text-sm);
     font-weight: 600;
     color: var(--sl-color-white);
+    text-decoration: none;
+}
+
+.cratis-post-card-author a.author-name:hover {
+    color: var(--sl-color-accent);
+    text-decoration: underline;
 }
 
 .cratis-post-card-author .author-title {

@@ -5,7 +5,7 @@ applyTo: "**/*"
 ## Layout
 
 - `astro.config.mjs` — site config; `site` is `https://blog.cratis.io`. The blog lives at the site root: starlight-blog still builds under its required `/blog` prefix, and `src/integrations/root-blog-urls.ts` relocates the output (`/blog/<slug>` → `/<slug>`, landing at `/`, RSS at `/rss.xml`) and emits permanent redirects for every old `/blog/*` URL.
-- `src/content/docs/blog/` — the posts (Markdown/MDX with `starlight-blog` frontmatter; `excerpt` feeds the landing cards).
+- `src/content/docs/blog/` — one folder per post: `<slug>/index.md` (or `.mdx`), with `starlight-blog` frontmatter (`excerpt` feeds the landing cards) and any post-specific images colocated in that same folder. Reference them with relative Markdown paths (`![](./cover.png)`) — Astro's content-collection image pipeline optimizes and hashes them automatically at build time. The folder name is the slug and is unaffected by moving from a flat `<slug>.md` file; nothing else changes when a post gains an image. Site-wide brand assets (logo, icons) stay in `src/assets/`, not here.
 - `src/data/authors.mjs` — author registry: byline data for `starlight-blog` plus each author's personal `signature` text and the `picture` used on landing cards.
 - `src/routeData.ts` — route middleware that strips docs chrome everywhere: no sidebar, no table of contents, no docs-style footer pagination.
 - `src/integrations/root-blog-urls.ts` — build-time integration that moves the built blog from `/blog/*` to `/*` and permanently redirects the old URLs (instant meta refresh + canonical + noindex, the strongest signal GitHub Pages can serve). Runs only on builds; `npm run dev` still serves `/blog/*`.
