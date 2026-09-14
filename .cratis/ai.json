@@ -10,9 +10,11 @@
   ],
   "profiles": [
     "cratis/documentation",
+    "cratis/application/chronicle-dotnet",
     "cratis/engineering/typescript"
   ],
   "languages": [
+    "csharp",
     "typescript"
   ]
 }
