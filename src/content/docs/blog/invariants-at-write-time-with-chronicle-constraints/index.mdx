@@ -8,6 +8,8 @@ tags:
   - event-sourcing
 ---
 
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
 Every event-sourced system runs into the same question sooner or later: two commands both want to register the same username, and only one of them can win. In a CRUD system you would put a unique index on the column and let the database decide. In an event-sourced system the equivalent move is not obvious — the log is append-only, the read model you would check against is eventually consistent, and the decision has already been made by the time the append reaches the store.
 
 [Chronicle](https://cratis.io/chronicle/) answers this with **constraints**: rules that the kernel evaluates at append time, on the event store itself, before an event is committed. This post walks through what constraints are, why they sit where they sit, and how they connect to the Dynamic Consistency Boundary — the idea that the decision you are making, not an aggregate you happen to have, should define what must be consistent.
@@ -33,15 +35,56 @@ Chronicle ships two kinds, both about uniqueness:
 - A **unique property constraint** keeps a value unique across all events of one or more event types — the username case, or an order reference.
 - A **unique event type constraint** allows only one event of a given type per event source — the `UserRegistered` case, where a second registration event for the same person should simply be impossible.
 
-The simplest way to declare one is directly on the event type:
+The simplest way to declare one is directly on the event type — this is a real, working equivalent in every client except TypeScript:
 
+<Tabs syncKey="language">
+<TabItem label="C#">
 ```csharp
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.Events.Constraints;
+
 [EventType]
 public record UserRegistered([property: Unique] string Email);
 ```
+</TabItem>
+<TabItem label="Kotlin">
+```kotlin
+import io.cratis.chronicle.constraints.Unique
+import io.cratis.chronicle.events.EventType
+
+@EventType
+data class UserRegistered(@Unique val email: String)
+```
+</TabItem>
+<TabItem label="Java">
+```java
+import io.cratis.chronicle.constraints.Unique;
+import io.cratis.chronicle.events.EventType;
+
+@EventType
+record UserRegistered(@Unique String email) {}
+```
+</TabItem>
+<TabItem label="Elixir">
+```elixir
+defmodule MyApp.Events.UserRegistered do
+  use Chronicle.Events.EventType, id: "user-registered"
+
+  defstruct [:email]
+
+  unique(:email)
+end
+```
+</TabItem>
+<TabItem label="TypeScript">
+TypeScript does not support this workflow yet — use the declarative `IConstraint` form below.
+</TabItem>
+</Tabs>
 
 No registration call, no configuration file — the client discovers the attribute when it connects and registers the constraint with the kernel. For rules that span multiple event types, or that need a custom violation message, there is a declarative form:
 
+<Tabs syncKey="language">
+<TabItem label="C#">
 ```csharp
 [EventType]
 public record ProjectCreated(string Name);
@@ -57,6 +100,41 @@ public class UniqueProjectName : IConstraint
             .RemovedWith<ProjectArchived>());
 }
 ```
+</TabItem>
+<TabItem label="Kotlin">
+Kotlin does not support this workflow yet — its `IConstraint` API has no `RemovedWith`.
+</TabItem>
+<TabItem label="Java">
+Java does not support this workflow yet — its `IConstraint` API has no `RemovedWith`.
+</TabItem>
+<TabItem label="Elixir">
+Elixir does not support this workflow yet — it has no declarative-class style; see the model-bound macros above for its releasing equivalent.
+</TabItem>
+<TabItem label="TypeScript">
+```typescript
+import { constraint, eventType, IConstraint, IConstraintBuilder } from '@cratis/chronicle';
+
+@eventType()
+class ProjectCreated {
+    constructor(readonly name: string) {}
+}
+
+@eventType()
+class ProjectArchived {
+}
+
+@constraint()
+class UniqueProjectName implements IConstraint {
+    define(builder: IConstraintBuilder): void {
+        builder.unique(unique =>
+            unique
+                .on(ProjectCreated, e => e.name)
+                .removedWith(ProjectArchived));
+    }
+}
+```
+</TabItem>
+</Tabs>
 
 That last line matters more than it looks. Uniqueness without a way out would be a trap: archive the project and the name should become available again. `RemovedWith` names the event that *releases* the value, so the constraint tracks a lifecycle — claimed by `ProjectCreated`, released by `ProjectArchived` — rather than a frozen fact.
 
@@ -82,7 +160,7 @@ Constraints run server-side and keep state: the kernel maintains an index of the
 
 The current constraint types are deliberately narrow: uniqueness of a property value and uniqueness of an event type per event source. Chronicle does not (yet) evaluate arbitrary predicates at append time. For invariants that are genuinely cross-entity *and* not uniqueness-shaped — "a project may not exceed ten active milestones spread across several streams" — the DCB answer today is optimistic concurrency over an explicit scope rather than a declared constraint, and the honest recommendation is to think hard about whether such a rule is a write-time invariant or a domain process with its own events. Narrowness here is a feature: it is what lets the check run inside the append transaction against the store itself.
 
-There is also a language boundary worth knowing: the model-bound attributes shown above are a C# convenience (Elixir has equivalent macros). The Kotlin/Java and TypeScript clients work with constraints through the declarative style only. The enforcement is identical everywhere — it lives in the kernel — but the sugar differs, and the [documentation is explicit about the differences](https://cratis.io/chronicle/constraints/model-bound/).
+There is also a language boundary worth knowing, and it runs the other way from what you might guess. Model-bound attributes exist in four of the five clients — C#, Kotlin, Java, and Elixir all have a real `[Unique]`/`@Unique`/`unique(...)` equivalent — and TypeScript is the one client without it, working through the declarative style only. Flip to the declarative `IConstraint` style and the gap moves: C# and TypeScript have the full API including `RemovedWith`, while Kotlin and Java's `IConstraint` is narrower — no releasing a held value, no custom constraint names, no chaining a check across multiple event types. Elixir has no declarative-class style at all; its model-bound macros are the only way in. The enforcement is identical everywhere — it lives in the kernel — but the sugar differs per client, and the [documentation is explicit about the differences](https://cratis.io/chronicle/constraints/model-bound/).
 
 ## What we can and cannot claim
 
