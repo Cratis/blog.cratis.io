@@ -8,6 +8,8 @@ tags:
   - event-sourcing
 ---
 
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
 Sooner or later, every system that stores personal data receives a request that reads something like: *erase everything you have about this person*. Regulations such as the GDPR turn that request from a courtesy into an obligation with a deadline. And if your system is event-sourced, the request collides head-on with the property you chose the architecture for in the first place: the log is append-only. Events are written once and never altered — that is what makes them trustworthy as history.
 
 This post is about how [Chronicle](https://cratis.io/chronicle/), our open-source event-sourcing database, resolves that collision. The short version: the log keeps remembering that things happened, while the personal content of those things stops existing. No rewrites, no deleted sequence numbers, no broken projections.
@@ -24,22 +26,134 @@ Both approaches fail for the same underlying reason: they treat personal data as
 
 The first half of the mechanism is an adornment. Marking a value `[PII]` — a C# attribute, equally a Kotlin/Java annotation, TypeScript decorator, or Elixir macro — tells Chronicle that the value holds personally identifiable information. When an event carrying that value is appended, the kernel encrypts the value before it reaches storage. When a projection or observer later reads the event, the value is decrypted transparently. Application code sees plaintext; the event log holds ciphertext.
 
-You can mark a single event property:
+You can mark a single event property. Here it is, the same mechanism, in every client Chronicle ships:
 
+<Tabs syncKey="language">
+<TabItem label="C#">
 ```csharp
+using Cratis.Chronicle.Compliance.GDPR;
+using Cratis.Chronicle.Events;
+
 [EventType]
-public record PatientRegistered(
-    Guid Id,
-    [property: PII] string SocialSecurityNumber,
+public record PiiAttrEmployeeRegistered(
+    [PII] string FirstName,
+    [PII] string LastName,
     string Department);
 ```
+</TabItem>
+<TabItem label="Kotlin">
+```kotlin
+import io.cratis.chronicle.compliance.Pii
+import io.cratis.chronicle.events.EventType
 
-But the approach Chronicle steers you toward is marking the *type*. Most personal data in a well-modeled domain already lives in concept types — `SocialSecurityNumber`, `DateOfBirth`, `EmailAddress` — rather than bare strings. Mark the concept once:
-
-```csharp
-[PII]
-public record EmailAddress(string Value) : ConceptAs<string>(Value);
+@EventType
+data class PiiAttrEmployeeRegistered(
+    @Pii val firstName: String,
+    @Pii val lastName: String,
+    val department: String
+)
 ```
+</TabItem>
+<TabItem label="Java">
+```java
+import io.cratis.chronicle.compliance.Pii;
+import io.cratis.chronicle.events.EventType;
+
+@EventType
+record PiiAttrEmployeeRegistered(
+        @Pii String firstName,
+        @Pii String lastName,
+        String department) {
+}
+```
+</TabItem>
+<TabItem label="TypeScript">
+```typescript
+import { eventType, pii } from '@cratis/chronicle';
+
+@eventType()
+class PiiAttrEmployeeRegistered {
+    @pii() firstName = '';
+    @pii() lastName = '';
+    department = '';
+}
+```
+</TabItem>
+<TabItem label="Elixir">
+```elixir
+defmodule MyApp.Events.PiiAttrEmployeeRegistered do
+  use Chronicle.Events.EventType, id: "pii-attr-employee-registered"
+
+  defstruct [:first_name, :last_name, :department]
+
+  pii(:first_name)
+  pii(:last_name)
+end
+```
+</TabItem>
+</Tabs>
+
+But the approach Chronicle steers you toward is marking the *type*. Most personal data in a well-modeled domain already lives in concept types — `SocialSecurityNumber`, `DateOfBirth`, `EmailAddress` — rather than bare strings. Mark the concept once — here for a person's name:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+```csharp
+using Cratis.Chronicle.Compliance.GDPR;
+
+[PII]
+public record PiiAttrConceptPersonName(string Value) : ConceptAs<string>(Value)
+{
+    public static readonly PiiAttrConceptPersonName NotSet = new(string.Empty);
+    public static implicit operator string(PiiAttrConceptPersonName name) => name.Value;
+    public static implicit operator PiiAttrConceptPersonName(string value) => new(value);
+}
+```
+</TabItem>
+<TabItem label="Kotlin">
+```kotlin
+import io.cratis.chronicle.compliance.Pii
+import io.cratis.chronicle.concepts.ConceptAs
+
+@Pii
+data class PiiAttrConceptPersonName(override val value: String) : ConceptAs<String>
+```
+</TabItem>
+<TabItem label="Java">
+```java
+import io.cratis.chronicle.compliance.Pii;
+import io.cratis.chronicle.concepts.ConceptAs;
+
+@Pii
+record PiiAttrConceptPersonName(String value) implements ConceptAs<String> {
+    @Override
+    public String getValue() {
+        return value;
+    }
+}
+```
+</TabItem>
+<TabItem label="TypeScript">
+```typescript
+import { pii } from '@cratis/chronicle';
+import { ConceptAs } from '@cratis/fundamentals';
+
+@pii()
+class PiiAttrConceptPersonName extends ConceptAs<string> {
+    constructor(value: string) {
+        super(value);
+    }
+}
+```
+</TabItem>
+<TabItem label="Elixir">
+```elixir
+defmodule MyApp.Compliance.Pii.PersonName do
+  use Chronicle.Concept, type: :string
+  pii()
+end
+```
+</TabItem>
+</Tabs>
 
 and every property of that type, in every event and every read model, is protected from then on. The classification travels with the type into value objects, nested structures, collections — the marker lands on the individual leaf values wherever they end up, and the document keeps its shape. That is what makes this cross-cutting in practice rather than in theory: protection stops being a thing each developer must remember per event, because using the type and protecting the data are the same decision. A new event written months later cannot forget the attribute, because there is no attribute to forget.
 
