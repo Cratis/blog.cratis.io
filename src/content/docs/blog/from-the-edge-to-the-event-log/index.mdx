@@ -30,7 +30,7 @@ This post follows the author feature through its whole life: model it, start it,
 
 ## The ecosystem at a glance
 
-![A diagram titled One application's life: eight numbered stage cards in two rows of four, joined left to right within each row. 1 Model it: event modeling, Screenplay. 2 Start it: templates, cratis new. 3 Build it: AuthProxy, Arc, Components, Chronicle. 4 Protect it: PII, NotAudited, Encrypted. 5 Run it: namespaces, subscriptions. 6 Debug it: CLI, terminal workbench, Workbench. 7 Evolve it: generations, replay, corrections. 8 Automate it: AI corpus, MCP servers. A band along the bottom reads: One event log underneath.](./lifecycle-spine.png)
+![A diagram titled One application's life: eight numbered stage cards in two rows of four, joined left to right within each row. 1 Model it: event modeling, Screenplay. 2 Start it: templates, cratis new. 3 Build it: AuthProxy, Arc, Components, Chronicle. 4 Protect it: PII, NotAudited, Encrypted. 5 Run it: namespaces, subscriptions. 6 Debug it: CLI, terminal workbench, Workbench. 7 Evolve it: generations, replay, corrections. 8 Automate it: AI corpus, MCP servers. A band along the bottom reads: One feature, start to finish.](./lifecycle-spine.png)
 
 *One application's life, and the pieces you reach for at each point.*
 
@@ -194,11 +194,11 @@ using Cratis.Arc.Tenancy;
 
 builder.AddCratisArc(options =>
 {
-    options.UseHeaderTenancy("X-Custom-Tenant");
+    options.UseHeaderTenancy("Tenant-ID");
 });
 ```
 
-Pass `Tenant-ID`. With the default resolvers, a missing header selects the unset tenant and then Chronicle's default namespace rather than rejecting the request, so decide deliberately whether that's allowed.
+With the default resolvers, a missing header selects the unset tenant and then Chronicle's default namespace rather than rejecting the request, so decide deliberately whether that's allowed.
 
 ### The form
 
@@ -457,11 +457,11 @@ Where read models land depends on your storage. Arc's MongoDB integration can na
 
 ### A private fact and a public contract
 
-Say the author feature runs in a Lending service, and a Catalog service needs to hear about new authors. The tempting move is to let Catalog read Lending's events. Don't. That couples Catalog to every internal decision Lending will ever make.
+Say the author feature runs in an Authors service, and a Catalog service needs to hear about new authors. The tempting move is to let Catalog read the Authors service's events. Don't. That couples Catalog to every internal decision the Authors service will ever make.
 
 Chronicle uses a .NET/Orleans actor-based kernel behind gRPC/HTTP surfaces and supports multiple event stores, namespaces, and persistent event-store subscriptions with outbox/inbox sequences. An event store is a natural boundary for one service's data. [Persistent subscriptions](https://cratis.io/chronicle/subscriptions/) carry events from one store's [outbox to another store's inbox](https://cratis.io/chronicle/subscriptions/outbox-inbox/), named after the source. The [architecture overview](https://cratis.io/chronicle/architecture/) shows how the parts fit, and it makes no scale or throughput guarantee. One operational trap is worth knowing before you run more than one server: with the default localhost clustering, two servers pointed at the same database each form their own single-node cluster, and nothing errors at startup.
 
-Lending's log holds everything about the registration. Its outbox carries a smaller event you're willing to support as a contract: a new author exists, under this ID, without the name that's personal data. Catalog processes it from its inbox, translates it into a fact of its own, and decides what it means there. When a forwarded event does carry personal data, the subject's key travels with it within the namespace, and erasure covers the stores in that namespace.
+The Authors service's log holds everything about the registration. Its outbox carries a smaller event you're willing to support as a contract: a new author exists, under this ID, without the name that's personal data. Catalog processes it from its inbox, translates it into a fact of its own, and decides what it means there. When a forwarded event does carry personal data, the subject's key travels with it within the namespace, and erasure covers the stores in that namespace.
 
 ![A diagram titled A private fact and a public contract, with two service frames. The Authors service holds an event log with AuthorRegistered, tagged private, and an outbox with AuthorAvailable, tagged public contract; a dashed box between them reads Two separate appends. A persistent subscription carries the outbox event down into the Catalog service's inbox, named after the source, where it is translated into a Catalog-owned fact in the Catalog event log.](./private-fact-public-contract.png)
 
