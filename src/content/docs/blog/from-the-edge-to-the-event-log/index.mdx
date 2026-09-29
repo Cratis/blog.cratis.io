@@ -3,7 +3,7 @@ title: "From the edge to the event log: one feature across Cratis"
 date: 2026-09-29
 lastUpdated: 2026-09-29
 authors: sindre
-excerpt: "One sticky-note feature, followed from its model to the event log and into its second year: what each Cratis product does, how the products connect, and where each one stops."
+excerpt: "What you no longer write with Cratis, a map of the products, and one sticky-note feature followed from its model into its second year, including the loop when agents write the code."
 cover:
   alt: "The author feature as six numbered steps under the title From the edge to the event log, inside a frame labeled Tenant: Acme. Steps 1 to 6 are colored by product: AuthProxy, Arc, three Chronicle steps, and Components."
   image: ./cover.png
@@ -26,9 +26,26 @@ Before any code, someone has to write down what it should do in a form a non-dev
 
 Cratis has a piece at each of these points: modeling tools, an edge proxy, an application framework on three server ecosystems, an event store with clients in several languages, a CLI and a browser Workbench for the running system, and a free AI corpus plus MCP servers for assistants. Event sourcing is one strand. Arc doesn't require it, and Chronicle can be used without Arc. Other pieces have their own dependencies and adoption boundaries.
 
-This post follows the author feature through its whole life: model it, start it, build it, protect it, run it, debug it, evolve it, and let an assistant help. Each section says what the pieces do, where they stop, and how mature they are. The [ecosystem at a glance](https://blog.cratis.io/the-cratis-ecosystem-at-a-glance/) post is the product list.
+This post follows the author feature through its whole life: model it, start it, build it, protect it, run it, debug it, evolve it, and then walk the same loop with agents doing much of the writing. Each section says what the pieces do, where they stop, and how mature they are. The [ecosystem at a glance](https://blog.cratis.io/the-cratis-ecosystem-at-a-glance/) post is the product list.
 
-## The ecosystem at a glance
+**How to read this.** The post is long on purpose. The TL;DR and [the map](#the-map-products-by-layer) give you the breadth in a few minutes, and [Hard problems](#hard-problems-and-what-you-no-longer-write) lists what you stop writing. From [Model it](#model-it-write-the-intent-down-first) on, the post follows one feature through its life, and each section can be read on its own.
+
+## TL;DR
+
+- **Separate products, seams you can open.** An edge proxy, an application framework on three server ecosystems, a React component library, an event store with clients in several languages and four storage providers, a CLI and a browser Workbench, experimental modeling tools, and an AI corpus with MCP servers. [The map](#the-map-products-by-layer) names the pieces and [where the products join](#where-the-products-join) shows the seams.
+- **No controllers, DTOs or fetch wrappers.** A command is a record with a `Handle` method, Arc gives it a route, and the build generates the TypeScript the form compiles against. Rename a field in C#, rebuild, and the frontend stops compiling. See [the command](#the-command) and [the form](#the-form).
+- **No lookup before the write.** Chronicle checks a uniqueness constraint in the kernel when the event is appended, and because Arc's Chronicle integration maps each tenant to its own namespace, the name is unique per tenant without anyone writing that check. See [the rule that holds when it's written](#the-rule-that-holds-when-its-written).
+- **A choice of consistency tools.** Constraints, concurrency scopes, decision reads in .NET and Arc aggregates in C#, with our opinion on when to use which. See [when one event isn't enough](#when-one-event-isnt-enough).
+- **Specs without a server.** A `CommandScenario` spec runs Arc's command pipeline and an in-memory Chronicle event log in one process. See [the spec](#the-spec).
+- **Personal data, marked once.** `[PII]` on a value's type encrypts it per person, erasure is one call, and the post lists where erasure stops. See [Protect it](#protect-it-personal-data-marked-once).
+- **Tenants from the edge to the store.** AuthProxy selects the tenant, Arc reads it from the header you configure, and Arc's Chronicle integration gives each tenant its own Chronicle namespace. Membership stays your rule. See [three tenant boundaries](#three-tenant-boundaries).
+- **Services share a contract, not their history.** A smaller public event travels from one store's outbox to another's inbox, and the window between two appends is yours to design for. See [a private fact and a public contract](#a-private-fact-and-a-public-contract).
+- **When a view stops updating, ask the system.** `cratis chronicle diagnose` flags failed partitions and names the next command, `failed-partitions show` gives the error by your own key, and you retry that one partition before replaying anything. See [Debug it](#debug-it-when-a-view-stops-updating).
+- **Year two is operations, not scripts.** Generations for a new event shape, replay for a new view, and four kinds of correction. See [Evolve it](#evolve-it-four-kinds-of-change-in-year-two).
+- **Model first, if you want to.** An experimental `.play` file can be validated in CI, and Stage renders a narrow backend vertical from it. See [Model it](#model-it-write-the-intent-down-first) and [Or render it from the model](#or-render-it-from-the-model).
+- **When agents write the code.** A spec a compiler reads, a corpus with hooks, analyzers, a CLI that declares each command's effect, and MCP servers, with the merge still a person's decision. See [Automate it](#automate-it-the-life-cycle-when-agents-write-the-code), then [where each piece stands](#where-each-piece-stands) and [when not to use it](#when-not-to-use-it).
+
+## One application's life at a glance
 
 ![A diagram titled One application's life: eight numbered stage cards in two rows of four, joined left to right within each row. 1 Model it: event modeling, Screenplay. 2 Start it: templates, cratis new. 3 Build it: AuthProxy, Arc, Components, Chronicle. 4 Protect it: PII, NotAudited, Encrypted. 5 Run it: namespaces, subscriptions. 6 Debug it: CLI, terminal workbench, Workbench. 7 Evolve it: generations, replay, corrections. 8 Automate it: AI corpus, MCP servers. A band along the bottom reads: One feature, start to finish.](./lifecycle-spine.png)
 
@@ -43,21 +60,130 @@ This post follows the author feature through its whole life: model it, start it,
 | Run it | A namespace per tenant, outbox and inbox subscriptions | Tenant filters in every event query, relays between stores |
 | Debug it | `cratis chronicle`, the terminal workbench, Workbench, Narrator | Ad-hoc queries against the storage |
 | Evolve it | Generations, replay, revision, redaction | One-off scripts that rewrite the store |
-| Automate it | The AI corpus, the CLI's command catalog, Chronicle MCP, Screenplay MCP | Your conventions, retyped into every assistant |
+| Automate it | The AI corpus and its hooks, the CLI's command catalog, Chronicle MCP, Screenplay MCP | Your conventions, retyped into every assistant |
 
 Each row is a moment in the feature's life, and nothing here has to be adopted in one go. Maturity varies widely, from released and MIT-licensed to experimental. Each section says which, and [where each piece stands](#where-each-piece-stands) collects it in one place.
 
-Five Chronicle terms come up throughout:
+Seven Chronicle terms come up throughout:
 
 - An **event sequence** is an ordered log of events; the event log is the default one.
 - A **namespace** is a logical partition within an event store.
 - An event's **subject** is the identity its personal data is keyed to, normally the person the data is about; it's the event source unless the event or the append names a different one.
+- An event's **causation** records what led to it. With Arc's Chronicle integration, that includes the command that appended it and its property values, except the ones marked to be left out.
 - An **observer** processes events, such as a projection, a reducer or a reactor.
 - A **partition** is the events of one event source, such as one author, and an observer processes each partition separately.
+- A **generation** is one version of an event type's shape.
+
+## The map: products by layer
+
+The author feature touches a handful of products. Here is every public product this post mentions, grouped by the question each layer answers. All of it is documented at [cratis.io](https://cratis.io).
+
+![A map titled Products by layer. Eight boxes, each with a layer name and product chips, and no arrows. Top row: Edge: AuthProxy, Ante. Application: Arc, Arc for Kotlin, Components, Arc for TypeScript. Tooling: Cratis CLI, Narrator. A full-width row, Event history: Chronicle, Workbench, a Clients chip reading .NET, TypeScript, JVM, Elixir, and a Storage chip reading MongoDB, PostgreSQL, SQL Server, SQLite. Third row: Foundations: Fundamentals, Synopsis, Specifications. Modeling: Screenplay, Stage, Scene, Prologue. Bottom row: AI: AI corpus, Prompter, Screenplay MCP, Chronicle MCP. Getting started: Templates, Samples, cratis.io docs.](./platform-layers.png)
+
+*Each layer answers one question.*
+
+- **Edge: who is calling, and for which tenant?** [AuthProxy](https://cratis.io/authproxy/) is an edge proxy that sits in front of the backend and frontend, handles sign-in and resolves the tenant. [Ante](https://github.com/Cratis/Ante) is a separate invitation and onboarding lobby for users who have signed in but belong to no tenant yet; its docs say it's verified by source-level specs only.
+- **Application: what is being asked, and is it allowed?** [Arc](https://cratis.io/arc/) is an opinionated CQRS application framework for ASP.NET Core with commands, queries, validation, authorization, and TypeScript proxy generation. [Arc for Kotlin](https://cratis.io/arc/backend/kotlin/) is a Spring Boot implementation for Kotlin and Java, published to Maven Central. [Arc for TypeScript](https://github.com/Cratis/Arc.TypeScript), an early source preview, is a TypeScript command and query server; its npm packages are unpublished. [Components](https://cratis.io/components/) is a React component library aligned with Arc application patterns.
+- **Tooling: what is the running system doing?** The Cratis [CLI](https://cratis.io/cli/) provides terminal workflows for inspecting and diagnosing Chronicle, including a full-screen terminal workbench, and it also hosts `cratis new`, `cratis ai`, `cratis screenplay` and `cratis render`. [Narrator](https://github.com/Cratis/Narrator), a VS Code extension we still treat as experimental, browses Chronicle history from your editor.
+- **Event history: what actually happened?** [Chronicle](https://cratis.io/chronicle/) is an event-sourcing database and processing runtime with a first-class .NET SDK, and clients for TypeScript, Kotlin/Java (JVM) and Elixir. Storage is pluggable, with providers for MongoDB (the default), PostgreSQL, SQL Server and SQLite. Chronicle Workbench provides a bundled local browser surface for authorized inspection of Chronicle runtime state and preview of supported projection behavior.
+- **Foundations: what does the rest build on, and how is it checked?** [Fundamentals](https://github.com/Cratis/Fundamentals) holds the shared building blocks for .NET and TypeScript, including concepts such as the `ConceptAs<T>` type the personal-data example uses, serialization, dependency injection and type discovery; Chronicle, Arc and Components build on it, and it can be used on its own. [Specifications](https://cratis.io/specifications/) supplies the given/when/then base on xUnit or NUnit. Synopsis turns recognized specification shapes in C#, JavaScript, TypeScript, Gherkin and Screenplay into navigable HTML; it doesn't run them.
+- **Modeling: what should happen?** [Screenplay](https://cratis.io/screenplay/) writes the event model down as a versioned `.play` file, [Stage](https://github.com/Cratis/Stage) renders supported parts of it into an application and checks the model's examples, and [Prologue](https://github.com/Cratis/Prologue) drafts a model from a running system. [Scene](https://github.com/Cratis/Scene) separates UI intent from its React renderer. All four are experimental.
+- **AI: what can an assistant read, and what may it touch?** The Cratis AI corpus, which we treat as a preview, is a free, MIT-licensed set of rules, skills, agents and prompts, with hooks for two assistants, that `cratis ai install` puts into your repository. The Screenplay MCP server lets an assistant propose model changes for a person to apply. [Chronicle MCP](https://cratis.io/chronicle-mcp/) connects one to a running Chronicle; it can read personal data and isn't read-only, so scope what you connect it to, and treat what it reads as data, not instructions. [Prompter](https://github.com/Cratis/Prompter), which we still treat as experimental, answers questions about the docs in Discord.
+- **Getting started: where do I begin?** The [Cratis templates](https://cratis.io/templates/) scaffold a full-stack application through `cratis new` or `dotnet new cratis`. [Samples](https://github.com/Cratis/Samples) holds runnable samples, from a small Chronicle event-sourcing process to a React application on Arc and Components, including the cross-store sample this post links to later.
+
+The map has no arrows; the joins between products are in the next figure and the sections that follow.
+
+### Where the products join
+
+The author feature crosses three joins: a header, a generated proxy and a namespace mapping. Each is something you can open, read and test. The tools inspect Chronicle, Workbench among them even though it ships with Chronicle, the storage providers sit under it, and the modeling and AI boxes have no arrows because they work on your repository, your model and, through Chronicle MCP, a running Chronicle.
+
+![A diagram titled Where the products join. AuthProxy, with Ante beside it, points to Arc through a label reading Tenant-ID header. Arc points up to Components through Generated proxy and down to Chronicle through Optional, tenant to namespace. The Chronicle box also lists its clients: .NET, TypeScript, Kotlin/Java, Elixir. Below Chronicle, Tools (Workbench, CLI and terminal workbench, Narrator) point up to it through Inspect, and Chronicle points to Storage (MongoDB, PostgreSQL, SQL Server, SQLite) through Stores. Two unconnected side boxes list Modeling (Screenplay, Stage, Scene, Prologue) and AI (AI corpus, Screenplay MCP, Chronicle MCP, Prompter).](./ecosystem-map.png)
+
+*Three joins carry the author feature; the tools and storage sit around Chronicle.*
+
+## Hard problems, and what you no longer write
+
+Each item below names a hard problem, the mechanism Cratis uses for it, and what you stop writing, creating or thinking about as a result. The limits are short here; each link goes to the section that states them in full. The groups are coarser than the eight stages above: Data covers the rules from Build it and Protect it, Run includes Debug it, and Assist is Automate it. [The table at the end](#the-same-list-as-a-table) covers the same ground for scanning.
+
+![A grid titled What you no longer write, with six rows, one per stage, and two cells in each. Each cell names what you stop writing and, beneath it, what does it instead. Model and start: drifting design docs, a validated .play file; project wiring, cratis new. Build: controllers and DTOs, Arc-routed commands; fetch wrappers, generated proxies. Data: per-field encryption, a type marked [PII]; lookups before writes, [Unique] at append. Run: tenant filters, a namespace per tenant; store-to-store relays, outbox and inbox. Evolve: repair scripts, fix then replay; store rewrites, event generations. Assist: retyped conventions, cratis ai install; hand-kept command lists, cratis llm-context.](./no-longer-write.png)
+
+*Two of the things you stop writing at each stage. Cells are coloured by the product that does the work.*
+
+### Model and start
+
+- **[A design document drifts from the code.](#model-it-write-the-intent-down-first)** Screenplay keeps the event model as a versioned `.play` file next to the code, and `cratis screenplay validate` can compile it in CI with nothing running. You stop maintaining a design document that drifts from the code. Validation checks the model, not whether a renderer can build it, and outside what Stage renders nothing checks the code against it. Screenplay is experimental.
+- **[Nobody ever modeled the system you already have.](#model-it-write-the-intent-down-first)** Prologue stands beside a running system, captures selected database changes, HTTP calls and telemetry metadata, and proposes candidate slices as a `.play` draft. The first model starts from a draft instead of a blank page. Prologue is experimental, the draft is for a person to correct, it doesn't recover domain truth, and the metadata it captures can still be sensitive.
+- **[A new project needs wiring before its first feature.](#start-it-from-nothing-to-a-running-skeleton)** `cratis new` creates a full-stack skeleton, in C# or on Spring Boot with Kotlin or Java, for the database you pick, with proxy generation configured. No project wiring and no proxy setup.
+- **[Some slices have the same shape every time.](#or-render-it-from-the-model)** Stage renders the narrow backend vertical it supports from the model into a C# application on Arc and Chronicle, and leaves a `Customizations/` folder for hand-written code that it never reads or touches. For that vertical you stop typing the concepts, command, event, projection, query and specs by hand. Stage is experimental, and a model it can't express gets a blocking diagnostic and no new files.
+
+### Build
+
+- **[The frontend drifts from the backend.](#the-form)** Arc generates TypeScript for your commands and queries on each build, and the React code compiles against it. No hand-written client or fetch wrapper; a renamed field shows up in the frontend build once the proxies are regenerated.
+- **[Every operation needs a controller.](#the-command)** A command is a `[Command]` record with a `Handle` method, and a query is a static method on its `[ReadModel]`; Arc gives each an HTTP route. No controllers, DTOs or registration lists. An observable query sends the generated React client its current result and then supported later updates over WebSocket or Server-Sent Events, so a live list needs no transport code of your own.
+- **[Validation lives in two places.](#the-form)** A command validator runs on the server before `Handle`, and the proxy generator emits a supported subset of its rules into the TypeScript the form uses. Conditions aren't carried over, so a rule inside one can apply unconditionally in the browser; test the generated validation. The rules aren't written twice, and the server stays authoritative.
+- **[Every form re-implements the same states.](#the-form)** A Components `CommandDialog` keeps its button disabled until the rules the backend shared with the proxy pass, and puts server messages on their fields. No hand-written disabled state or error placement for each form.
+- **[Tests need the whole stack running.](#the-spec)** A `CommandScenario` spec runs Arc's command pipeline against an in-memory Chronicle event log in one process, without a Chronicle server. No fake event log and no server to start for checking the decision and the recorded fact; HTTP routing, the auth middleware and redelivery need a different kind of test.
+
+### Data
+
+- **[Personal data sits in a log you keep.](#protect-it-personal-data-marked-once)** Mark a value's type `[PII]` once: Chronicle encrypts every event property of that type with the subject's key, and with Arc's Chronicle integration it stays out of the causation. Erasure is one call that deletes the subject's key, which removes Chronicle's decryption path. No per-field encryption code. The key belongs to a subject within a namespace, and backups and copies outside Chronicle need their own handling.
+- **[A command's secret lands in the audit trail.](#protect-it-personal-data-marked-once)** With Arc's Chronicle integration, a command's property values are recorded in the causation of every event it appends. `[NotAudited]` keeps a secret out of that record, and `[Encrypted]` protects an operational secret you must store, under a key that erasing a person doesn't touch. No scrubbing code around each command.
+- **[A uniqueness check races.](#the-rule-that-holds-when-its-written)** Chronicle checks a `[Unique]` constraint in the kernel when the event is appended, within the event sequence and namespace, and Arc's Chronicle integration maps each tenant to its own namespace. No lookup before the write, no lock around it, and no per-tenant uniqueness check.
+- **[A rule spans many events.](#when-one-event-isnt-enough)** Concurrency scopes fail an append if matching events were appended since you read, decision reads in the .NET client guard an append with the read model you decided from, and Arc aggregates load one key's history before `Handle` and commit in the command. With a scope or a decision read, you stop hand-rolling the check for what changed between your read and your write. The first append into a scope is checked only if you opt in, decision reads are optimistic, .NET only and need a projection keyed by the event source, and aggregates are C# only, with docs that say rehydration alone doesn't prove a concurrency guarantee.
+- **[A read model needs mapping code.](#the-view)** Chronicle projections map matching property names by default. No property-by-property mapping where the names already match.
+
+### Run
+
+- **[Tenants need separate data.](#three-tenant-boundaries)** AuthProxy resolves the tenant at the edge and forwards it as `Tenant-ID`, Arc reads it from that header once you configure the name, and Arc's Chronicle integration maps each tenant to a Chronicle namespace. No tenant filter in each event query. Selecting a tenant isn't authorizing it, and membership stays your rule.
+- **[A signed-in user belongs to no tenant yet.](#at-the-edge-sign-in-tenant-and-onboarding)** Ante is a separate lobby for joining an existing tenant, creating one by invitation or self-registering, and it publishes the acceptance for your application to act on. No invitation lobby of your own to build; membership, provisioning and email stay yours. Its docs say it's verified by source-level specs only.
+- **[Services couple through their internals.](#a-private-fact-and-a-public-contract)** A persistent subscription carries the events you put in one store's outbox to another store's inbox. No relay between the two stores, and the events you don't publish stay in your own log. Appending the private fact and the public event are two appends, not one transaction.
+- **[Every service is pushed onto one stack.](#one-contract-several-ecosystems)** Arc's HTTP contract has implementations on ASP.NET Core, on Spring Boot for Kotlin and Java, and, as an early source preview, on Node.js. Chronicle has clients for .NET, TypeScript, Kotlin/Java and Elixir, and each deployment chooses its storage provider. Services in one system can use different Chronicle clients against the same kernel. The clients aren't interchangeable, and the docs list where they differ.
+- **[You can't see why a view stopped.](#debug-it-when-a-view-stops-updating)** `cratis chronicle diagnose` reports failed partitions and names the next command, `failed-partitions show` gives the error for each attempt by your own key, and `retry-partition` asks for one more attempt. The terminal workbench, Chronicle Workbench in a browser and Narrator in VS Code, which we still treat as experimental, let you look from wherever you are. No ad-hoc queries against the storage.
+
+### Evolve
+
+- **[A wrong view needs a repair script.](#evolve-it-four-kinds-of-change-in-year-two)** Fix the projection, and Chronicle rebuilds the read model by replaying the retained events; the events stay as they were. When a projection's definition changes, Chronicle works out whether it needs no replay, a partial one or a full one. No repair script for derived data.
+- **[An event needs a new shape.](#evolve-it-four-kinds-of-change-in-year-two)** Chronicle keeps generations of an event type side by side, runs the migration you declare between adjacent generations, and keeps the stored generation. No one-off script that rewrites the store.
+- **["Fix the data" turns into a script.](#evolve-it-four-kinds-of-change-in-year-two)** A business reversal is a new event, a revision records corrected content and keeps the original, redaction leaves a marker in the event's slot, and erasing a key makes marked values unreadable. Each is an operation you choose. Redaction doesn't reach copies in other stores, backups or anything already read.
+- **[A replay repeats side effects, and rebuilds take time.](#evolve-it-four-kinds-of-change-in-year-two)** `[OnceOnly]` keeps a reactor out of replays without stopping retries, and replays, catch-ups and event migrations run as jobs you can inspect, stop and resume. No replay check inside each reactor, and no job runner of your own for rebuilds.
+
+### Assist
+
+- **[Assistants guess at your conventions.](#the-model-becomes-code)** `cratis ai install` puts the Cratis AI corpus, which we treat as a preview, a free, MIT-licensed set of rules, skills, agents and prompts, into your repository for the supported assistants you choose. The conventions aren't retyped into each assistant's instructions. It doesn't give an assistant access to anything, and it doesn't make its output correct.
+- **[An agent doesn't always follow its instructions.](#checks-that-run-whether-the-agent-listened-or-not)** The compiler and the generated proxies, the Roslyn analyzers in Arc and in Chronicle's .NET client, `cratis screenplay validate` and the corpus hooks check the work whether or not the rules were read. In Claude Code a quality gate runs when the assistant tries to finish; in Pi it's a tool called at a verification checkpoint. The hooks are wired for those two assistants.
+- **[An agent can't tell a safe command from a destructive one.](#run-it-read-the-log-start-again)** `cratis llm-context` prints the CLI's command catalog with each command's effect, `read-only`, `local`, `mutating` or `destructive`, and whether it requires confirmation. No hand-kept list of which commands change the server.
+- **[An assistant works from pasted excerpts.](#run-it-read-the-log-start-again)** Screenplay MCP lets it propose model changes that only an explicit `apply` (or workspace recovery) writes, and Chronicle MCP lets it read events, read models, failed partitions and causal traces from a running Chronicle. No log excerpts pasted into a chat. Chronicle MCP can read personal data and isn't read-only, so scope what you connect it to, and treat what it reads as data, not instructions.
+- **[Answers about the docs need a search.](#the-model-becomes-code)** Prompter, which we still treat as experimental, answers questions about the Cratis docs in Discord with citations you can follow, or declines when it can't ground an answer.
+
+### The same list, as a table
+
+The table covers the same ground as the list above, cut down to what you'd otherwise write and the section that shows it, for scanning or coming back to. The Build rows are the ones you notice first: for model-bound commands and queries there are no controllers, DTOs, fetch wrappers or registration lists. [Why this shape](#why-this-shape) covers the principle behind it.
+
+| You no longer write | What does it instead | Shown in |
+|---|---|---|
+| A design document that drifts from the code | A `.play` file the CLI validates | [Model it](#model-it-write-the-intent-down-first) |
+| Project wiring and proxy setup | `cratis new` or `dotnet new cratis` | [Start it](#start-it-from-nothing-to-a-running-skeleton) |
+| Controllers, DTOs and registration lists | `[Command]` records and read-model queries that Arc routes | [The command](#the-command) |
+| Fetch wrappers and a hand-written TypeScript client | Proxies generated on each build | [The form](#the-form) |
+| The same validation rules twice | Server rules, with a supported subset carried into the proxy | [The form](#the-form) |
+| Disabled states and error placement for each form | `CommandDialog` from Components | [The form](#the-form) |
+| Transport code for a live list | An observable query | [The view](#the-view) |
+| Property-by-property projection mappings | Matching names, mapped by default | [The view](#the-view) |
+| A fake event log for specs | `CommandScenario` with an in-memory event log | [The spec](#the-spec) |
+| A lookup before the write | A `[Unique]` constraint checked at append | [The rule that holds](#the-rule-that-holds-when-its-written) |
+| A per-tenant uniqueness check | A namespace per tenant and a constraint scoped to it | [The rule that holds](#the-rule-that-holds-when-its-written) |
+| Per-field encryption code | `[PII]` on the value's type | [Protect it](#protect-it-personal-data-marked-once) |
+| Tenant filters in every event query | A namespace per tenant | [Three tenant boundaries](#three-tenant-boundaries) |
+| A relay between two stores | Outbox and inbox subscriptions | [Private fact, public contract](#a-private-fact-and-a-public-contract) |
+| Ad-hoc queries against the storage | `cratis chronicle`, the terminal workbench, Workbench | [Debug it](#debug-it-when-a-view-stops-updating) |
+| A repair script for a wrong view | A fixed projection and a replay | [Evolve it](#evolve-it-four-kinds-of-change-in-year-two) |
+| One-off scripts that rewrite the store | Generations, revision, redaction | [Evolve it](#evolve-it-four-kinds-of-change-in-year-two) |
+| Your conventions, retyped into every assistant | `cratis ai install` | [The model becomes code](#the-model-becomes-code) |
+| A hand-kept list of which CLI commands change state | `cratis llm-context` | [Run it, read the log](#run-it-read-the-log-start-again) |
 
 ## Why this shape
 
-Cratis is designed so that the right pattern is the easy one, and developer experience is a design goal. It's also a set of separate products with seams you can open. A header, a generated proxy, a namespace choice, and in the modeling layer a `.play` file: each can be read, diffed and tested on its own. When something breaks between two products, you look at that seam instead of guessing at a framework's internals. A seam is also a place to stop, which is why [When not to use it](#when-not-to-use-it) suggests adopting the boundary you need rather than the whole ecosystem.
+Cratis is designed so that the right pattern is the easy one, and developer experience is a design goal. It's also a set of separate products with seams you can open. The three joins [above](#where-the-products-join), plus the `.play` file in the modeling layer, can each be read, diffed and tested on its own. When something breaks between two products, you look at that seam instead of guessing at a framework's internals. A seam is also a place to stop, which is why [When not to use it](#when-not-to-use-it) suggests adopting the boundary you need rather than the whole ecosystem.
 
 A few habits run through every section.
 
@@ -70,6 +196,8 @@ A few habits run through every section.
 ![A diagram titled A fact is not a message, with two lanes. A notification: an Author row leads to a sent AuthorRegistered, tagged Gone once sent. A recorded fact: a recorded AuthorRegistered leads to a projection and then an Author view, tagged Can be read again.](./fact-not-message.png)
 
 *A notification is gone once sent; a recorded fact can be read again.*
+
+Most of the mechanisms in [Hard problems](#hard-problems-and-what-you-no-longer-write) follow from these habits.
 
 ## Model it: write the intent down first
 
@@ -118,15 +246,11 @@ Checking the model needs nothing running:
 cratis screenplay validate ./plays --warnings-as-errors
 ```
 
-The CLI compiles every `.play` file under the folder as one application and prints compiler-style errors, so it fits in CI on a machine where the application has never started. It checks the model. Whether a renderer can build it is a separate question.
-
-**With an assistant.** Through the Screenplay MCP server, an assistant can list the slices that have no `then` assertion or prepare a model-aware rename. Proposals are tied to the revision they were made against, and only an explicit `apply` (or workspace recovery) writes files, which is exactly where your client's approval prompt belongs. None of its tools run specifications.
+The CLI compiles every `.play` file under the folder as one application and prints compiler-style errors, so it fits in CI on a machine where the application has never started. It checks the model. Whether a renderer can build it is a separate question. An assistant can work on the same file, and [Automate it](#automate-it-the-life-cycle-when-agents-write-the-code) covers how.
 
 **Starting from a system you already have.** Most systems exist long before anyone models them. [Prologue](https://github.com/Cratis/Prologue), also experimental, stands beside a running system, captures selected database changes, HTTP calls and telemetry metadata, and proposes candidate slices as a `.play` draft. It records metadata rather than row values or request bodies, but metadata can still be sensitive, and its links between events are a time-window guess. The result is a provisional model for a person to correct. It doesn't recover domain truth.
 
-There's one rule in this layer we care about more than any single feature. Producers and consumers of a model have to declare what they can handle and expose what they can't represent, instead of dropping it silently.
-
-We're building Cratis Studio: an experimental, collaborative place where people and AI design, visualize and edit the same event model.
+There's one rule in this layer we care about more than any single feature. Producers and consumers of a model have to declare what they can handle and expose what they can't represent, instead of dropping it silently. A tool that quietly loses part of your model is worse than one that refuses it.
 
 ## Start it: from nothing to a running skeleton
 
@@ -386,7 +510,7 @@ export class RegisterTask {
 
 It has adapters for Express, Fastify and Hono, plus a Fetch API entry for Next.js route handlers, Bun and Deno. Its Chronicle integration is experimental.
 
-Chronicle has its own set of clients. It's an event-sourcing database and processing runtime with a first-class .NET SDK, and clients for TypeScript, Kotlin/Java (JVM) and Elixir. Storage is pluggable, with providers for MongoDB (the default), PostgreSQL, SQL Server and SQLite. Services in one system can use different clients against the same kernel. The clients are not interchangeable, though: the default concurrency check, `ExpectingNoMatchingEvent`, decision reads and some erasure options differ, and [where the clients differ](https://cratis.io/chronicle/clients/where-the-clients-differ/) lists the gaps. [Event sourcing in any language](https://blog.cratis.io/event-sourcing-in-any-language/) explains the shared contract underneath.
+Chronicle has its own set of clients, the ones in [the map](#the-map-products-by-layer): a first-class .NET SDK, and clients for TypeScript, Kotlin/Java (JVM) and Elixir, over whichever storage provider each deployment chooses. Services in one system can use different clients against the same kernel. The clients are not interchangeable, though: the default concurrency check, `ExpectingNoMatchingEvent`, decision reads and some erasure options differ, and [where the clients differ](https://cratis.io/chronicle/clients/where-the-clients-differ/) lists the gaps. [Event sourcing in any language](https://blog.cratis.io/event-sourcing-in-any-language/) explains the shared contract underneath.
 
 ![A diagram titled One contract, several ecosystems. On the left, three server boxes: Arc on ASP.NET Core, Arc on Spring Boot, and Arc on Node.js with Express, Fastify and Hono. All three connect to one central box, the Arc HTTP contract, which connects to Generated TypeScript proxies and then React and Components on the right. Below, in a frame labeled Chronicle, a Chronicle kernel box sits beside four client chips: .NET, TypeScript, Kotlin and Java, and Elixir.](./one-contract-many-ecosystems.png)
 
@@ -413,7 +537,7 @@ public record PiiConceptsPersonName(string Value) : ConceptAs<string>(Value)
 
 Projection-backed read models track the protected value's subject through their mappings. Reducer read models need their own PII marking, because the kernel can't infer arbitrary transformations.
 
-**Keep it out of the audit trail.** With Arc's Chronicle integration, a command's property values are recorded in the causation of every event it appends, so an unmarked password or token lands in the log in clear text and stays there. Arc leaves `[PII]` values out of that record, and [`[NotAudited]`](https://cratis.io/arc/backend/csharp/attributes/) does the same for secrets without encrypting them. For an operational secret you must store, Chronicle has [`[Encrypted]`](https://cratis.io/chronicle/security/encrypted-values/), with a separate key that erasing a person doesn't touch.
+**Keep it out of the audit trail.** With Arc's Chronicle integration, a command's property values are recorded in the causation of every event it appends, so an unmarked password or token lands in the log in clear text and stays there. Arc leaves `[PII]` values out of that record, and [`[NotAudited]`](https://cratis.io/arc/backend/csharp/attributes/) does the same for secrets without encrypting them. For an operational secret you must store, Chronicle has [`[Encrypted]`](https://cratis.io/chronicle/security/encrypted-values/). It uses a separate key: erasing a subject's `[PII]` key leaves an `[Encrypted]` value readable, and Chronicle's subject-erasure operation refuses to delete its key.
 
 Pick the attribute by what the value is. Personal data you may have to erase gets `[PII]`. A value that should never reach the causation record gets `[NotAudited]`, and an operational secret you have to keep gets `[Encrypted]`.
 
@@ -439,7 +563,7 @@ By default Chronicle stores keys with the events; it can keep them in a dedicate
 
 *Deleting a person's key reaches the event log and managed read models, not copies.*
 
-These are mechanisms with known edges. An application that handles personal data still needs its own privacy review.
+These are mechanisms with known edges. An application that handles personal data still needs its own privacy review. Redaction and revision, which change an event instead of a key, are in [Evolve it](#evolve-it-four-kinds-of-change-in-year-two).
 
 ## Run it: tenants and services
 
@@ -447,9 +571,9 @@ These are mechanisms with known edges. An application that handles personal data
 
 AuthProxy resolves the tenant at the edge, Arc reads it from a header and checks declared authorization on each command and query, and Arc's Chronicle integration maps each tenant to a Chronicle [namespace](https://cratis.io/chronicle/concepts/namespaces/). Events, observers and read models are processed per namespace.
 
-Selecting a tenant isn't authorizing it. Caller-controlled headers, query strings and hosts aren't evidence of membership, and a wrong but accepted tenant ID selects another namespace, so check membership before any tenant-scoped work and test the no-tenant case. Arc's `/.cratis/me` endpoint tells the frontend who the user is; it doesn't authorize commands or queries.
+Selecting a tenant isn't authorizing it. Caller-controlled headers, query strings and hosts aren't evidence of membership, and a wrong but accepted tenant ID selects another namespace, so check membership before any tenant-scoped work and test the no-tenant case. Arc's `/.cratis/me` endpoint tells the frontend who the user is; it doesn't authorize commands or queries. The [auth and compliance](https://cratis.io/auth-and-compliance/) page shows how AuthProxy and Arc divide that work.
 
-Where read models land depends on your storage. Arc's MongoDB integration can name a database per tenant, and with EF Core a tenant-specific connection is yours to set up. Work that runs outside a request, such as a scheduled job, has no header to read and must set its tenant explicitly; [Arc tenancy with Chronicle](https://cratis.io/arc/backend/csharp/chronicle/tenancy/) covers both cases.
+Where read models land depends on your storage. Arc's MongoDB integration can name a database per tenant, and with EF Core a tenant-specific connection is yours to set up. Work that runs outside a request, such as a scheduled job or something a reactor starts later, has no header to read and must set its tenant explicitly; [Arc tenancy with Chronicle](https://cratis.io/arc/backend/csharp/chronicle/tenancy/) covers both cases.
 
 ![A diagram titled Three tenant boundaries, three columns from left to right. Edge, AuthProxy: selects the tenant and forwards it as Tenant-ID. App, Arc: reads a header, configured for Tenant-ID. Store, Chronicle: a namespace per tenant, mapped from Arc's tenant. Below, under Read-model storage: MongoDB, a database per tenant via Arc; EF Core, a connection you configure. A full-width card, Membership: your rule, reads: Check membership before tenant-scoped work. A header or tenant ID is not proof of membership.](./tenant-boundaries.png)
 
@@ -467,7 +591,7 @@ The Authors service's log holds everything about the registration. Its outbox ca
 
 *A private fact stays in the log; a smaller event is the public contract.*
 
-**The window between two appends.** The untagged [cross-store sample, at commit `95f644d`](https://github.com/Cratis/Samples/blob/95f644dc017ebd6ecd41854cbcd358cb22984084/Chronicle/CrossStore/Program.cs), appends the fact to the source event log, then appends the public event to the outbox as a second call. If the second append fails, the first fact is already recorded; nothing rolls it back. Forwarding isn't a transaction across stores.
+**The window between two appends.** The untagged [cross-store sample, at commit `95f644d`](https://github.com/Cratis/Samples/blob/95f644dc017ebd6ecd41854cbcd358cb22984084/Chronicle/CrossStore/Program.cs), appends the fact to the source event log, then appends the public event to the outbox as a second call. If the second append fails, the first fact is already recorded; the sample returns an error, and nothing rolls the first append back. Forwarding isn't a transaction across stores.
 
 One option is a reactor that observes the private fact and appends the public contract, checking the append result and failing the handler on rejection so the partition is retried. Both publisher and receiver must account for duplicate execution. A webhook sends observed events to an HTTP endpoint with retries, so the receiving endpoint needs the same care. Explicit subscriptions exist in each Chronicle client; the attribute-based routing that sets one up implicitly is C# only.
 
@@ -542,19 +666,47 @@ A year in, four kinds of change show up that look alike: a new shape for an even
 
 *Four kinds of change, and which one touches the log.*
 
-**A new shape.** Chronicle keeps [generations of an event type](https://cratis.io/chronicle/understanding-event-evolution/) side by side, and you declare a migration between adjacent generations. Chronicle produces upcast and downcast representations while keeping the originally stored generation, so old and new code can each read the shape they expect, and a background job migrates existing events. Give long-lived events an explicit ID: event types take their identity from the type name otherwise, so renaming the class changes the identity. If what the event *means* has changed, that's a new event, and a migration is the wrong tool.
+**A new shape.** Chronicle keeps [generations of an event type](https://cratis.io/chronicle/understanding-event-evolution/) side by side, and you declare a migration between adjacent generations. The base class refuses a migration whose two generations don't share an event type ID, or that skips a generation. Chronicle produces upcast and downcast representations while keeping the originally stored generation, so old and new code can each read the shape they expect, and a background job migrates existing events. Give long-lived events an explicit ID: event types take their identity from the type name otherwise, so renaming the class changes the identity. If what the event *means* has changed, that's a new event, and a migration is the wrong tool.
 
-**A new view.** When a projection is wrong, fix it and [rebuild the read model](https://cratis.io/chronicle/scenarios/rebuild-a-read-model/) from the retained history. When a projection's definition changes, Chronicle compares it with the previous one and decides between no replay, a partial replay and a full one; a setting chooses whether it runs that work or only recommends it. A replay can repeat a reactor's side effects, and `[OnceOnly]` keeps a reactor out of replays without stopping retries. Retiring a projection leaves its old read-model data for you to remove. Replays, catch-ups and event migrations run as jobs you can inspect, stop and resume, with a setting that caps how many steps run in parallel.
+**A new view.** When a projection is wrong, fix it and [rebuild the read model](https://cratis.io/chronicle/scenarios/rebuild-a-read-model/) from the retained history. Replay reprocesses the event content Chronicle exposes, including applicable revisions and redaction markers. What it rebuilds is derived state; it doesn't prove that an email went out, which is why side effects live in reactors and not in projections. When a projection's definition changes, Chronicle compares it with the previous one and decides between no replay, a partial replay and a full one; a setting chooses whether it runs that work or only recommends it. A replay can repeat a reactor's side effects, and `[OnceOnly]` keeps a reactor out of replays without stopping retries. Retiring a projection unsubscribes it and leaves its old read-model data for you to remove. Replays, catch-ups and event migrations run as jobs you can inspect, stop and resume, with a setting that caps how many steps run in parallel.
 
-**A correction.** "Fix the data" is four different operations. A business reversal, such as a cancelled registration, is a new event. A mistaken value can be [revised](https://cratis.io/chronicle/events/revision/), keeping the original for audit. [Redaction](https://cratis.io/chronicle/events/redaction/) replaces an event's content with a marker at the same sequence number. Erasing a subject's key makes their marked values unreadable. Redaction doesn't clean up copies in other stores, backups or anything already read, and an observer only hears about it if it subscribes to the redaction event as well as the original.
+**A correction.** "Fix the data" is four different operations, and they answer different questions. A business reversal, such as a cancelled registration, is a new event, and nothing earlier changes. A mistaken value can be [revised](https://cratis.io/chronicle/events/revision/), keeping the original for audit. [Redaction](https://cratis.io/chronicle/events/redaction/) replaces an event's content with a marker at the same sequence number. Erasing a subject's key makes their marked values unreadable. Redaction doesn't clean up copies in other stores, backups or anything already read, and an observer only hears about it if it subscribes to the redaction event as well as the original.
 
 **A processor that stopped** is the debugging loop above, and the [troubleshooting guide](https://cratis.io/chronicle/troubleshooting/) walks it end to end.
 
-## Automate it: assistants that know the conventions
+## Automate it: the life cycle when agents write the code
 
-An assistant that hasn't read your conventions guesses at your framework, and the result is plausible code that's subtly wrong. Each layer above gives it something better to work from, and each has its own limit on what it may touch.
+An agent can draft the `RegisterAuthor` command, its projection and its spec in a few minutes. Once that's true, typing is no longer the slow part of shipping the author feature. The slow parts sit on either side of it: saying precisely what should be built, and checking that what came back is that.
 
-**Rules and skills in the repository.** The Cratis AI corpus is a free, MIT-licensed set of rules, skills, agents and prompts for building with Cratis. [`cratis ai install`](https://cratis.io/ai/getting-started/) installs it into your repository once and points each supported assistant at it:
+People have started calling the result an agentic development life cycle, or ADLC. The published versions disagree on the stages, but they share one idea: the familiar stages stay, and each one has to hand the next something an agent can read and a person can check.
+
+The most useful critique we've read comes from the spec-driven development side. In her [look at three spec-driven tools](https://martinfowler.com/articles/exploring-gen-ai/sdd-3-tools.html) on martinfowler.com, Birgitta Böckeler separates three levels. Spec-first writes a spec to guide one change. Spec-anchored keeps the spec and evolves it with the feature. Spec-as-source makes the spec the only thing people edit. She finds the markdown these tools produce can be harder to review than the code, and she wonders whether spec-as-source, and even spec-anchored, could end up with the downsides of both model-driven development and language models: inflexibility and non-determinism.
+
+We sit at spec-anchored, with a spec a compiler reads. The event model is the spec and the `.play` file is its text. Its commands, events and projections are the concepts Arc and Chronicle run, so the spec and the running system share one vocabulary. For the narrow part Stage can render, it moves a step toward spec-as-source. A textual model with a code generator is the model-driven shape she warns about. The renderer is deterministic, so that step adds no unpredictability of its own, but the rigidity risk applies to us, and [The model becomes code](#the-model-becomes-code) shows where hand-written code goes.
+
+![A diagram titled The agentic loop, seven numbered cards in a loop. Top row, left to right: 1 Intent: event modeling, Prologue draft. 2 Model: .play file, Screenplay MCP. 3 Code: Stage render, AI corpus. 4 Checks: compiler, analyzers, hooks. An arrow leads down to the bottom row, right to left: 5 Review: pull request, a person decides. 6 Run: Arc and Chronicle. 7 Evidence: event log, CLI, Chronicle MCP. An arrow labeled next change leads from 7 back up to 1.](./agentic-loop.png)
+
+*One pass around the loop, and the Cratis piece at each step.*
+
+The rest of this section walks that loop once with the author feature. Several pieces in it are experimental or early; [where each piece stands](#where-each-piece-stands) has the labels.
+
+### Intent becomes a model
+
+A person decides what should exist; here, that's the sticky note. Written as a slice, it becomes something an assistant and a reviewer both read.
+
+An assistant works on that file through the Screenplay MCP server. It can list the slices that have no `then` assertion or prepare a model-aware rename. Proposals are tied to the revision they were made against, and only an explicit `apply` (or workspace recovery) writes files, which is exactly where your client's approval prompt belongs. None of its tools run specifications.
+
+For a system that already exists, the Prologue draft from [Model it](#model-it-write-the-intent-down-first) enters the loop at the same point, as a proposal a person corrects.
+
+We're building Cratis Studio: an experimental, collaborative place where people and AI design, visualize and edit the same event model.
+
+### The model becomes code
+
+There are two routes from the model to code today.
+
+For the narrow backend vertical Stage supports, `cratis render` writes it, as [Or render it from the model](#or-render-it-from-the-model) describes. For an agent, the seam is what matters: code written by hand, by a person or an agent, belongs in `Customizations/`, and an edit to a generated file shows up as a refused render instead of a silent overwrite, unless someone passes `--force`.
+
+Outside that vertical, the model is the map and an agent writes the code by hand, guided by the Cratis AI corpus: a free, MIT-licensed set of rules, skills, agents and prompts for building with Cratis. [`cratis ai install`](https://cratis.io/ai/getting-started/) installs it into your repository once and points each supported assistant at it:
 
 ```bash
 cratis ai install \
@@ -565,27 +717,28 @@ cratis ai install \
 
 It records the selection and file hashes, refuses to overwrite files you own, and `cratis ai status` tells you when managed files were edited. That gives an assistant context about how Cratis is meant to be used, with dozens of skills for commands, projections, reactors, concepts and specs. It doesn't give it access to anything, and it doesn't make its output correct. The [AI section](https://cratis.io/ai/) of the docs covers the corpus.
 
-**A CLI that says what's safe.** `cratis llm-context` prints the CLI's command catalog as JSON, and every command states its effect, `read-only`, `local`, `mutating` or `destructive`, and whether it requires confirmation. An agent can tell observing commands from state-changing ones without keeping its own list. `cratis init` writes that catalog into context files for the tools you use; refresh it after upgrading. When the CLI recognizes it's running under an agent tool, it defaults to compact JSON. Only the effect and confirmation fields are declared stable; bind anything else to the exact CLI version.
+An assistant that hasn't read your conventions guesses at your framework, and the result is plausible code that's subtly wrong. Each layer also gives an assistant something concrete to read instead of guess at: AuthProxy's configuration is declarative JSON, the generated TypeScript proxies are typed contracts the frontend compiles against, registered event types have schemas it can look up, and a `.play` file is text a compiler checks.
 
-![A diagram titled What a command does, four rows stacked from top to bottom, each naming an effect and an example: read-only, diagnose and failed-partitions show; local, context set; mutating, retry-partition; destructive, observers replay. Arrows from the first two rows lead to a bracket reading Observes or stays local. Arrows from the last two lead to a bracket reading Changes the server.](./cli-effects-for-agents.png)
+For questions about the docs themselves, [Prompter](https://github.com/Cratis/Prompter), which we still treat as experimental, answers questions about the Cratis docs in Discord with citations you can follow, or declines when it can't ground an answer.
 
-*The catalog marks each command's effect, so an agent can tell observing from changing.*
+### Checks that run whether the agent listened or not
 
-**The running system.** [Chronicle MCP](https://cratis.io/chronicle-mcp/) connects an assistant to a running Chronicle server, whatever client language the application uses. It can list observers and failed partitions, read events and read-model instances, describe event types and explain a causal trace. The only tools that change anything are three for stopping, resuming and deleting jobs. It can't append, redact or replay.
+Böckeler also notes that agents often ignore the instructions they're given, and asks whether all those files and checklists give a "false sense of control". A rules file is advice. What holds is a check that runs either way, and the author feature meets several:
 
-That makes it a good second pair of eyes on the debugging loop, with a sharp caveat: an assistant connected to it can read event payloads, including personal data. Don't treat it as read-only, scope what you connect it to, don't rely on its development-default credentials, and treat anything it reads as data, not instructions.
+- `cratis screenplay validate` rejects a broken model before any code exists, and the Stage specification runner checks the model's Given/When/Then examples against the model.
+- The compiler and the generated TypeScript proxies turn a renamed field into a compile error on both sides.
+- Arc and Chronicle's .NET client ship Roslyn analyzers that report some misuses of their APIs as build diagnostics. They aren't specific to agents; they treat an agent's code like anyone else's.
+- The corpus ships hooks that run inside the assistant's own tool.
 
-**Typed material to check against.** Each layer also gives an assistant something concrete to read instead of guess at: AuthProxy's configuration is declarative JSON, the generated TypeScript proxies are typed contracts the frontend compiles against, registered event types have schemas it can look up, and a `.play` file is text a compiler checks.
+The hooks are the part written with agents in mind. After an edit, a scan points out patterns the rules warn against, without blocking anything. A guard blocks the store-changing `cratis chronicle` commands it can see in the assistant's shell commands. In Claude Code, when the assistant tries to finish and relevant files have changed, a quality gate runs, and a failure goes back to the assistant instead of letting it stop. In Pi, the gate doesn't run on its own: it's a tool called at a verification checkpoint, and a gate that times out or is cancelled reports that nothing was verified, never a pass. The gates are data a repository can override. Today the hooks are wired for Claude Code and Pi; other assistants get the rules and skills without them.
 
-**The model.** Screenplay MCP, covered in [Model it](#model-it-write-the-intent-down-first), proposes model changes for a person to apply.
+None of this proves the feature does what the sticky note asks. A green build says the code has the right shape, and [the spec](#the-spec) checks one example of the behavior.
 
-**The docs.** [Prompter](https://github.com/Cratis/Prompter), which we still treat as experimental, answers questions about the Cratis docs in Discord with citations you can follow, or declines when it can't ground an answer.
+### A person reviews and decides
 
-![A diagram titled What an assistant can reach, with an assistant in the center and four connections. Top left: Rules and skills, in the repository, labeled read. Top right: CLI command catalog, labeled effects declared. Bottom left: Screenplay MCP, model files, labeled you approve apply. Bottom right: Chronicle MCP, a running Chronicle, labeled reads events. A separate note at the bottom reads: Prompter answers from the docs.](./ai-mcp-map.png)
+Reviewing a pull request an agent wrote is a different job from reviewing a colleague's. [One recent piece on it](https://tianpan.co/blog/2026/04/27/reviewing-agent-prs-different-not-faster) makes two points we agree with: the intent sits in a prompt that rarely travels with the pull request, and tests the same agent wrote tend to share its blind spots.
 
-*What an assistant can read, and what it may change.*
-
-### Four kinds of evidence
+The loop gives the reviewer the intent as a diff of its own. A change to the author feature can arrive as a `.play` change that states the command, its rules and its event, a render manifest that says which files are generated, and code in one feature folder. The reviewer reads the intent first, then checks the code against it. The second point applies here too. A spec an agent wrote next to its code can miss what the code misses, so read the model's examples as intent, not as proof.
 
 A proposal, a declared model, a passing specification and a recorded event answer different questions: what was proposed, what the model declares, what a specification checks, and what the running system recorded. A passing spec doesn't approve a proposal or prove deployed behavior.
 
@@ -595,11 +748,33 @@ With the author feature: an assistant's diff that stops two authors in tenant Ac
 
 *A proposal, a declaration, a spec result and a recorded event answer different questions.*
 
-The [AI assistant walkthrough](https://blog.cratis.io/from-zero-to-first-projection-with-an-ai-assistant/) shows one of these tools on a real task, including where the assistant was told not to use one.
+However a pull request was produced, whether it merges is a person's decision. The corpus's own pull-request rule lets an assistant take a change through to merge only when a person asks it to ship, and even then it stops before a major release until a person explicitly confirms the break.
 
-### Work that comes back as pull requests
+![A diagram titled Where people decide, three horizontal lanes across five stage columns: Intent, Model, Code, Review and Run. Lane A person: decides what starts; applies a proposal; decides the merge. Lane Checks: validate and model specs; build, analyzers, hooks; diagnose exit code. Lane An agent: proposes model changes; writes code; reads the event log.](./where-people-decide.png)
+
+*The decisions stay with people; the checks don't take the agent's word for it.*
+
+### Run it, read the log, start again
+
+Once the feature runs, an assistant that helps operate it needs to know which of its actions change anything. `cratis llm-context` prints the CLI's command catalog as JSON, and every command states its effect, `read-only`, `local`, `mutating` or `destructive`, and whether it requires confirmation. An agent can tell observing commands from state-changing ones without keeping its own list. `cratis init` writes that catalog into context files for the tools you use; refresh it after upgrading. When the CLI recognizes it's running under an agent tool, it defaults to compact JSON. Only the effect and confirmation fields are declared stable; bind anything else to the exact CLI version.
+
+![A diagram titled What a command does, four rows stacked from top to bottom, each naming an effect and an example: read-only, diagnose and failed-partitions show; local, context set; mutating, retry-partition; destructive, observers replay. Arrows from the first two rows lead to a bracket reading Observes or stays local. Arrows from the last two lead to a bracket reading Changes the server.](./cli-effects-for-agents.png)
+
+*The catalog marks each command's effect, so an agent can tell observing from changing.*
+
+[Chronicle MCP](https://cratis.io/chronicle-mcp/) connects an assistant to a running Chronicle server, whatever client language the application uses. It can list observers and failed partitions, read events and read-model instances, describe event types and explain a causal trace. It can also list event types that nothing consumes. The only tools that change anything are three for stopping, resuming and deleting jobs. It can't append, redact or replay.
+
+That makes it a good second pair of eyes on the debugging loop, with one caveat: an assistant connected to it can read event payloads, including personal data. Don't treat it as read-only, scope what you connect it to, don't rely on its development-default credentials, and treat anything it reads as data, not instructions.
+
+![A diagram titled What an agent can reach and change, three columns from left to right. Reads: rules and skills; CLI, read-only commands; Chronicle MCP, events, read models. Proposes: Screenplay MCP, proposals; pull request, code for review. Changes: apply, writes model files, you approve; CLI, mutating, destructive, confirmation flagged; Chronicle MCP, stop, resume, delete jobs. A note below reads: Chronicle MCP can't append, redact or replay.](./agent-reach.png)
+
+*What an agent can read, propose and change, and what stays with a person.*
+
+The loop closes at the event log. The model says what the system is meant to record, and the log says what it did record. An event type nothing consumes, a partition that keeps failing, or a causal trace that surprises someone is the input to the next change. None of the public tools here turns that finding into work on its own: an agent can read it, and a person decides what starts.
 
 We're building Cratis Direct: it turns repository signals into one prioritized queue of bounded AI work, and brings the results back as pull requests for people to review. It is an internal experiment the team uses on its own work. Its landing page is [cratis.direct](https://cratis.direct).
+
+This section argues from structure, not results. We haven't measured whether agents working this loop ship fewer defects or ship faster, and we don't claim they do. The generated vertical is narrow, and a second model-led change hasn't been proved against a running target, so the model anchors the code without replacing it. The hooks cover two assistants, and nothing here guarantees what an agent writes. The [AI assistant walkthrough](https://blog.cratis.io/from-zero-to-first-projection-with-an-ai-assistant/) shows one of these tools on a real task, including where the assistant was told not to use one.
 
 ## When not to use it
 
@@ -618,11 +793,11 @@ Chronicle and its bundled local Workbench are available as MIT-licensed self-hos
 - **Experimental:** Screenplay, Stage, Scene and Prologue. Syntax and behavior can still change.
 - **We treat as experimental:** Narrator and Prompter, whose own docs don't use that label.
 - **Early source preview, not published to npm:** Arc for TypeScript, whose Chronicle integration is experimental.
-- **We treat as preview:** the Cratis AI corpus, whose own docs don't use that label.
+- **We treat as preview:** the Cratis AI corpus and its hooks, whose own docs don't use that label.
 - **Verified by source-level specs only, per its own docs:** Ante.
 - **.NET only today:** decision reads and Arc aggregates.
 
-AuthProxy, Arc for Kotlin, Specifications, Synopsis and Chronicle MCP state no maturity label in their own documentation, and we don't add one. Most of the labels above are the products' own; the ones for Narrator, Prompter and the AI corpus are our conservative reading.
+AuthProxy, Arc for Kotlin, Fundamentals, Specifications, Synopsis and Chronicle MCP state no maturity label in their own documentation, and we don't add one. Most of the labels above are the products' own; the ones for Narrator, Prompter and the AI corpus are our conservative reading.
 
 For the company side of Cratis, who we are and how we work with teams, see [cratis.no](https://cratis.no).
 
@@ -630,13 +805,14 @@ For the company side of Cratis, who we are and how we work with teams, see [crat
 
 Pick the moment you're in.
 
-- **Starting fresh:** `cratis new cratis --language csharp -n MyApp -o MyApp` (or `kotlin`, or `java`), then follow [Build a full app](https://cratis.io/build-a-full-app/). Keep each feature in one folder.
+- **Starting fresh:** `cratis new cratis --language csharp -n MyApp -o MyApp` (or `kotlin`, or `java`), then follow [Build a full app](https://cratis.io/build-a-full-app/). Keep each feature in one folder. With the .NET 10 SDK, `dotnet new install Cratis.Templates` and then `dotnet new cratis` gets you the same C# skeleton.
+- **Learning by example:** browse the [samples](https://github.com/Cratis/Samples), from a small Chronicle event-sourcing process to a React application on Arc and Components.
 - **Modeling first:** sketch one slice with [event modeling](https://cratis.io/event-modeling/), write it as a `.play` file, and run `cratis screenplay validate` on the folder.
 - **At the edge:** put [AuthProxy](https://cratis.io/authproxy/) in front of an Arc app and set Arc's tenant header to `Tenant-ID`.
 - **Event history:** follow [Get started with Chronicle](https://cratis.io/chronicle/get-started/), append a few events and open the [Workbench](https://cratis.io/chronicle/workbench/).
 - **Operating it:** `brew tap cratis/cratis && brew install cratis`, then `cratis chronicle diagnose`, and keep `retry-partition` ahead of `replay` in your runbook.
 - **Personal data:** mark one value's type `[PII]`, then read [The log remembers](https://blog.cratis.io/the-log-remembers-pii-crypto-shredding-in-chronicle/).
-- **With an assistant:** run `cratis ai install` for the harnesses, profiles and languages you use, and review its work as a proposal, a model, a spec and the event log.
+- **With an assistant:** run `cratis ai install` for the harnesses, profiles and languages you use, keep `cratis screenplay validate` and your build in the assistant's loop, and review its work as a proposal, a model, a spec and the event log.
 
 Read next, by what you're deciding:
 
