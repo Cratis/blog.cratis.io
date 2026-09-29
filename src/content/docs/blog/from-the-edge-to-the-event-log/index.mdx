@@ -31,7 +31,7 @@ Cratis is designed so that the right pattern is the easy one, and developer expe
 
 - **[The frontend drifts from the backend.](#the-form-and-the-command)** Arc generates TypeScript for your commands and queries on each build, and the React code compiles against it. No hand-written client or fetch wrapper; a renamed field shows up in the frontend build once the proxies are regenerated.
 - **[Every operation needs a controller.](#commands-without-the-plumbing)** A command is a `[Command]` record with a `Handle` method, and a query is a static method on its `[ReadModel]`; Arc gives each an HTTP route. No controllers, DTOs or registration lists.
-- **[Validation lives in two places.](#commands-without-the-plumbing)** A command validator runs on the server before `Handle`, and the proxy generator emits a supported subset of its rules into the TypeScript the form uses. Conditions aren't carried over, so a rule inside one can apply unconditionally in the browser; test the generated validation. The rules aren't written twice, and the server stays authoritative.
+- **[Validation lives in two places.](#the-form-and-the-command)** A command validator runs on the server before `Handle`, and the proxy generator emits a supported subset of its rules into the TypeScript the form uses. Conditions aren't carried over, so a rule inside one can apply unconditionally in the browser; test the generated validation. The rules aren't written twice, and the server stays authoritative.
 - **[Tests need the whole stack running.](#specs-that-run-the-pipeline)** A `CommandScenario` spec runs Arc's command pipeline against an in-memory Chronicle event log in one process. No registration code and no fake event log.
 
 ### Data
@@ -89,7 +89,7 @@ AuthProxy signs the user in and resolves their tenant, then forwards it downstre
 
 In Arc, `RegisterAuthor` is a command: a record with a `Handle` method. Arc gives it an HTTP route and runs validation and authorization on that route. The name travels as a typed value in the command instead of a bare string.
 
-This one is from the [Arc tenancy docs](https://cratis.io/arc/backend/csharp/chronicle/tenancy/); `AuthorId` and `AuthorName` are the example's own types:
+This command is from the [Arc tenancy docs](https://cratis.io/arc/backend/csharp/chronicle/tenancy/); `AuthorId` and `AuthorName` are the example's own types:
 
 ```csharp
 [Command]
