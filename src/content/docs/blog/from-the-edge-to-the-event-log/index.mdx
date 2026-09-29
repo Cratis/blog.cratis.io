@@ -4,7 +4,7 @@ date: 2026-10-01
 authors: sindre
 excerpt: "What you get with Cratis and what you no longer write, then one sticky-note feature followed from sign-in to the event log and into its second year: how the products connect, and where each one stops."
 cover:
-  alt: "A cover titled \"From the edge to the event log\", with the Cratis mark. A frame labelled \"Tenant: Acme\" holds six numbered cards in two rows of three, with no arrows between them. 1, AuthProxy: Sign-in & tenant, Tenant-ID header. 2, Arc: Command, generated proxy. 3, Chronicle: Namespace, one per tenant. 4, Chronicle: Append, unique name checked. 5, Chronicle: View, by projection. 6, Components: Screen, React, aligned with Arc."
+  alt: "A cover titled \"From the edge to the event log\", with the Cratis mark. Inside a frame labelled \"Tenant: Acme\", a single row of six small numbered nodes, coloured by product, with no arrows between them: 1 AuthProxy, 2 Arc, 3, 4 and 5 grouped together as Chronicle, and 6 Components."
   image: ./cover.png
 tags:
   - ecosystem
@@ -36,7 +36,7 @@ Cratis is designed so that the right pattern is the easy one, and developer expe
 
 ### Data
 
-A few Chronicle terms first. An event sequence is an ordered log of events; the event log is the default one. A namespace is a logical partition within an event store. An event's subject is the identity its personal data is keyed to: the event source unless the append names another, normally the person the data is about. Each event also carries its causation; with Arc's Chronicle integration, that includes the command that appended it and its property values, except the ones marked to be left out. A generation is one version of an event type's shape.
+A few Chronicle terms first. An event sequence is an ordered log of events; the event log is the default one. A namespace is a logical partition within an event store. An event's subject is the identity its personal data is keyed to, normally the person the data is about; it's the event source unless the append names a different one. Each event also carries its causation; with Arc's Chronicle integration, that includes the command that appended it and its property values, except the ones marked to be left out. A generation is one version of an event type's shape.
 
 - **[Personal data sits in a log you keep.](#personal-data-mark-once-encrypt-per-person)** Mark a value's type `[PII]` once: Chronicle encrypts every event property of that type with the subject's key, and Arc keeps it out of the causation. No per-field encryption code, and deleting the key removes Chronicle's decryption path.
 - **[A uniqueness check races.](#the-fact-and-the-rule-that-holds-when-its-written)** Chronicle checks a `[Unique]` constraint within the event sequence and namespace when the event is appended. No lookup before the write, and no lock around it.
@@ -77,7 +77,7 @@ Six layers, each answering one question.
 
 Here is the author feature one layer at a time. Each step is described from its own product's docs and source; we haven't run the whole walk as one deployment for this article.
 
-![A diagram titled "One feature, layer by layer". A frame labelled "Tenant: Acme" holds six numbered steps in two columns, each naming the product that owns it, with no arrows between them. 1, AuthProxy: Sign-in & tenant, Tenant-ID header. 2, Arc: Command, generated TypeScript proxy. 3, Chronicle: Namespace, can be one per tenant. 4, Chronicle: Append — unique name checked, AuthorRegistered. 5, Chronicle: View, Author read model, by projection. 6, Components: Screen, React, aligned with Arc.](./one-feature-by-layer.png)
+![A diagram titled "One feature, layer by layer". A frame labelled "Tenant: Acme" holds six numbered steps in two columns, each naming the product that owns it, with no arrows between them. 1, AuthProxy: Sign-in & tenant, Tenant-ID header. 2, Arc: Command, generated TypeScript proxy. 3, Chronicle: Namespace, one per tenant, via Arc. 4, Chronicle: Append — unique name checked, AuthorRegistered. 5, Chronicle: View, Author read model, by projection. 6, Components: Screen, React, aligned with Arc.](./one-feature-by-layer.png)
 
 *The author feature, step by step, and the product that owns each step.*
 
@@ -88,6 +88,16 @@ AuthProxy signs the user in and resolves their tenant, then forwards it downstre
 ### The form and the command
 
 In Arc, `RegisterAuthor` is a command: a record with a `Handle` method. Arc gives it an HTTP route and runs validation and authorization on that route. The name travels as a typed value in the command instead of a bare string.
+
+This one is from the [Arc tenancy docs](https://cratis.io/arc/backend/csharp/chronicle/tenancy/); `AuthorId` and `AuthorName` are the example's own types:
+
+```csharp
+[Command]
+public record RegisterAuthor(AuthorId Id, AuthorName Name)
+{
+    public AuthorRegistered Handle() => new(Name);
+}
+```
 
 After each build, Arc's proxy generator writes a TypeScript version of the command, so the React code is type-checked against the backend's contract. [The proxy boundary](https://cratis.io/arc/understanding-the-proxy-boundary/) page explains what crosses it.
 
@@ -105,27 +115,23 @@ using Cratis.Chronicle.Events.Constraints;
 public record ConstraintsModelBoundUniqueProjectCreated([property: Unique] string Name, string Description);
 ```
 
-An application can choose a Chronicle namespace per tenant, and a constraint is scoped to its event sequence and namespace. With a namespace per tenant, the name is unique within each tenant.
+Arc's Chronicle integration maps each tenant to its own Chronicle namespace, and a constraint is scoped to its event sequence and namespace, so the name is unique within each tenant. That mapping is what turns the uniqueness constraint into the per-tenant rule the sticky note asked for.
 
 ### The view
 
 A [projection](https://cratis.io/chronicle/projections/) turns `AuthorRegistered` events into an `Author` read model, and the screen reads that read model. The [.NET walkthrough](https://blog.cratis.io/event-sourcing-in-dotnet-with-chronicle/) builds this kind of slice end to end, with versions and a runnable project.
 
-### What the combination gives you
-
-The joins did more than pass data along: the namespace choice is what turned the uniqueness constraint into the per-tenant rule the sticky note asked for.
-
 ## Why this shape
 
-The walk had three joins: a header, a proxy and a namespace choice. Each is something you can open, read and test. That's the design: separate products with seams you can open, so when something breaks between two products you look at the seam instead of guessing at a framework's internals.
+The walk had three joins: a header, a proxy and a namespace mapping. Each is something you can open, read and test. That's the design: separate products with seams you can open, so when something breaks between two products you look at the seam instead of guessing at a framework's internals.
 
-![A diagram titled "Where the products join". AuthProxy (with Ante beside it) points to Arc through a label reading "Tenant-ID header". Arc points up to Components through "Generated proxy" and down to Chronicle through "Optional". The Chronicle box reads "Namespace per tenant". Below Chronicle, Tools (Workbench, CLI, Narrator) point up to it through "Inspect", and Chronicle points to Storage (MongoDB, PostgreSQL, SQL Server, SQLite) through "Stores". Two unconnected side boxes list Modeling (Screenplay, Stage, Scene, Prologue) and AI (Rules and skills, Screenplay MCP, Chronicle MCP).](./ecosystem-map.png)
+![A diagram titled "Where the products join". AuthProxy (with Ante beside it) points to Arc through a label reading "Tenant-ID header". Arc points up to Components through "Generated proxy" and down to Chronicle through "Optional · tenant → namespace". Below Chronicle, Tools (Workbench, CLI, Narrator) point up to it through "Inspect", and Chronicle points to Storage (MongoDB, PostgreSQL, SQL Server, SQLite) through "Stores". Two unconnected side boxes list Modeling (Screenplay, Stage, Scene, Prologue) and AI (Rules and skills, Screenplay MCP, Chronicle MCP).](./ecosystem-map.png)
 
-*The joins are a header, a generated proxy and a namespace choice.*
+*The joins are a header, a generated proxy and a namespace mapping.*
 
 A seam is also a place to stop, which is why [When not to use it](#when-not-to-use-it) suggests evaluating the boundary you need rather than adopting the entire ecosystem.
 
-**One decision, in the place that owns it.** Each convention makes one decision in the place that owns it, and each edge is stated where it applies. The tenant header is set once, in Arc's configuration. The uniqueness rule sits on the event, and Chronicle checks it where the event is appended. `[PII]` goes on a value's type, so every event property of that type is encrypted. Validation rules are written once, on the server, and the generated TypeScript carries the subset it can express.
+**One decision, in the place that owns it.** Each convention makes one decision in the place that owns it, and each edge is stated where it applies. The tenant header is set once, in Arc's configuration. `[PII]` goes on a value's type, so every event property of that type is encrypted. Validation rules are written once, on the server, and the generated TypeScript carries the subset it can express.
 
 **Rejected, recorded, derived.** Intent, fact and evidence stay apart too: a command can be rejected, an event records something that did happen, and a view is derived and can be rebuilt. That split is why a wrong view is a projection fix and a replay rather than a repair script, and why side effects live in reactors and not in projections. The AI section applies the same idea to assistants.
 
@@ -139,7 +145,7 @@ The services section draws the same line between a service's own facts and the s
 
 ## Identity and tenants: who decides what
 
-AuthProxy handles sign-in and tenant selection at the edge, Arc checks declared authorization on each command and query route, and an application can choose a Chronicle namespace per tenant. Two joins between them are settings you make, and tenant membership stays your rule.
+AuthProxy handles sign-in and tenant selection at the edge, Arc checks declared authorization on each command and query route, and Arc's Chronicle integration maps each tenant to a Chronicle namespace. Two joins between them are settings you make, and tenant membership stays your rule.
 
 ### At the edge
 
@@ -181,7 +187,7 @@ Where read models land depends on the storage you pick: Arc's MongoDB integratio
 
 Work that runs outside a request, such as a scheduled job or something a reactor starts later, has no request header to read, so it establishes its tenant explicitly. The [Arc tenancy with Chronicle](https://cratis.io/arc/backend/csharp/chronicle/tenancy/) page covers both the request and the background case.
 
-![A diagram titled "Three tenant boundaries", with three columns and no arrows between them. Edge · AuthProxy: Selects the tenant; forwards it as Tenant-ID. App · Arc: Reads a header; configured for Tenant-ID. Store · Chronicle: A namespace per tenant; chosen by the app. A "Read-model storage" row below: MongoDB, a database per tenant, via Arc; EF Core, a connection you configure. A full-width footer, "Membership: your rule": Check membership before tenant-scoped work. A header or tenant ID is not proof of membership.](./tenant-boundaries.png)
+![A diagram titled "Three tenant boundaries", with three columns and no arrows between them. Edge · AuthProxy: Selects the tenant; forwards it as Tenant-ID. App · Arc: Reads a header; configured for Tenant-ID. Store · Chronicle: A namespace per tenant; mapped from Arc's tenant. A "Read-model storage" row below: MongoDB, a database per tenant, via Arc; EF Core, a connection you configure. A full-width footer, "Membership: your rule": Check membership before tenant-scoped work. A header or tenant ID is not proof of membership.](./tenant-boundaries.png)
 
 *Selecting a tenant isn't authorizing it.*
 
@@ -224,6 +230,7 @@ Where erasure stops:
 - Values that were never marked stay readable, and so do causation values that were recorded in clear before anyone marked them.
 - Restoring a backup from before the erasure brings the key back.
 - Copies outside Chronicle—including exported keys, messages to another system and values already rendered in a browser—require separate handling.
+- A rebuild of a stored read model that covers an erased subject is refused for that subject's partition; authorize a new key for anyone you intend to keep protecting before such a rebuild ([key lifecycle](https://cratis.io/chronicle/compliance/key-lifecycle/)).
 
 By default Chronicle stores the keys in the same storage as the events; it can keep them in a dedicated store, such as HashiCorp Vault or Azure Key Vault, instead. A restore then has to line up the event data, the key store and the certificates to the same point in time; a restore in the wrong order can undo an erasure you already reported.
 
@@ -233,25 +240,13 @@ By default Chronicle stores the keys in the same storage as the events; it can k
 
 These are mechanisms with known edges, and an application that handles personal data still needs its own privacy review. Redaction and revision, which change an event instead of a key, are in the day 400 section.
 
-## Developer experience: one decision in the place that owns it
+## Developer experience: what you don't write
 
 For model-bound commands and queries, you don't write controllers, DTOs, fetch wrappers or registration lists, and projections don't need property-by-property mappings where names match. [Why this shape](#why-this-shape) covers the principle behind it.
 
 ### Commands without the plumbing
 
-This is an Arc command from the [commands page](https://cratis.io/arc/backend/csharp/commands/); `Sku`, `Quantity`, `CartLineId` and `ICartService` come from the surrounding example:
-
-```csharp
-using Cratis.Arc.Commands.ModelBound;
-
-[Command]
-public record AddItemToCart(Sku Sku, Quantity Quantity)
-{
-    public CartLineId Handle(ICartService carts) => carts.AddItem(Sku, Quantity);
-}
-```
-
-Arc gives it an HTTP route and runs validation and authorization, and the build generates the TypeScript that calls it, so there is no controller, DTO or fetch wrapper to keep in step. The service, the authorization policy and the storage stay yours. A full regeneration clears the proxy output folder, handwritten files included, so give the generator a folder of its own.
+The `RegisterAuthor` command in the walk is the whole command: Arc gives it an HTTP route and runs validation and authorization, and the build generates the TypeScript that calls it, so there is no controller, DTO or fetch wrapper to keep in step. The authorization policy and the storage stay yours. A full regeneration clears the proxy output folder, handwritten files included, so give the generator a folder of its own.
 
 ### Specs that run the pipeline
 
@@ -317,7 +312,7 @@ Services can use different Chronicle clients. Explicit subscriptions exist in ea
 
 A year in, four kinds of change show up that look alike: a new shape for an event, a new view over old events, a correction to something recorded, and a processor that stopped. Chronicle has a separate, built-in mechanism for each, so each change is an operation you choose rather than a script you write against the store.
 
-![A diagram titled "Four kinds of change", in two rows of two with a band below. A new shape for an event: generations; the stored one is kept. A new view over old events: compared → no, partial or full replay. A frame "A correction": Compensation, a new event; Revision, original kept; Redaction, marker in the slot; Key erasure, values unreadable. A processor that stopped: retried or quarantined; a retry can be refused. A bottom band: The event log. Only corrections change what it shows.](./day-400-four-changes.png)
+![A diagram titled "Four kinds of change", in two rows of two with a band below. A new shape for an event: generations; the stored one is kept. A new view over old events. A frame "A correction": Reversal, a new event; Revision, original kept; Redaction, marker in the slot; Key erasure, values unreadable. A processor that stopped. A bottom band: The event log. Only corrections change what it shows.](./day-400-four-changes.png)
 
 *Four kinds of change, and which one touches the log.*
 
@@ -360,7 +355,7 @@ The modeling layer is experimental throughout, and it puts the event model in th
 
 [Event modeling](https://cratis.io/event-modeling/) maps a timeline of screens, commands, events, read models and automations, so the people involved can talk about cause and information flow before anyone writes the implementation. A declared event type is a statement of intent: `AuthorRegistered` in the model says the system is meant to be able to record it. Only the event log says it did.
 
-![A diagram titled "One slice as an event model", with horizontal lanes Screen, Command, Event and View. Author form issues RegisterAuthor. RegisterAuthor produces AuthorRegistered. AuthorRegistered is projected into Authors. Authors feeds Author list. In an Event log lane below, a recorded AuthorRegistered is marked "Instance of" the event. A side note: "One .play file. The compiler, Stage, Scene and specs read it.".](./model-timeline.png)
+![A diagram titled "One slice as an event model", with horizontal lanes Screen, Command, Event and View. Author form issues RegisterAuthor. RegisterAuthor produces AuthorRegistered. AuthorRegistered is projected into Authors. Authors feeds Author list. In an Event log lane below, a recorded AuthorRegistered is marked "Instance of" the event. A note along the bottom: "One .play file. The compiler, Stage, Scene and specs read it."](./model-timeline.png)
 
 *One slice as an event model, and the file that holds it.*
 
@@ -387,7 +382,7 @@ slice StateChange RegisterInvoice
 
 The command, its authorization, its validation and the event it produces sit in one file next to the code, in the same history.
 
-Stage, which is experimental, compiles Screenplay, checks the modeled specifications its runner supports, and renders supported Arc and Chronicle application shapes; specification verification and direct runtime execution are partial.
+Stage compiles Screenplay, checks the modeled specifications its runner supports, and renders supported Arc and Chronicle application shapes; specification verification and direct runtime execution are partial.
 
 There's one rule in Screenplay we care about more than any single feature. Producers and consumers of a model have to declare what they can handle and expose what they can't represent, instead of dropping it silently. A tool that quietly loses part of your model is worse than one that refuses it.
 
@@ -422,7 +417,7 @@ A proposal, a declared model, a passing specification and a recorded event answe
 
 With the author feature: an assistant's diff that stops two authors in tenant Acme registering under the same name is a proposal. The rule written into the event model is a declaration. A spec that registers the same name twice and expects a rejection checks one example. Once the feature runs, the event log in Acme's namespace shows what was actually recorded. The first three are things someone writes; the fourth is what the running system recorded.
 
-![A strip titled "Four kinds of evidence": four separate cards with no arrows. Proposal: what was proposed? An assistant's diff. Declaration: what does the model declare? The event model. Spec result: what did a spec check? Same name twice. Observation: what was recorded? Acme's event log.](./four-kinds-of-evidence.png)
+![A diagram titled "Four kinds of evidence": four separate cards in two rows of two, with no arrows. Proposal: what was proposed? An assistant's diff. Declaration: what does the model declare? The event model. Spec result: what did a spec check? Same name twice. Observation: what was recorded? Acme's event log.](./four-kinds-of-evidence.png)
 
 *A proposal, a declaration, a spec result and a recorded event answer different questions.*
 
