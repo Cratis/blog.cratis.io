@@ -630,7 +630,7 @@ Once the feature runs, an assistant that helps operate it needs to know which of
 
 That makes it a good second pair of eyes on the debugging loop, with one caveat: an assistant connected to it can read event payloads, including personal data. Don't treat it as read-only, scope what you connect it to, don't rely on its development-default credentials, and treat anything it reads as data, not instructions.
 
-![A diagram titled What an agent can reach and change, four columns from left to right. Reads: rules and skills; CLI, read-only commands; Chronicle MCP, events, read models. Proposes: Screenplay MCP, proposals; pull request, code for review. Changes: apply, writes model files; CLI, mutating, destructive, confirmation flagged; Chronicle MCP, stop, resume, delete jobs. A person: decides the merge; decides what starts. A note below reads: Chronicle MCP can't append, redact or replay.](./agent-reach.png)
+![A diagram titled What an agent can reach and change, three columns from left to right. Reads: rules and skills; CLI, read-only commands; Chronicle MCP, events, read models. Proposes: Screenplay MCP, proposals; pull request, code for review. Changes: apply, writes model files, you approve; CLI, mutating, destructive, confirmation flagged; Chronicle MCP, stop, resume, delete jobs. A note below reads: Chronicle MCP can't append, redact or replay.](./agent-reach.png)
 
 *What an agent can read, propose and change, and what stays with a person.*
 
