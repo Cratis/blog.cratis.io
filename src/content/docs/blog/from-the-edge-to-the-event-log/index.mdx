@@ -96,7 +96,7 @@ The figure shows the libraries and tools you install. Cratis Studio and Cratis D
 - **Design together: where does the team agree on what should happen?** [Cratis Studio](https://cratis.studio) is a collaborative workspace in the browser where people and AI agents design, visualize and edit the same event model: a brainstorming board, a canvas for commands, events and read models, AI assistance on a model provider your organization configures, Screenplay import and export, and opt-in code generation from the model through Stage. It's live and in beta. Open signup is coming soon at cratis.studio, with a 14-day free trial. [Its own section](#cratis-studio-the-model-together) covers it.
 - **Modeling: what should happen?** [Screenplay](https://cratis.io/screenplay/) writes the event model down as a versioned `.play` file, [Stage](https://github.com/Cratis/Stage) renders supported parts of it into an application and checks the model's examples, and [Prologue](https://github.com/Cratis/Prologue) drafts a model from a running system. [Scene](https://github.com/Cratis/Scene) separates UI intent from its React renderer. All four are experimental.
 - **AI: what can an assistant read, and what may it touch?** The Cratis AI corpus, which we treat as a preview, is a free, MIT-licensed set of rules, skills, agents and prompts, with hooks for two assistants, that `cratis ai install` puts into your repository. The Screenplay MCP server lets an assistant propose model changes for a person to apply. [Chronicle MCP](https://cratis.io/chronicle-mcp/) connects one to a running Chronicle; it can read personal data and isn't read-only, so scope what you connect it to, and treat what it reads as data, not instructions. [Prompter](https://github.com/Cratis/Prompter), which we still treat as experimental, answers questions about the docs in Discord.
-- **Delivery: what should agents work on, and what did they do?** [Cratis Direct](https://cratis.direct) is a control plane for agentic engineering. It turns repository signals into one prioritized queue of bounded AI work, checks each stage against recorded evidence, and brings the results back as pull requests. Work starts only when a person admits it. We run our own engineering on it today. For everyone else it's coming soon at cratis.direct. [Its own section](#cratis-direct-the-control-plane-for-agentic-work) covers it.
+- **Delivery: what should agents work on, and what did they do?** [Cratis Direct](https://cratis.direct) is a control plane for agentic engineering. It turns repository signals into one prioritized queue of bounded AI work, checks each stage against recorded evidence, and brings the results back as pull requests. Issue work starts only when a person admits it. We run our own engineering on it today. For everyone else it's coming soon at cratis.direct. [Its own section](#cratis-direct-the-control-plane-for-agentic-work) covers it.
 - **Getting started: where do I begin?** The [Cratis templates](https://cratis.io/templates/) scaffold a full-stack application through `cratis new` or `dotnet new cratis`. [Samples](https://github.com/Cratis/Samples) holds runnable samples, from a small Chronicle event-sourcing process to a React application on Arc and Components, including the cross-store sample this post links to later.
 
 The map has no arrows; the joins between products are in the next figure and the sections that follow.
@@ -165,7 +165,7 @@ Each item below names a hard problem, the mechanism Cratis uses for it, and what
 - **[An agent can't tell a safe command from a destructive one.](#run-it-read-the-log-start-again)** `cratis llm-context` prints the CLI's command catalog with each command's effect, `read-only`, `local`, `mutating` or `destructive`, and whether it requires confirmation. No hand-kept list of which commands change the server.
 - **[An assistant works from pasted excerpts.](#run-it-read-the-log-start-again)** Screenplay MCP lets it propose model changes that only an explicit `apply` (or workspace recovery) writes, and Chronicle MCP lets it read events, read models, failed partitions and causal traces from a running Chronicle. No log excerpts pasted into a chat. Chronicle MCP can read personal data and isn't read-only, so scope what you connect it to, and treat what it reads as data, not instructions.
 - **[Answers about the docs need a search.](#the-model-becomes-code)** Prompter, which we still treat as experimental, answers questions about the Cratis docs in Discord with citations you can follow, or declines when it can't ground an answer.
-- **[Agents start on everything, and nobody can say what they did.](#cratis-direct-the-control-plane-for-agentic-work)** Cratis Direct starts issue work only when a person admits it with a ceiling on how far it may go, and every stage ends at a gate that keeps its verdict, the evidence it read and the rule version. No ad-hoc agent runs, and no reconstructing afterwards what an agent was allowed to do. It works only with GitHub, it's coming soon for others, and an LLM rule in a gate is judgement, not proof.
+- **[Agents start on everything, and nobody can say what they did.](#cratis-direct-the-control-plane-for-agentic-work)** Cratis Direct starts issue work only when a person admits it with a ceiling on how far it may go, and every stage ends at a gate that keeps its verdict, the evidence it read and the rule version. No ad-hoc agent runs on issues, and no reconstructing afterwards what an agent was allowed to do. It works only with GitHub, it's coming soon for others, and an LLM rule in a gate is judgement, not proof.
 
 ### The same list, as a table
 
@@ -270,7 +270,7 @@ A `.play` file is a good home for a model once someone has written it. Getting t
 
 ## Cratis Studio: the model, together
 
-![A board titled Cratis Studio, drawn as sticky notes on a canvas with two swimlanes. Blue command notes PlaceOrder and ShipOrder, orange event notes OrderPlaced, OrderPaid and OrderShipped, and a green read-model note OrderSummary are joined in timeline order: PlaceOrder to OrderPlaced to OrderSummary, OrderPaid to OrderSummary, OrderSummary to ShipOrder to OrderShipped. A yellow note reads Split this view in two? Two labeled cursors are on the board: You, at the yellow note, and AI, at OrderPaid.](./cratis-studio-board.png)
+![A board titled Cratis Studio, drawn as sticky notes on a canvas in three rows separated by dashed lines. Blue command notes PlaceOrder and ShipOrder, orange event notes OrderPlaced, OrderPaid and OrderShipped, and a green read-model note OrderSummary are joined in timeline order: PlaceOrder to OrderPlaced to OrderSummary, OrderPaid to OrderSummary, OrderSummary to ShipOrder to OrderShipped. A yellow note reads Split this view in two? Two labeled cursors are on the board: You, at the yellow note, and AI, at OrderPaid.](./cratis-studio-board.png)
 
 *People and AI on one event model.*
 
@@ -758,7 +758,7 @@ Teams that already use coding agents, or are about to, and have more repositorie
 
 ### The problems it solves
 
-- **An agent that starts on everything spends on everything.** In Cratis Direct, classifying an issue describes it and never starts work. No work on it starts until a person admits the issue into a journey and sets a ceiling: stop after the investigation, after the plan, after the implementation, or go through to release. AI capacity is a pool of accounts, used least-burnt first within a concurrency limit, with usage tracked per provider and model. What gets spent follows from what a person chose to start.
+- **An agent that starts on everything spends on everything.** In Cratis Direct, classifying an issue describes it and never starts work. No work on it starts until a person admits the issue into a journey and sets a ceiling: stop after the investigation, after the plan, after the implementation, or go through to release. AI capacity is shared within a concurrency limit, with usage tracked per provider and model, with usage tracked per provider and model. What gets spent follows from what a person chose to start.
 - **A merged pull request isn't evidence.** Every stage ends at a gate that evaluates recorded evidence against versioned rules, and keeps the verdict, the evidence and the rule version.
 - **Reviewers can't read everything.** The page's line for this is "The gate that lets an agent proceed is the evidence a reviewer reads later." Behind each pull request is its journey: the plan, the verdicts of the gates and the evidence they read. And each repository decides how much a person has to review at all, which the review policy below covers.
 - **The world changes under a running agent.** An issue is closed mid-journey, a pull request is merged early, a worker fails, the rules change. Cratis Direct checks each journey against reality every 15 minutes and whenever something changes, stops a journey that no longer matches, and asks a person.
@@ -766,7 +766,7 @@ Teams that already use coding agents, or are about to, and have more repositorie
 
 ### How it works, across the life cycle
 
-![A funnel titled Cratis Direct, in three rows. First row, left to right: Repository signals, with Issue, Failed build and Alert; Screened and classified; One prioritized queue of four equal, numbered cards; Admitted with a ceiling, by a person. An arrow leads down to a journey, gated at each stage: Intake, Investigation, Plan, Implementation and Release, each followed by a gate. From there an arrow leads down to Pull requests, two cards marked Review, and on to Review policy, per repository: Human, the default, where a person decides; Auto, where a model reads the change as safe; and Agent review, for the uncertain ones.](./cratis-direct-funnel.png)
+![A funnel titled Cratis Direct, in three rows. First row, left to right: Repository signals, with Issue, Failed build and Alert; Screened and classified; One prioritized queue of four numbered cards, the first highlighted; Admitted with a ceiling, by a person. An arrow leads down to a journey, gated at each stage: Intake, Investigation, Plan, Implementation and Release, each followed by a gate. From there an arrow leads down to Pull requests, two cards marked Review, and on to Review policy, per repository: Human, the default, where a person decides; Auto, where a model reads the change as safe; and Agent review, for the uncertain ones.](./cratis-direct-funnel.png)
 
 *From a signal to a pull request, with a person's admission and a gate at each step.*
 
@@ -796,7 +796,7 @@ The same machinery runs content. A blog journey goes Brief, Draft, Editorial rev
 
 ### What sets it apart
 
-Work starts one way: a person admits it, with a ceiling. A label that wakes a bot isn't how it starts. Gates decide from evidence and versioned rules, and the verdict, evidence and rule version stay on the journey. The application owns state, sequencing and capacity, and the agent is a replaceable worker doing one unit of work at a time. And it reaches past code, into alerts, content and the roadmap.
+Issue work starts one way: a person admits it, with a ceiling. It doesn't start because a label woke a bot. Gates decide from evidence and versioned rules, and the verdict, evidence and rule version stay on the journey. The application owns state, sequencing and capacity, and the agent is a replaceable worker doing one unit of work at a time. And it reaches past code, into alerts, content and the roadmap.
 
 That's a comparison of categories, and Cratis Direct's page says the same. We haven't benchmarked it against other agent tools, and we don't claim it beats them.
 
@@ -810,7 +810,7 @@ This is why Cratis Direct runs through the next section. An agentic life cycle n
 
 An agent can draft the `RegisterAuthor` command, its projection and its spec in a few minutes. Once that's true, typing is no longer the slow part of shipping the author feature. The slow parts sit on either side of it: saying precisely what should be built, and checking that what came back is that.
 
-People have started calling the result an agentic development life cycle, or ADLC. The published versions disagree on the stages, but they share one idea: the familiar stages stay, and each one has to hand the next something an agent can read and a person can check.
+People have started calling the result an agentic development life cycle, or ADLC. The published versions disagree on the stages, but they share one idea: the familiar stages stay, and each one has to hand the next something an agent can read and a person can check. Ours runs on [Cratis Direct](#cratis-direct-the-control-plane-for-agentic-work), whose issue journey is that life cycle.
 
 The most useful critique we've read comes from the spec-driven development side. In her [look at three spec-driven tools](https://martinfowler.com/articles/exploring-gen-ai/sdd-3-tools.html) on martinfowler.com, Birgitta Böckeler separates three levels. Spec-first writes a spec to guide one change. Spec-anchored keeps the spec and evolves it with the feature. Spec-as-source makes the spec the only thing people edit. She finds the markdown these tools produce can be harder to review than the code, and she wonders whether spec-as-source, and even spec-anchored, could end up with the downsides of both model-driven development and language models: inflexibility and non-determinism.
 
@@ -822,7 +822,7 @@ We sit at spec-anchored, with a spec a compiler reads. The event model is the sp
 
 The rest of this section walks that loop once with the author feature. Several pieces in it are experimental or early; [where each piece stands](#where-each-piece-stands) has the labels.
 
-We walk this loop every day through [Cratis Direct](#cratis-direct-the-control-plane-for-agentic-work), so each step below also says what Cratis Direct does at that point. The public pieces work without it. Cratis Direct is what turns the loop into one queue, bounded journeys, gates with evidence and a review policy, across our repositories at once.
+We run this loop on our own repositories through [Cratis Direct](#cratis-direct-the-control-plane-for-agentic-work), so each step below also says what Cratis Direct does at that point. The public pieces work without it. Cratis Direct is what turns the loop into one queue, bounded journeys, gates with evidence and a review policy, across our repositories at once.
 
 ### Intent becomes a model
 
@@ -874,7 +874,7 @@ None of this proves the feature does what the sticky note asks. A green build sa
 
 **With Cratis Direct**, these checks become evidence on the journey. The implementation gate records the build, the specs, static analysis and an LLM check that the tests weren't weakened, and keeps each verdict with the version of the rule that produced it. A check that can't reach a verdict counts as unknown, and unknown is never a pass.
 
-### A person reviews and decides
+### A person reviews, or sets who merges
 
 Reviewing a pull request an agent wrote is a different job from reviewing a colleague's. [One recent piece on it](https://tianpan.co/blog/2026/04/27/reviewing-agent-prs-different-not-faster) makes two points we agree with: the intent sits in a prompt that rarely travels with the pull request, and tests the same agent wrote tend to share its blind spots.
 
@@ -890,7 +890,7 @@ With the author feature: an assistant's diff that stops two authors in tenant Ac
 
 With the public pieces, however a pull request was produced, whether it merges is a person's decision. The corpus's own pull-request rule lets an assistant take a change through to merge only when a person asks it to ship, and even then it stops before a major release until a person explicitly confirms the break. That rule is about an assistant working in your repository.
 
-**With Cratis Direct**, who merges is a per-repository setting instead: a person by default, or, for a repository that opts in, an agent once the change is classified as safe to merge, optionally limited to paths the repository allows. A person sets the policy, and the classification behind each automatic merge decision is recorded with its reason. The reviewer who does look starts from the journey: the plan and the gates' verdicts, not a bare diff.
+**With Cratis Direct**, who merges is a per-repository policy a person sets: a person by default, or an agent for a repository that opts in, as [How it works](#how-it-works-across-the-life-cycle) describes. The reviewer who does look starts from the journey: the plan and the gates' verdicts, not a bare diff.
 
 ![A diagram titled Where people decide, three horizontal lanes across five stage columns: Intent, Model, Code, Review and Run. Lane A person: decides what starts; applies a proposal; decides the merge. Lane Checks: validate and model specs; build, analyzers, hooks; diagnose exit code. Lane An agent: proposes model changes; writes code; reads the event log.](./where-people-decide.png)
 
@@ -914,7 +914,7 @@ That makes it a good second pair of eyes on the debugging loop, with one caveat:
 
 The loop closes at the event log. The model says what the system is meant to record, and the log says what it did record. An event type nothing consumes, a partition that keeps failing, or a causal trace that surprises someone is the input to the next change. None of the public tools here turns that finding into work on its own: an agent can read it, and a person decides what starts.
 
-**With Cratis Direct**, the loop closes on the operations side too. An alert from the running system is deduplicated and investigated by an agent, and a person gets findings instead of a bare notification. One step turns the alert into a tracked issue, back at the start of the queue, and what starts from there is still a person's call. Turning an alert into a full journey isn't built yet, and checking a fix against the probe that raised the alert is only partly built, so we don't claim it.
+**With Cratis Direct**, the loop closes on the operations side too. An alert from the running system is deduplicated and investigated by an agent, and a person gets findings instead of a bare notification. One step turns the alert into a tracked issue, back at the start of the queue, and what starts from there is still a person's call. Turning an alert into a full journey isn't built yet; [How it works](#how-it-works-across-the-life-cycle) lists what else is partial.
 
 This section argues from structure, not results. We haven't measured whether agents working this loop ship fewer defects or ship faster, and we don't claim they do. The Cratis Direct counts earlier in this post are activity, not outcomes. The generated vertical is narrow, and a second model-led change hasn't been proved against a running target, so the model anchors the code without replacing it. The hooks cover two assistants, and nothing here guarantees what an agent writes. The [AI assistant walkthrough](https://blog.cratis.io/from-zero-to-first-projection-with-an-ai-assistant/) shows one of these tools on a real task, including where the assistant was told not to use one.
 
