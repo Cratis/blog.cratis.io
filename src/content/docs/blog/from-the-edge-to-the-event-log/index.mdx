@@ -22,11 +22,11 @@ The feature in this post fits on a sticky note: a signed-in user registers an au
 
 Shipping it is the short part. The feature then lives for years, and each stage of its life asks something different of the system.
 
-Before any code, someone has to write down what it should do in a form a non-developer can read. On day one you need to know who the user is, which tenant they belong to, where the uniqueness rule lives and whether it holds when two requests arrive in the same second. In month three someone asks to be forgotten, and the author's name is personal data. In month nine a view stops updating and nobody can say why. In year two the event needs a new field, a second service wants to hear about new authors, and half the team writes code with an assistant that has never read your conventions.
+Before any code, someone has to write down what it should do in a form a non-developer can read. On day one you need to know who the user is, which tenant they belong to, where the uniqueness rule lives and whether it holds when two requests arrive in the same second. In month three someone asks to be forgotten, and the author's name is personal data. In month nine a view stops updating and nobody can say why. In year two the event needs a new field, a second service wants to hear about new authors, and an assistant that helps with the code hasn't read your conventions.
 
-Those answers usually sit in different tools with different owners, and the nasty bugs live in the gaps between them. Cratis has a piece at each point: modeling tools, an edge proxy, an application framework on three server ecosystems, an event store with clients in several languages, a CLI and a browser Workbench for the running system, and a free AI corpus plus MCP servers for assistants. Event sourcing is one strand. Arc doesn't require it, and Chronicle can be used without Arc. Other pieces have their own dependencies and adoption boundaries.
+Cratis has a piece at each of these points: modeling tools, an edge proxy, an application framework on three server ecosystems, an event store with clients in several languages, a CLI and a browser Workbench for the running system, and a free AI corpus plus MCP servers for assistants. Event sourcing is one strand. Arc doesn't require it, and Chronicle can be used without Arc. Other pieces have their own dependencies and adoption boundaries.
 
-We designed these pieces to fit together, and this post uses them that way. It follows the author feature through its whole life: model it, start it, build it, protect it, run it, debug it, evolve it, and let an assistant help. Each section says what the pieces do, where they stop, and how mature they are. The [ecosystem at a glance](https://blog.cratis.io/the-cratis-ecosystem-at-a-glance/) post is the product list.
+This post follows the author feature through its whole life: model it, start it, build it, protect it, run it, debug it, evolve it, and let an assistant help. Each section says what the pieces do, where they stop, and how mature they are. The [ecosystem at a glance](https://blog.cratis.io/the-cratis-ecosystem-at-a-glance/) post is the product list.
 
 ## The ecosystem at a glance
 
@@ -45,7 +45,7 @@ We designed these pieces to fit together, and this post uses them that way. It f
 | Evolve it | Generations, replay, revision, redaction | One-off scripts that rewrite the store |
 | Automate it | The AI corpus, the CLI's command catalog, Chronicle MCP, Screenplay MCP | Your conventions, retyped into every assistant |
 
-Each row is a moment in the feature's life, and nothing here has to be adopted in one go. Most teams start in one row. Maturity varies widely, from released and MIT-licensed to experimental. Each section says which, and [where each piece stands](#where-each-piece-stands) collects it in one place.
+Each row is a moment in the feature's life, and nothing here has to be adopted in one go. Maturity varies widely, from released and MIT-licensed to experimental. Each section says which, and [where each piece stands](#where-each-piece-stands) collects it in one place.
 
 Five Chronicle terms come up throughout:
 
@@ -333,9 +333,9 @@ cratis render ./plays \
   --name MyApplication
 ```
 
-The output is deterministic, down to a manifest of file hashes. It refuses to overwrite a generated file you've edited unless you pass `--force`, and never overwrites a file it didn't generate. It also leaves a `Customizations/` folder that it never reads or touches, so your code survives the next render.
+The output is deterministic, down to a manifest of file hashes. It refuses to overwrite a generated file you've edited unless you pass `--force`, and never overwrites a file it didn't generate. It also leaves a `Customizations/` folder that it never reads or touches.
 
-If any part of the model is something the renderer can't express, it reports a blocking diagnostic and publishes nothing. We chose that deliberately: you get no thinner code and no generated TODOs, only the diagnostic.
+If any part of the model is something the renderer can't express, it reports a blocking diagnostic and publishes nothing.
 
 The `cratis` target is the only one, and it covers a narrow backend vertical: concepts, a command with `not empty` validation, its event, a one-instance projection, a by-key query and generated specs. Events with several generations, bodied reducers and opaque policies are refused for now. A successful render is a plan that validated. It isn't a build or a running application. A second model-led change still needs to be proved against a running target.
 
