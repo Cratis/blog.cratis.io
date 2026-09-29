@@ -3,7 +3,7 @@ title: "From the edge to the event log: one feature across Cratis"
 date: 2026-09-29
 lastUpdated: 2026-09-29
 authors: sindre
-excerpt: "What you no longer write with Cratis, a map of the products, then one sticky-note feature followed from its model to the event log and into its second year: what each product does, how the products connect, where each one stops, and how the loop changes when agents write much of the code."
+excerpt: "What you no longer write with Cratis, a map of the products, and one sticky-note feature followed from its model into its second year, including the loop when agents write the code."
 cover:
   alt: "The author feature as six numbered steps under the title From the edge to the event log, inside a frame labeled Tenant: Acme. Steps 1 to 6 are colored by product: AuthProxy, Arc, three Chronicle steps, and Components."
   image: ./cover.png
@@ -45,7 +45,7 @@ This post follows the author feature through its whole life: model it, start it,
 - **Model first, if you want to.** An experimental `.play` file can be validated in CI, and Stage renders a narrow backend vertical from it. See [Model it](#model-it-write-the-intent-down-first) and [Or render it from the model](#or-render-it-from-the-model).
 - **When agents write the code.** A spec a compiler reads, a corpus with hooks, analyzers, a CLI that declares each command's effect, and MCP servers, with the merge still a person's decision. See [Automate it](#automate-it-the-life-cycle-when-agents-write-the-code), then [where each piece stands](#where-each-piece-stands) and [when not to use it](#when-not-to-use-it).
 
-## The ecosystem at a glance
+## One application's life at a glance
 
 ![A diagram titled One application's life: eight numbered stage cards in two rows of four, joined left to right within each row. 1 Model it: event modeling, Screenplay. 2 Start it: templates, cratis new. 3 Build it: AuthProxy, Arc, Components, Chronicle. 4 Protect it: PII, NotAudited, Encrypted. 5 Run it: namespaces, subscriptions. 6 Debug it: CLI, terminal workbench, Workbench. 7 Evolve it: generations, replay, corrections. 8 Automate it: AI corpus, MCP servers. A band along the bottom reads: One feature, start to finish.](./lifecycle-spine.png)
 
@@ -74,17 +74,44 @@ Seven Chronicle terms come up throughout:
 - A **partition** is the events of one event source, such as one author, and an observer processes each partition separately.
 - A **generation** is one version of an event type's shape.
 
+## The map: products by layer
+
+The author feature touches a handful of products. Here is every public product this post mentions, grouped by the question each layer answers. All of it is documented at [cratis.io](https://cratis.io).
+
+![A map titled Products by layer. Eight boxes, each with a layer name and product chips, and no arrows. Top row: Edge: AuthProxy, Ante. Application: Arc, Arc for Kotlin, Components, Arc for TypeScript. Tooling: Cratis CLI, Narrator. A full-width row, Event history: Chronicle, Workbench, a Clients chip reading .NET, TypeScript, JVM, Elixir, and a Storage chip reading MongoDB, PostgreSQL, SQL Server, SQLite. Third row: Foundations: Fundamentals, Synopsis, Specifications. Modeling: Screenplay, Stage, Scene, Prologue. Bottom row: AI: AI corpus, Prompter, Screenplay MCP, Chronicle MCP. Getting started: Templates, Samples, cratis.io docs.](./platform-layers.png)
+
+*Each layer answers one question.*
+
+- **Edge: who is calling, and for which tenant?** [AuthProxy](https://cratis.io/authproxy/) is an edge proxy that sits in front of the backend and frontend, handles sign-in and resolves the tenant. [Ante](https://github.com/Cratis/Ante) is a separate invitation and onboarding lobby for users who have signed in but belong to no tenant yet; its docs say it's verified by source-level specs only.
+- **Application: what is being asked, and is it allowed?** [Arc](https://cratis.io/arc/) is an opinionated CQRS application framework for ASP.NET Core with commands, queries, validation, authorization, and TypeScript proxy generation. [Arc for Kotlin](https://cratis.io/arc/backend/kotlin/) is a Spring Boot implementation for Kotlin and Java, published to Maven Central. [Arc for TypeScript](https://github.com/Cratis/Arc.TypeScript), an early source preview, is a TypeScript command and query server; its npm packages are unpublished. [Components](https://cratis.io/components/) is a React component library aligned with Arc application patterns.
+- **Tooling: what is the running system doing?** The Cratis [CLI](https://cratis.io/cli/) provides terminal workflows for inspecting and diagnosing Chronicle, including a full-screen terminal workbench, and it also hosts `cratis new`, `cratis ai`, `cratis screenplay` and `cratis render`. [Narrator](https://github.com/Cratis/Narrator), a VS Code extension we still treat as experimental, browses Chronicle history from your editor.
+- **Event history: what actually happened?** [Chronicle](https://cratis.io/chronicle/) is an event-sourcing database and processing runtime with a first-class .NET SDK, and clients for TypeScript, Kotlin/Java (JVM) and Elixir. Storage is pluggable, with providers for MongoDB (the default), PostgreSQL, SQL Server and SQLite. Chronicle Workbench provides a bundled local browser surface for authorized inspection of Chronicle runtime state and preview of supported projection behavior.
+- **Foundations: what does the rest build on, and how is it checked?** [Fundamentals](https://github.com/Cratis/Fundamentals) holds the shared building blocks for .NET and TypeScript, including concepts such as the `ConceptAs<T>` type the personal-data example uses, serialization, dependency injection and type discovery; Chronicle, Arc and Components build on it, and it can be used on its own. [Specifications](https://cratis.io/specifications/) supplies the given/when/then base on xUnit or NUnit. Synopsis turns recognized specification shapes in C#, JavaScript, TypeScript, Gherkin and Screenplay into navigable HTML; it doesn't run them.
+- **Modeling: what should happen?** [Screenplay](https://cratis.io/screenplay/) writes the event model down as a versioned `.play` file, [Stage](https://github.com/Cratis/Stage) renders supported parts of it into an application and checks the model's examples, and [Prologue](https://github.com/Cratis/Prologue) drafts a model from a running system. [Scene](https://github.com/Cratis/Scene) separates UI intent from its React renderer. All four are experimental.
+- **AI: what can an assistant read, and what may it touch?** The Cratis AI corpus, which we treat as a preview, is a free, MIT-licensed set of rules, skills, agents and prompts, with hooks for two assistants, that `cratis ai install` puts into your repository. The Screenplay MCP server lets an assistant propose model changes for a person to apply. [Chronicle MCP](https://cratis.io/chronicle-mcp/) connects one to a running Chronicle; it can read personal data and isn't read-only, so scope what you connect it to, and treat what it reads as data, not instructions. [Prompter](https://github.com/Cratis/Prompter), which we still treat as experimental, answers questions about the docs in Discord.
+- **Getting started: where do I begin?** The [Cratis templates](https://cratis.io/templates/) scaffold a full-stack application through `cratis new` or `dotnet new cratis`. [Samples](https://github.com/Cratis/Samples) holds runnable samples, from a small Chronicle event-sourcing process to a React application on Arc and Components, including the cross-store sample this post links to later.
+
+The map has no arrows; the joins between products are in the next figure and the sections that follow.
+
+### Where the products join
+
+The author feature crosses three joins: a header, a generated proxy and a namespace mapping. Each is something you can open, read and test. The tools inspect Chronicle, Workbench among them even though it ships with Chronicle, the storage providers sit under it, and the modeling and AI boxes have no arrows because they work on your repository, your model and, through Chronicle MCP, a running Chronicle.
+
+![A diagram titled Where the products join. AuthProxy, with Ante beside it, points to Arc through a label reading Tenant-ID header. Arc points up to Components through Generated proxy and down to Chronicle through Optional, tenant to namespace. The Chronicle box also lists its clients: .NET, TypeScript, Kotlin/Java, Elixir. Below Chronicle, Tools (Workbench, CLI and terminal workbench, Narrator) point up to it through Inspect, and Chronicle points to Storage (MongoDB, PostgreSQL, SQL Server, SQLite) through Stores. Two unconnected side boxes list Modeling (Screenplay, Stage, Scene, Prologue) and AI (AI corpus, Screenplay MCP, Chronicle MCP, Prompter).](./ecosystem-map.png)
+
+*Three joins carry the author feature; the tools and storage sit around Chronicle.*
+
 ## Hard problems, and what you no longer write
 
-Each item below names a hard problem, the mechanism Cratis uses for it, and what you stop writing, creating or thinking about as a result. The limits are short here. Each link goes to the section that states them in full, and nothing here has to be adopted in one go.
+Each item below names a hard problem, the mechanism Cratis uses for it, and what you stop writing, creating or thinking about as a result. The limits are short here; each link goes to the section that states them in full. The groups are coarser than the eight stages above: Data covers the rules from Build it and Protect it, Run includes Debug it, and Assist is Automate it. [The table at the end](#the-same-list-as-a-table) covers the same ground for scanning.
 
 ![A grid titled What you no longer write, with six rows, one per stage, and two cells in each. Each cell names what you stop writing and, beneath it, what does it instead. Model and start: drifting design docs, a validated .play file; project wiring, cratis new. Build: controllers and DTOs, Arc-routed commands; fetch wrappers, generated proxies. Data: per-field encryption, a type marked [PII]; lookups before writes, [Unique] at append. Run: tenant filters, a namespace per tenant; store-to-store relays, outbox and inbox. Evolve: repair scripts, fix then replay; store rewrites, event generations. Assist: retyped conventions, cratis ai install; hand-kept command lists, cratis llm-context.](./no-longer-write.png)
 
-*Two of the things you stop writing at each stage.*
+*Two of the things you stop writing at each stage. Cells are coloured by the product that does the work.*
 
 ### Model and start
 
-- **[A design document drifts from the code.](#model-it-write-the-intent-down-first)** Screenplay keeps the event model as a versioned `.play` file next to the code, and `cratis screenplay validate` can compile it in CI with nothing running. You stop maintaining a design document that drifts from the code. Validation checks the model; outside what Stage renders, nothing checks the code against it. Screenplay is experimental, and validation checks the model, not whether a renderer can build it.
+- **[A design document drifts from the code.](#model-it-write-the-intent-down-first)** Screenplay keeps the event model as a versioned `.play` file next to the code, and `cratis screenplay validate` can compile it in CI with nothing running. You stop maintaining a design document that drifts from the code. Validation checks the model, not whether a renderer can build it, and outside what Stage renders nothing checks the code against it. Screenplay is experimental.
 - **[Nobody ever modeled the system you already have.](#model-it-write-the-intent-down-first)** Prologue stands beside a running system, captures selected database changes, HTTP calls and telemetry metadata, and proposes candidate slices as a `.play` draft. The first model starts from a draft instead of a blank page. Prologue is experimental, the draft is for a person to correct, it doesn't recover domain truth, and the metadata it captures can still be sensitive.
 - **[A new project needs wiring before its first feature.](#start-it-from-nothing-to-a-running-skeleton)** `cratis new` creates a full-stack skeleton, in C# or on Spring Boot with Kotlin or Java, for the database you pick, with proxy generation configured. No project wiring and no proxy setup.
 - **[Some slices have the same shape every time.](#or-render-it-from-the-model)** Stage renders the narrow backend vertical it supports from the model into a C# application on Arc and Chronicle, and leaves a `Customizations/` folder for hand-written code that it never reads or touches. For that vertical you stop typing the concepts, command, event, projection, query and specs by hand. Stage is experimental, and a model it can't express gets a blocking diagnostic and no new files.
@@ -111,7 +138,7 @@ Each item below names a hard problem, the mechanism Cratis uses for it, and what
 - **[A signed-in user belongs to no tenant yet.](#at-the-edge-sign-in-tenant-and-onboarding)** Ante is a separate lobby for joining an existing tenant, creating one by invitation or self-registering, and it publishes the acceptance for your application to act on. No invitation lobby of your own to build; membership, provisioning and email stay yours. Its docs say it's verified by source-level specs only.
 - **[Services couple through their internals.](#a-private-fact-and-a-public-contract)** A persistent subscription carries the events you put in one store's outbox to another store's inbox. No relay between the two stores, and the events you don't publish stay in your own log. Appending the private fact and the public event are two appends, not one transaction.
 - **[Every service is pushed onto one stack.](#one-contract-several-ecosystems)** Arc's HTTP contract has implementations on ASP.NET Core, on Spring Boot for Kotlin and Java, and, as an early source preview, on Node.js. Chronicle has clients for .NET, TypeScript, Kotlin/Java and Elixir, and each deployment chooses its storage provider. Services in one system can use different Chronicle clients against the same kernel. The clients aren't interchangeable, and the docs list where they differ.
-- **[You can't see why a view stopped.](#debug-it-when-a-view-stops-updating)** `cratis chronicle diagnose` reports failed partitions and names the next command, `failed-partitions show` gives the error for each attempt by your own key, and `retry-partition` asks for one more attempt. The terminal workbench, Chronicle Workbench in a browser and Narrator in VS Code let you look from wherever you are. No ad-hoc queries against the storage.
+- **[You can't see why a view stopped.](#debug-it-when-a-view-stops-updating)** `cratis chronicle diagnose` reports failed partitions and names the next command, `failed-partitions show` gives the error for each attempt by your own key, and `retry-partition` asks for one more attempt. The terminal workbench, Chronicle Workbench in a browser and Narrator in VS Code, which we still treat as experimental, let you look from wherever you are. No ad-hoc queries against the storage.
 
 ### Evolve
 
@@ -122,15 +149,15 @@ Each item below names a hard problem, the mechanism Cratis uses for it, and what
 
 ### Assist
 
-- **[Assistants guess at your conventions.](#the-model-becomes-code)** `cratis ai install` puts the Cratis AI corpus, a free, MIT-licensed set of rules, skills, agents and prompts, into your repository for the supported assistants you choose. The conventions aren't retyped into each assistant's instructions. It doesn't give an assistant access to anything, and it doesn't make its output correct.
+- **[Assistants guess at your conventions.](#the-model-becomes-code)** `cratis ai install` puts the Cratis AI corpus, which we treat as a preview, a free, MIT-licensed set of rules, skills, agents and prompts, into your repository for the supported assistants you choose. The conventions aren't retyped into each assistant's instructions. It doesn't give an assistant access to anything, and it doesn't make its output correct.
 - **[An agent doesn't always follow its instructions.](#checks-that-run-whether-the-agent-listened-or-not)** The compiler and the generated proxies, the Roslyn analyzers in Arc and in Chronicle's .NET client, `cratis screenplay validate` and the corpus hooks check the work whether or not the rules were read. In Claude Code a quality gate runs when the assistant tries to finish; in Pi it's a tool called at a verification checkpoint. The hooks are wired for those two assistants.
 - **[An agent can't tell a safe command from a destructive one.](#run-it-read-the-log-start-again)** `cratis llm-context` prints the CLI's command catalog with each command's effect, `read-only`, `local`, `mutating` or `destructive`, and whether it requires confirmation. No hand-kept list of which commands change the server.
 - **[An assistant works from pasted excerpts.](#run-it-read-the-log-start-again)** Screenplay MCP lets it propose model changes that only an explicit `apply` (or workspace recovery) writes, and Chronicle MCP lets it read events, read models, failed partitions and causal traces from a running Chronicle. No log excerpts pasted into a chat. Chronicle MCP can read personal data and isn't read-only, so scope what you connect it to, and treat what it reads as data, not instructions.
 - **[Answers about the docs need a search.](#the-model-becomes-code)** Prompter, which we still treat as experimental, answers questions about the Cratis docs in Discord with citations you can follow, or declines when it can't ground an answer.
 
-### Developer experience: what you don't write
+### The same list, as a table
 
-For model-bound commands and queries, you don't write controllers, DTOs, fetch wrappers or registration lists, and projections don't need property-by-property mappings where names match. [Why this shape](#why-this-shape) covers the principle behind it. Here is the whole list in one place, with the section that shows each one.
+The table covers the same ground as the list above, cut down to what you'd otherwise write and the section that shows it, for scanning or coming back to. The Build rows are the ones you notice first: for model-bound commands and queries there are no controllers, DTOs, fetch wrappers or registration lists. [Why this shape](#why-this-shape) covers the principle behind it.
 
 | You no longer write | What does it instead | Shown in |
 |---|---|---|
@@ -147,43 +174,16 @@ For model-bound commands and queries, you don't write controllers, DTOs, fetch w
 | A per-tenant uniqueness check | A namespace per tenant and a constraint scoped to it | [The rule that holds](#the-rule-that-holds-when-its-written) |
 | Per-field encryption code | `[PII]` on the value's type | [Protect it](#protect-it-personal-data-marked-once) |
 | Tenant filters in every event query | A namespace per tenant | [Three tenant boundaries](#three-tenant-boundaries) |
-| A relay between two stores | Outbox and inbox subscriptions | [A private fact and a public contract](#a-private-fact-and-a-public-contract) |
+| A relay between two stores | Outbox and inbox subscriptions | [Private fact, public contract](#a-private-fact-and-a-public-contract) |
 | Ad-hoc queries against the storage | `cratis chronicle`, the terminal workbench, Workbench | [Debug it](#debug-it-when-a-view-stops-updating) |
 | A repair script for a wrong view | A fixed projection and a replay | [Evolve it](#evolve-it-four-kinds-of-change-in-year-two) |
 | One-off scripts that rewrite the store | Generations, revision, redaction | [Evolve it](#evolve-it-four-kinds-of-change-in-year-two) |
 | Your conventions, retyped into every assistant | `cratis ai install` | [The model becomes code](#the-model-becomes-code) |
-| A hand-kept list of which CLI commands change state | `cratis llm-context` | [Run it, read the log, start again](#run-it-read-the-log-start-again) |
-
-## The map: products by layer
-
-The author feature touches a handful of products. Here is every public product this post mentions, grouped by the question each layer answers. All of it is documented at [cratis.io](https://cratis.io).
-
-![A map titled Products by layer. Eight boxes, each with a layer name and product chips, and no arrows. Top row: Edge: AuthProxy, Ante. Application: Arc, Arc for Kotlin, Components, Arc for TypeScript. Tooling: Cratis CLI, Narrator. A full-width row, Event history: Chronicle, Workbench, a Clients chip reading .NET, TypeScript, JVM, Elixir, and a Storage chip reading MongoDB, PostgreSQL, SQL Server, SQLite. Third row: Foundations: Fundamentals, Synopsis, Specifications. Modeling: Screenplay, Stage, Scene, Prologue. Bottom row: AI: AI corpus, Prompter, Screenplay MCP, Chronicle MCP. Getting started: Templates, Samples, cratis.io docs.](./platform-layers.png)
-
-*Each layer answers one question; each product sits in one layer.*
-
-- **Edge: who is calling, and for which tenant?** [AuthProxy](https://cratis.io/authproxy/) is an edge proxy that sits in front of the backend and frontend, handles sign-in and resolves the tenant. [Ante](https://github.com/Cratis/Ante) is a separate invitation and onboarding lobby for users who have signed in but belong to no tenant yet; its docs say it's verified by source-level specs only.
-- **Application: what is being asked, and is it allowed?** [Arc](https://cratis.io/arc/) is an opinionated CQRS application framework for ASP.NET Core with commands, queries, validation, authorization, and TypeScript proxy generation. [Arc for Kotlin](https://cratis.io/arc/backend/kotlin/) is a Spring Boot implementation for Kotlin and Java, published to Maven Central. [Arc for TypeScript](https://github.com/Cratis/Arc.TypeScript), an early source preview, is a TypeScript command and query server; its npm packages are unpublished. [Components](https://cratis.io/components/) is a React component library aligned with Arc application patterns.
-- **Foundations: what does the rest build on, and how is it checked?** [Fundamentals](https://github.com/Cratis/Fundamentals) holds the shared building blocks for .NET and TypeScript, including concepts such as the `ConceptAs<T>` type the personal-data example uses, serialization, dependency injection and type discovery; Chronicle, Arc and Components build on it, and it can be used on its own. [Specifications](https://cratis.io/specifications/) supplies the given/when/then base on xUnit or NUnit. Synopsis turns recognized specification shapes in C#, JavaScript, TypeScript, Gherkin and Screenplay into navigable HTML; it doesn't run them.
-- **Event history: what actually happened?** [Chronicle](https://cratis.io/chronicle/) is an event-sourcing database and processing runtime with a first-class .NET SDK, and clients for TypeScript, Kotlin/Java (JVM) and Elixir. Storage is pluggable, with providers for MongoDB (the default), PostgreSQL, SQL Server and SQLite. Chronicle Workbench provides a bundled local browser surface for authorized inspection of Chronicle runtime state and preview of supported projection behavior.
-- **Tooling: what is the running system doing?** The Cratis [CLI](https://cratis.io/cli/) provides terminal workflows for inspecting and diagnosing Chronicle, including a full-screen terminal workbench, and it also hosts `cratis new`, `cratis ai`, `cratis screenplay` and `cratis render`. [Narrator](https://github.com/Cratis/Narrator), a VS Code extension we still treat as experimental, browses Chronicle history from your editor.
-- **Modeling: what should happen?** [Screenplay](https://cratis.io/screenplay/) writes the event model down as a versioned `.play` file, [Stage](https://github.com/Cratis/Stage) renders supported parts of it into an application and checks the model's examples, and [Prologue](https://github.com/Cratis/Prologue) drafts a model from a running system. [Scene](https://github.com/Cratis/Scene) separates UI intent from its React renderer. All four are experimental.
-- **AI: what can an assistant read, and what may it touch?** The Cratis AI corpus, which we treat as a preview, is a free, MIT-licensed set of rules, skills, agents and prompts, with hooks for two assistants, that `cratis ai install` puts into your repository. The Screenplay MCP server lets an assistant propose model changes for a person to apply. [Chronicle MCP](https://cratis.io/chronicle-mcp/) connects one to a running Chronicle; it can read personal data and isn't read-only, so scope what you connect it to, and treat what it reads as data, not instructions. [Prompter](https://github.com/Cratis/Prompter), which we still treat as experimental, answers questions about the docs in Discord.
-- **Getting started: where do I begin?** The [Cratis templates](https://cratis.io/templates/) scaffold a full-stack application through `cratis new` or `dotnet new cratis`. [Samples](https://github.com/Cratis/Samples) holds runnable samples, from a small Chronicle event-sourcing process to a React application on Arc and Components, including the cross-store sample this post links to later.
-
-The map has no arrows; the joins between products are in the next figure and the sections that follow.
-
-### Where the products join
-
-The author feature crosses three joins: a header, a generated proxy and a namespace mapping. Each is something you can open, read and test. The tools inspect Chronicle, the storage providers sit under it, and the modeling and AI boxes have no arrows because they work on your repository, your model and, through Chronicle MCP, a running Chronicle.
-
-![A diagram titled Where the products join. AuthProxy, with Ante beside it, points to Arc through a label reading Tenant-ID header. Arc points up to Components through Generated proxy and down to Chronicle through Optional, tenant to namespace. The Chronicle box also lists its clients: .NET, TypeScript, Kotlin/Java, Elixir. Below Chronicle, Tools (Workbench, CLI and terminal workbench, Narrator) point up to it through Inspect, and Chronicle points to Storage (MongoDB, PostgreSQL, SQL Server, SQLite) through Stores. Two unconnected side boxes list Modeling (Screenplay, Stage, Scene, Prologue) and AI (AI corpus, Screenplay MCP, Chronicle MCP, Prompter).](./ecosystem-map.png)
-
-*The joins are a header, a generated proxy and a namespace mapping.*
+| A hand-kept list of which CLI commands change state | `cratis llm-context` | [Run it, read the log](#run-it-read-the-log-start-again) |
 
 ## Why this shape
 
-Cratis is designed so that the right pattern is the easy one, and developer experience is a design goal. It's also a set of separate products with seams you can open. A header, a generated proxy, a namespace choice, and in the modeling layer a `.play` file: each can be read, diffed and tested on its own. When something breaks between two products, you look at that seam instead of guessing at a framework's internals. A seam is also a place to stop, which is why [When not to use it](#when-not-to-use-it) suggests adopting the boundary you need rather than the whole ecosystem.
+Cratis is designed so that the right pattern is the easy one, and developer experience is a design goal. It's also a set of separate products with seams you can open. The three joins [above](#where-the-products-join), plus the `.play` file in the modeling layer, can each be read, diffed and tested on its own. When something breaks between two products, you look at that seam instead of guessing at a framework's internals. A seam is also a place to stop, which is why [When not to use it](#when-not-to-use-it) suggests adopting the boundary you need rather than the whole ecosystem.
 
 A few habits run through every section.
 
@@ -510,7 +510,7 @@ export class RegisterTask {
 
 It has adapters for Express, Fastify and Hono, plus a Fetch API entry for Next.js route handlers, Bun and Deno. Its Chronicle integration is experimental.
 
-Chronicle has its own set of clients. It's an event-sourcing database and processing runtime with a first-class .NET SDK, and clients for TypeScript, Kotlin/Java (JVM) and Elixir. Storage is pluggable, with providers for MongoDB (the default), PostgreSQL, SQL Server and SQLite. Services in one system can use different clients against the same kernel. The clients are not interchangeable, though: the default concurrency check, `ExpectingNoMatchingEvent`, decision reads and some erasure options differ, and [where the clients differ](https://cratis.io/chronicle/clients/where-the-clients-differ/) lists the gaps. [Event sourcing in any language](https://blog.cratis.io/event-sourcing-in-any-language/) explains the shared contract underneath.
+Chronicle has its own set of clients, the ones in [the map](#the-map-products-by-layer): a first-class .NET SDK, and clients for TypeScript, Kotlin/Java (JVM) and Elixir, over whichever storage provider each deployment chooses. Services in one system can use different clients against the same kernel. The clients are not interchangeable, though: the default concurrency check, `ExpectingNoMatchingEvent`, decision reads and some erasure options differ, and [where the clients differ](https://cratis.io/chronicle/clients/where-the-clients-differ/) lists the gaps. [Event sourcing in any language](https://blog.cratis.io/event-sourcing-in-any-language/) explains the shared contract underneath.
 
 ![A diagram titled One contract, several ecosystems. On the left, three server boxes: Arc on ASP.NET Core, Arc on Spring Boot, and Arc on Node.js with Express, Fastify and Hono. All three connect to one central box, the Arc HTTP contract, which connects to Generated TypeScript proxies and then React and Components on the right. Below, in a frame labeled Chronicle, a Chronicle kernel box sits beside four client chips: .NET, TypeScript, Kotlin and Java, and Elixir.](./one-contract-many-ecosystems.png)
 
