@@ -3,7 +3,7 @@ title: "From the edge to the event log: one feature across Cratis"
 date: 2026-09-29
 lastUpdated: 2026-09-29
 authors: sindre
-excerpt: "One sticky-note feature, followed from its model to the event log and into its second year: what each Cratis product does, how the products connect, and where each one stops."
+excerpt: "One sticky-note feature, followed from its model to the event log and into its second year: what each Cratis product does, how the products connect, where each one stops, and how the loop changes when agents write much of the code."
 cover:
   alt: "The author feature as six numbered steps under the title From the edge to the event log, inside a frame labeled Tenant: Acme. Steps 1 to 6 are colored by product: AuthProxy, Arc, three Chronicle steps, and Components."
   image: ./cover.png
@@ -26,7 +26,7 @@ Before any code, someone has to write down what it should do in a form a non-dev
 
 Cratis has a piece at each of these points: modeling tools, an edge proxy, an application framework on three server ecosystems, an event store with clients in several languages, a CLI and a browser Workbench for the running system, and a free AI corpus plus MCP servers for assistants. Event sourcing is one strand. Arc doesn't require it, and Chronicle can be used without Arc. Other pieces have their own dependencies and adoption boundaries.
 
-This post follows the author feature through its whole life: model it, start it, build it, protect it, run it, debug it, evolve it, and let an assistant help. Each section says what the pieces do, where they stop, and how mature they are. The [ecosystem at a glance](https://blog.cratis.io/the-cratis-ecosystem-at-a-glance/) post is the product list.
+This post follows the author feature through its whole life: model it, start it, build it, protect it, run it, debug it, evolve it, and then walk the same loop with agents doing much of the writing. Each section says what the pieces do, where they stop, and how mature they are. The [ecosystem at a glance](https://blog.cratis.io/the-cratis-ecosystem-at-a-glance/) post is the product list.
 
 ## The ecosystem at a glance
 
@@ -43,7 +43,7 @@ This post follows the author feature through its whole life: model it, start it,
 | Run it | A namespace per tenant, outbox and inbox subscriptions | Tenant filters in every event query, relays between stores |
 | Debug it | `cratis chronicle`, the terminal workbench, Workbench, Narrator | Ad-hoc queries against the storage |
 | Evolve it | Generations, replay, revision, redaction | One-off scripts that rewrite the store |
-| Automate it | The AI corpus, the CLI's command catalog, Chronicle MCP, Screenplay MCP | Your conventions, retyped into every assistant |
+| Automate it | The AI corpus and its hooks, the CLI's command catalog, Chronicle MCP, Screenplay MCP | Your conventions, retyped into every assistant |
 
 Each row is a moment in the feature's life, and nothing here has to be adopted in one go. Maturity varies widely, from released and MIT-licensed to experimental. Each section says which, and [where each piece stands](#where-each-piece-stands) collects it in one place.
 
@@ -118,15 +118,11 @@ Checking the model needs nothing running:
 cratis screenplay validate ./plays --warnings-as-errors
 ```
 
-The CLI compiles every `.play` file under the folder as one application and prints compiler-style errors, so it fits in CI on a machine where the application has never started. It checks the model. Whether a renderer can build it is a separate question.
-
-**With an assistant.** Through the Screenplay MCP server, an assistant can list the slices that have no `then` assertion or prepare a model-aware rename. Proposals are tied to the revision they were made against, and only an explicit `apply` (or workspace recovery) writes files, which is exactly where your client's approval prompt belongs. None of its tools run specifications.
+The CLI compiles every `.play` file under the folder as one application and prints compiler-style errors, so it fits in CI on a machine where the application has never started. It checks the model. Whether a renderer can build it is a separate question. An assistant can work on the same file, and [Automate it](#automate-it-the-life-cycle-when-agents-write-the-code) covers how.
 
 **Starting from a system you already have.** Most systems exist long before anyone models them. [Prologue](https://github.com/Cratis/Prologue), also experimental, stands beside a running system, captures selected database changes, HTTP calls and telemetry metadata, and proposes candidate slices as a `.play` draft. It records metadata rather than row values or request bodies, but metadata can still be sensitive, and its links between events are a time-window guess. The result is a provisional model for a person to correct. It doesn't recover domain truth.
 
 There's one rule in this layer we care about more than any single feature. Producers and consumers of a model have to declare what they can handle and expose what they can't represent, instead of dropping it silently.
-
-We're building Cratis Studio: an experimental, collaborative place where people and AI design, visualize and edit the same event model.
 
 ## Start it: from nothing to a running skeleton
 
@@ -550,11 +546,39 @@ A year in, four kinds of change show up that look alike: a new shape for an even
 
 **A processor that stopped** is the debugging loop above, and the [troubleshooting guide](https://cratis.io/chronicle/troubleshooting/) walks it end to end.
 
-## Automate it: assistants that know the conventions
+## Automate it: the life cycle when agents write the code
 
-An assistant that hasn't read your conventions guesses at your framework, and the result is plausible code that's subtly wrong. Each layer above gives it something better to work from, and each has its own limit on what it may touch.
+An agent can draft the `RegisterAuthor` command, its projection and its spec in a few minutes. Once that's true, typing is no longer the slow part of shipping the author feature. The slow parts sit on either side of it: saying precisely what should be built, and checking that what came back is that.
 
-**Rules and skills in the repository.** The Cratis AI corpus is a free, MIT-licensed set of rules, skills, agents and prompts for building with Cratis. [`cratis ai install`](https://cratis.io/ai/getting-started/) installs it into your repository once and points each supported assistant at it:
+People have started calling the result an agentic development life cycle, or ADLC. The published versions disagree on the stages, but they share one idea: the familiar stages stay, and each one has to hand the next something an agent can read and a person can check.
+
+The most useful critique we've read comes from the spec-driven development side. In her [look at three spec-driven tools](https://martinfowler.com/articles/exploring-gen-ai/sdd-3-tools.html) on martinfowler.com, Birgitta Böckeler separates three levels. Spec-first writes a spec to guide one change. Spec-anchored keeps the spec and evolves it with the feature. Spec-as-source makes the spec the only thing people edit. She finds the markdown these tools produce can be harder to review than the code, and she wonders whether spec-as-source, and even spec-anchored, could end up with the downsides of both model-driven development and language models: inflexibility and non-determinism.
+
+We sit at spec-anchored, with a spec a compiler reads. The event model is the spec and the `.play` file is its text. Its commands, events and projections are the concepts Arc and Chronicle run, so the spec and the running system share one vocabulary. For the narrow part Stage can render, it moves a step toward spec-as-source. A textual model with a code generator is the model-driven shape she warns about. The renderer is deterministic, so that step adds no unpredictability of its own, but the rigidity risk applies to us, and the next section shows where hand-written code goes.
+
+![A diagram titled The agentic loop, seven numbered cards in a loop. Top row, left to right: 1 Intent: event modeling, Prologue draft. 2 Model: .play file, Screenplay MCP. 3 Code: Stage render, AI corpus. 4 Checks: compiler, analyzers, hooks. An arrow leads down to the bottom row, right to left: 5 Review: pull request, a person decides. 6 Run: Arc and Chronicle. 7 Evidence: event log, CLI, Chronicle MCP. An arrow labeled next change leads from 7 back up to 1.](./agentic-loop.png)
+
+*One pass around the loop, and the Cratis piece at each step.*
+
+The rest of this section walks that loop once with the author feature. Most of what's in it is experimental or early, and each step says so.
+
+### Intent becomes a model
+
+A person decides what should exist; here, that's the sticky note. Written as a slice, it becomes something an assistant and a reviewer both read, and `cratis screenplay validate` checks it before anything runs.
+
+An assistant works on that file through the Screenplay MCP server. It can list the slices that have no `then` assertion or prepare a model-aware rename. Proposals are tied to the revision they were made against, and only an explicit `apply` (or workspace recovery) writes files, which is exactly where your client's approval prompt belongs. None of its tools run specifications.
+
+For a system that already exists, the Prologue draft from [Model it](#model-it-write-the-intent-down-first) enters the loop at the same point, as a proposal a person corrects.
+
+We're building Cratis Studio: an experimental, collaborative place where people and AI design, visualize and edit the same event model.
+
+### The model becomes code
+
+There are two routes from the model to code today.
+
+For the narrow backend vertical Stage supports, `cratis render` writes it, as [Or render it from the model](#or-render-it-from-the-model) describes. What matters for an agent is the seam. The renderer owns the files in its manifest, refuses to overwrite one that was edited, and never reads or touches `Customizations/`. Code written by hand, by a person or an agent, belongs in that folder. An edit to a generated file then shows up as a refused render instead of a silent overwrite, unless someone passes `--force`.
+
+Outside that vertical, the model is the map and an agent writes the code by hand, guided by the Cratis AI corpus: a free, MIT-licensed set of rules, skills, agents and prompts for building with Cratis. [`cratis ai install`](https://cratis.io/ai/getting-started/) installs it into your repository once and points each supported assistant at it:
 
 ```bash
 cratis ai install \
@@ -563,29 +587,28 @@ cratis ai install \
   --languages csharp,typescript
 ```
 
-It records the selection and file hashes, refuses to overwrite files you own, and `cratis ai status` tells you when managed files were edited. That gives an assistant context about how Cratis is meant to be used, with dozens of skills for commands, projections, reactors, concepts and specs. It doesn't give it access to anything, and it doesn't make its output correct. The [AI section](https://cratis.io/ai/) of the docs covers the corpus.
+It records the selection and file hashes, refuses to overwrite files you own, and `cratis ai status` tells you when managed files were edited. That gives an assistant context about how Cratis is meant to be used, with dozens of skills for commands, projections, reactors, concepts and specs. It doesn't give it access to anything, and it doesn't make its output correct.
 
-**A CLI that says what's safe.** `cratis llm-context` prints the CLI's command catalog as JSON, and every command states its effect, `read-only`, `local`, `mutating` or `destructive`, and whether it requires confirmation. An agent can tell observing commands from state-changing ones without keeping its own list. `cratis init` writes that catalog into context files for the tools you use; refresh it after upgrading. When the CLI recognizes it's running under an agent tool, it defaults to compact JSON. Only the effect and confirmation fields are declared stable; bind anything else to the exact CLI version.
+### Checks that run whether the agent listened or not
 
-![A diagram titled What a command does, four rows stacked from top to bottom, each naming an effect and an example: read-only, diagnose and failed-partitions show; local, context set; mutating, retry-partition; destructive, observers replay. Arrows from the first two rows lead to a bracket reading Observes or stays local. Arrows from the last two lead to a bracket reading Changes the server.](./cli-effects-for-agents.png)
+Böckeler also notes that agents often ignore the instructions they're given, and asks whether all those files and checklists give a "false sense of control". A rules file is advice. What holds is a check that runs either way, and the author feature meets several:
 
-*The catalog marks each command's effect, so an agent can tell observing from changing.*
+- `cratis screenplay validate` rejects a broken model before any code exists, and the Stage specification runner checks the model's Given/When/Then examples against the model.
+- The compiler and the generated TypeScript proxies turn a renamed field into a compile error on both sides.
+- Arc and Chronicle's .NET client ship Roslyn analyzers that report some misuses of their APIs as build diagnostics. They aren't specific to agents; they treat an agent's code like anyone else's.
+- The corpus ships hooks that run inside the assistant's own tool.
 
-**The running system.** [Chronicle MCP](https://cratis.io/chronicle-mcp/) connects an assistant to a running Chronicle server, whatever client language the application uses. It can list observers and failed partitions, read events and read-model instances, describe event types and explain a causal trace. The only tools that change anything are three for stopping, resuming and deleting jobs. It can't append, redact or replay.
+The hooks are the part written with agents in mind. After an edit, a scan points out patterns the rules warn against, without blocking anything. A guard blocks the store-changing `cratis chronicle` commands it can see in the assistant's shell commands. In Claude Code, when the assistant tries to finish and relevant files have changed, a quality gate runs, and a failure goes back to the assistant instead of letting it stop. In Pi, the gate doesn't run on its own: it's a tool called at a verification checkpoint, and a gate that times out or is cancelled reports that nothing was verified, never a pass. The gates are data a repository can override. Today the hooks are wired for Claude Code and Pi; other assistants get the rules and skills without them.
 
-That makes it a good second pair of eyes on the debugging loop, with a sharp caveat: an assistant connected to it can read event payloads, including personal data. Don't treat it as read-only, scope what you connect it to, don't rely on its development-default credentials, and treat anything it reads as data, not instructions.
+The same rule shows up elsewhere in this post. `diagnose` exits nonzero when it finds failed partitions, and a render that can't express the model publishes nothing. In each case, a problem or an unfinished check doesn't come back as success.
 
-**Typed material to check against.** Each layer also gives an assistant something concrete to read instead of guess at: AuthProxy's configuration is declarative JSON, the generated TypeScript proxies are typed contracts the frontend compiles against, registered event types have schemas it can look up, and a `.play` file is text a compiler checks.
+None of this proves the feature does what the sticky note asks. A green build says the code has the right shape, and [the spec](#the-spec) checks one example of the behavior.
 
-**The model.** Screenplay MCP, covered in [Model it](#model-it-write-the-intent-down-first), proposes model changes for a person to apply.
+### A person reviews and merges
 
-**The docs.** [Prompter](https://github.com/Cratis/Prompter), which we still treat as experimental, answers questions about the Cratis docs in Discord with citations you can follow, or declines when it can't ground an answer.
+Reviewing a pull request an agent wrote is a different job from reviewing a colleague's. [One recent piece on it](https://tianpan.co/blog/2026/04/27/reviewing-agent-prs-different-not-faster) makes two points we agree with: the intent sits in a prompt that rarely travels with the pull request, and tests the same agent wrote tend to share its blind spots.
 
-![A diagram titled What an assistant can reach, with an assistant in the center and four connections. Top left: Rules and skills, in the repository, labeled read. Top right: CLI command catalog, labeled effects declared. Bottom left: Screenplay MCP, model files, labeled you approve apply. Bottom right: Chronicle MCP, a running Chronicle, labeled reads events. A separate note at the bottom reads: Prompter answers from the docs.](./ai-mcp-map.png)
-
-*What an assistant can read, and what it may change.*
-
-### Four kinds of evidence
+The loop gives the reviewer the intent as a diff of its own. A change to the author feature can arrive as a `.play` change that states the command, its rules and its event, a render manifest that says which files are generated, and code in one feature folder. The reviewer reads the intent first, then checks the code against it.
 
 A proposal, a declared model, a passing specification and a recorded event answer different questions: what was proposed, what the model declares, what a specification checks, and what the running system recorded. A passing spec doesn't approve a proposal or prove deployed behavior.
 
@@ -595,11 +618,31 @@ With the author feature: an assistant's diff that stops two authors in tenant Ac
 
 *A proposal, a declaration, a spec result and a recorded event answer different questions.*
 
-The [AI assistant walkthrough](https://blog.cratis.io/from-zero-to-first-projection-with-an-ai-assistant/) shows one of these tools on a real task, including where the assistant was told not to use one.
-
-### Work that comes back as pull requests
+However a pull request was produced, whether it merges is a person's decision. The corpus's own pull-request rule lets an assistant take a change through to merge only when a person asks it to ship, and even then it stops before a major release until a person explicitly confirms the break.
 
 We're building Cratis Direct: it turns repository signals into one prioritized queue of bounded AI work, and brings the results back as pull requests for people to review. It is an internal experiment the team uses on its own work. Its landing page is [cratis.direct](https://cratis.direct).
+
+![A diagram titled Where people decide, three horizontal lanes across five stage columns: Intent, Model, Code, Review and Run. Lane A person: decides what starts; applies a proposal; decides the merge. Lane Checks: validate and model specs; build, analyzers, hooks; diagnose exit code. Lane An agent: proposes model changes; writes code; reads the event log.](./where-people-decide.png)
+
+*The decisions stay with people; the checks don't take the agent's word for it.*
+
+### Run it, read the log, start again
+
+Once the feature runs, an assistant that helps operate it needs to know which of its actions change anything. `cratis llm-context` prints the CLI's command catalog as JSON, and every command states its effect, `read-only`, `local`, `mutating` or `destructive`, and whether it requires confirmation. An agent can tell observing commands from state-changing ones without keeping its own list. `cratis init` writes that catalog into context files for the tools you use; refresh it after upgrading. Only the effect and confirmation fields are declared stable; bind anything else to the exact CLI version.
+
+[Chronicle MCP](https://cratis.io/chronicle-mcp/) connects an assistant to a running Chronicle server, whatever client language the application uses. It can list observers and failed partitions, read events and read-model instances, describe event types and explain a causal trace. It can also list event types that nothing consumes. The only tools that change anything are three for stopping, resuming and deleting jobs. It can't append, redact or replay.
+
+That makes it a good second pair of eyes on the debugging loop, with a sharp caveat: an assistant connected to it can read event payloads, including personal data. Don't treat it as read-only, scope what you connect it to, don't rely on its development-default credentials, and treat anything it reads as data, not instructions.
+
+![A diagram titled What an agent can reach and change, four columns from left to right. Reads: rules and skills; CLI, read-only commands; Chronicle MCP, events, read models. Proposes: Screenplay MCP, proposals; pull request, code for review. Changes: apply, writes model files; CLI, mutating, destructive, confirmation flagged; Chronicle MCP, stop, resume, delete jobs. A person: decides the merge; decides what starts. A note below reads: Chronicle MCP can't append, redact or replay.](./agent-reach.png)
+
+*What an agent can read, propose and change, and what stays with a person.*
+
+The loop closes at the event log. The model says what the system is meant to record, and the log says what it did record. An event type nothing consumes, a partition that keeps failing, or a causal trace that surprises someone is the input to the next change. None of the public tools here turns that finding into work on its own: an agent can read it, and a person decides what starts.
+
+For questions about the docs themselves, [Prompter](https://github.com/Cratis/Prompter), which we still treat as experimental, answers in Discord with citations you can follow, or declines when it can't ground an answer.
+
+This section argues from structure, not results. We haven't measured whether agents working this loop ship fewer defects or ship faster, and we don't claim they do. The generated vertical is narrow, and a second model-led change hasn't been proved against a running target, so the model anchors the code without replacing it. The hooks cover two assistants, and nothing here guarantees what an agent writes. The [AI assistant walkthrough](https://blog.cratis.io/from-zero-to-first-projection-with-an-ai-assistant/) shows one of these tools on a real task, including where the assistant was told not to use one.
 
 ## When not to use it
 
@@ -618,7 +661,7 @@ Chronicle and its bundled local Workbench are available as MIT-licensed self-hos
 - **Experimental:** Screenplay, Stage, Scene and Prologue. Syntax and behavior can still change.
 - **We treat as experimental:** Narrator and Prompter, whose own docs don't use that label.
 - **Early source preview, not published to npm:** Arc for TypeScript, whose Chronicle integration is experimental.
-- **We treat as preview:** the Cratis AI corpus, whose own docs don't use that label.
+- **We treat as preview:** the Cratis AI corpus and its hooks, whose own docs don't use that label.
 - **Verified by source-level specs only, per its own docs:** Ante.
 - **.NET only today:** decision reads and Arc aggregates.
 
@@ -636,7 +679,7 @@ Pick the moment you're in.
 - **Event history:** follow [Get started with Chronicle](https://cratis.io/chronicle/get-started/), append a few events and open the [Workbench](https://cratis.io/chronicle/workbench/).
 - **Operating it:** `brew tap cratis/cratis && brew install cratis`, then `cratis chronicle diagnose`, and keep `retry-partition` ahead of `replay` in your runbook.
 - **Personal data:** mark one value's type `[PII]`, then read [The log remembers](https://blog.cratis.io/the-log-remembers-pii-crypto-shredding-in-chronicle/).
-- **With an assistant:** run `cratis ai install` for the harnesses, profiles and languages you use, and review its work as a proposal, a model, a spec and the event log.
+- **With an assistant:** run `cratis ai install` for the harnesses, profiles and languages you use, keep `cratis screenplay validate` and your build in the assistant's loop, and review its work as a proposal, a model, a spec and the event log.
 
 Read next, by what you're deciding:
 
