@@ -11,6 +11,8 @@ tags:
   - event-sourcing
 ---
 
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
 *[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 06 of 23*
 
 Erasing a person in Chronicle is one call that deletes their key. Every event they appear in stays in the log at the same sequence number, and the values marked as personal data come back as empty strings. If something then tries to append new personal data for that person, the append fails on purpose instead of quietly starting a fresh key.
@@ -22,6 +24,9 @@ In [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-
 The author's name is personal data. One attribute on its type makes Chronicle encrypt the value with the key of the event's subject, and with Arc's Chronicle integration the same attribute keeps it out of the [causation record](https://cratis.io/arc/backend/csharp/chronicle/commands/causation/). [The log remembers](https://blog.cratis.io/the-log-remembers-pii-crypto-shredding-in-chronicle/) shows the Chronicle side in five languages.
 
 The name's [`ConceptAs<T>` type is marked `[PII]`](https://cratis.io/chronicle/compliance/pii-with-concepts/), and every event property of that type is encrypted for the event's subject. A person-name type marked that way:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
 
 ```csharp
 using Cratis.Chronicle.Compliance.GDPR;
@@ -36,6 +41,63 @@ public record PiiConceptsPersonName(string Value) : ConceptAs<string>(Value)
 }
 ```
 
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import io.cratis.chronicle.compliance.Pii
+import io.cratis.chronicle.concepts.ConceptAs
+
+@Pii
+data class PiiConceptsPersonName(override val value: String) : ConceptAs<String>
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+import io.cratis.chronicle.compliance.Pii;
+import io.cratis.chronicle.concepts.ConceptAs;
+
+@Pii
+record PiiConceptsPersonName(String value) implements ConceptAs<String> {
+    @Override
+    public String getValue() {
+        return value;
+    }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { pii } from '@cratis/chronicle';
+import { ConceptAs } from '@cratis/fundamentals';
+
+@pii()
+class PiiConceptsPersonName extends ConceptAs<string> {
+    static readonly valueType = String;
+
+    constructor(value: string) {
+        super(value);
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+```elixir
+defmodule MyApp.Compliance.PiiWithConcepts.PersonName do
+  use Chronicle.Concept, type: :string
+  pii()
+end
+```
+
+</TabItem>
+</Tabs>
+
 Projection-backed read models track the protected value's subject through their mappings. Reducer read models need [their own PII marking](https://cratis.io/chronicle/compliance/read-models/), because the kernel can't infer arbitrary transformations.
 
 Then there's the audit trail. With Arc's Chronicle integration, a command's property values are recorded in the causation of every event it appends, so an unmarked password or token lands in the log in clear text and stays there. Arc leaves `[PII]` values out of that record, and [`[NotAudited]`](https://cratis.io/arc/backend/csharp/attributes/) does the same for secrets without encrypting them. For an operational secret you must store, Chronicle has [`[Encrypted]`](https://cratis.io/chronicle/security/encrypted-values/). It uses a separate key. Erasing a subject's `[PII]` key leaves an `[Encrypted]` value readable, and Chronicle's subject-erasure operation refuses to delete its key.
@@ -44,9 +106,43 @@ Pick the attribute by what the value is. Personal data you may have to erase get
 
 [Erasure](https://cratis.io/chronicle/compliance/erasing-a-subject/) is one call:
 
+<Tabs syncKey="language">
+<TabItem label="C#">
+
 ```csharp
 await eventStore.PII.DeleteEncryptionKeyFor("person-42");
 ```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+eventStore.compliance.deleteEncryptionKey("person-42")
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+ComplianceServiceJavaBridge.deleteEncryptionKey(eventStore.unwrap().getCompliance(), "person-42");
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+await eventStore.pii.deleteEncryptionKey('person-42');
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+```elixir
+Chronicle.Compliance.delete_encryption_key("person-42")
+```
+
+</TabItem>
+</Tabs>
 
 Once the [key](https://cratis.io/chronicle/compliance/key-lifecycle/) has been destroyed, Chronicle can't decrypt anything encrypted with it. The event keeps its place in the log, so the log still shows that something happened.
 

@@ -11,6 +11,8 @@ tags:
   - event-sourcing
 ---
 
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
 *[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 05 of 23*
 
 An event-sourced system has no table to put a `UNIQUE` index on. A rule that has to hold at write time has to be checked where the event is committed.
@@ -29,6 +31,9 @@ A uniqueness check against a read model races. Two requests in the same second b
 
 Chronicle checks [constraints](https://cratis.io/chronicle/constraints/), such as uniqueness, in the kernel when an event is appended, and rejects the append that would break one. In the model-bound form, `[Unique]` goes on the event property. Here it is on a project event:
 
+<Tabs syncKey="language">
+<TabItem label="C#">
+
 ```csharp
 using Cratis.Chronicle.Events;
 using Cratis.Chronicle.Events.Constraints;
@@ -36,6 +41,57 @@ using Cratis.Chronicle.Events.Constraints;
 [EventType]
 public record ConstraintsModelBoundUniqueProjectCreated([property: Unique] string Name, string Description);
 ```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import io.cratis.chronicle.constraints.Unique
+import io.cratis.chronicle.events.EventType
+
+@EventType
+data class ConstraintsModelBoundUniqueProjectCreated(@Unique val name: String, val description: String)
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+import io.cratis.chronicle.constraints.Unique;
+import io.cratis.chronicle.events.EventType;
+
+@EventType
+record ConstraintsModelBoundUniqueProjectCreated(@Unique String name, String description) {}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { eventType, unique } from '@cratis/chronicle';
+
+@eventType('constraints-model-bound-project-created')
+class CmbProjectCreated {
+    @unique() name = '';
+    description = '';
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+```elixir
+defmodule MyApp.Events.ConstraintsModelBoundUniqueProjectCreated do
+  use Chronicle.Events.EventType, id: "constraints-model-bound-unique-project-created"
+
+  defstruct [:name, :description]
+
+  unique(:name)
+end
+```
+
+</TabItem>
+</Tabs>
 
 A constraint is scoped to its event sequence and namespace, and Arc's [Chronicle integration](https://cratis.io/arc/backend/csharp/chronicle/tenancy/) maps each tenant to its own Chronicle namespace. So the name is unique within each tenant, which is the rule the sticky note asked for. Nobody wrote a per-tenant uniqueness check. It falls out of the namespace mapping and the constraint scope, both of which were already there.
 
@@ -47,6 +103,9 @@ The kernel checks constraints before it commits, so they apply to every client a
 
 The model-bound form is the one to reach for first. Naming the constraint lets another event release the value, so an email can be used again once its user is removed:
 
+<Tabs syncKey="language">
+<TabItem label="C#">
+
 ```csharp
 [EventType]
 public record UserRegistered([property: Unique(name: "UniqueEmail")] string Email, string DisplayName);
@@ -57,6 +116,84 @@ public record UserId(Guid Value) : ConceptAs<Guid>(Value);
 [RemoveConstraint("UniqueEmail")]
 public record UserRemoved(UserId UserId);
 ```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import io.cratis.chronicle.constraints.RemoveConstraint
+import io.cratis.chronicle.constraints.Unique
+import io.cratis.chronicle.events.EventType
+
+@EventType
+data class UserRegistered(
+    @Unique(id = "UniqueEmail") val email: String,
+    val displayName: String
+)
+
+@EventType
+@RemoveConstraint("UniqueEmail")
+data class UserRemoved(val userId: String)
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+import io.cratis.chronicle.constraints.RemoveConstraint;
+import io.cratis.chronicle.constraints.Unique;
+import io.cratis.chronicle.events.EventType;
+
+@EventType
+record UserRegistered(@Unique(id = "UniqueEmail") String email, String displayName) {}
+
+@EventType
+@RemoveConstraint("UniqueEmail")
+record UserRemoved(String userId) {}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { eventType, removeConstraint, unique } from '@cratis/chronicle';
+
+@eventType('user-registered')
+class UserRegistered {
+    @unique('UniqueEmail') email = '';
+    displayName = '';
+}
+
+@eventType('user-removed')
+@removeConstraint('UniqueEmail')
+class UserRemoved {
+    userId = '';
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+```elixir
+defmodule MyApp.Events.UserRegistered do
+  use Chronicle.Events.EventType, id: "user-registered"
+
+  defstruct [:email, :display_name]
+
+  unique(:email, name: "UniqueEmail")
+end
+
+defmodule MyApp.Events.UserRemoved do
+  use Chronicle.Events.EventType, id: "user-removed"
+
+  defstruct [:user_id]
+
+  remove_constraint("UniqueEmail")
+end
+```
+
+</TabItem>
+</Tabs>
 
 Giving several events the same constraint name makes one rule follow the value across them, so a registered email and a changed email share one index. When a lifecycle can end in more than one way, each of those ending events gets its own `[RemoveConstraint]`. For rules that outgrow attributes there's the declarative `IConstraint` class. Its builder names the constraint, covers event types whose property names differ, can ignore casing, supplies messages and declares removal. Both forms compile to the same constraint in the kernel.
 

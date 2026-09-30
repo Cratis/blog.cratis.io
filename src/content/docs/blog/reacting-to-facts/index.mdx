@@ -11,6 +11,8 @@ tags:
   - event-sourcing
 ---
 
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
 *[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 04 of 23*
 
 A reactor that charges a card and then crashes before it records the charge will charge the card again on the retry. Chronicle delivers events to reactors at least once, and it never sees your payment provider, so it has no way of knowing whether the charge went through. What it can do is tell your handler, every time the same event arrives, that this is the same delivery.
@@ -38,6 +40,9 @@ The last row belongs to [*From event to read model*](/from-event-to-read-model/)
 
 The smallest reactor sends a confirmation when an email address is confirmed:
 
+<Tabs syncKey="language">
+<TabItem label="C#">
+
 ```csharp
 using Cratis.Chronicle.Events;
 using Cratis.Chronicle.Reactors;
@@ -53,6 +58,52 @@ public class EmailNotifications : IReactor
     Task SendConfirmationAsync(string email, DateTimeOffset occurred) => Task.CompletedTask;
 }
 ```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import io.cratis.chronicle.events.EventContext
+import io.cratis.chronicle.events.EventType
+import io.cratis.chronicle.observation.Reactor
+
+@EventType
+data class EmailConfirmed(val email: String)
+
+@Reactor
+class EmailNotifications {
+    fun confirmed(event: EmailConfirmed, context: EventContext) {
+        sendConfirmation(event.email, context.occurred)
+    }
+
+    private fun sendConfirmation(email: String, occurred: java.time.Instant) {}
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+import io.cratis.chronicle.events.EventContext;
+import io.cratis.chronicle.events.EventType;
+import io.cratis.chronicle.observation.Reactor;
+import java.time.Instant;
+
+@EventType
+record EmailConfirmed(String email) {}
+
+@Reactor
+class EmailNotifications {
+    void confirmed(EmailConfirmed event, EventContext context) {
+        sendConfirmation(event.email(), context.getOccurred());
+    }
+
+    private void sendConfirmation(String email, Instant occurred) {}
+}
+```
+
+</TabItem>
+</Tabs>
 
 Chronicle [discovers the handler methods](https://cratis.io/chronicle/reactors/event-processing/) by their shape. The first parameter is an event type, and the method returns `void`, `Task`, `Task<T>` or one of the side-effect types that show up further down. The method name is yours.
 
@@ -78,6 +129,9 @@ Retries follow the backoff, and a failed partition is also retried whenever the 
 
 A reaction is often another fact. A book gets reserved, and the member's activity changes. A reactor can inject `IEventLog` and append, or it can return the events and let Chronicle [append them](https://cratis.io/chronicle/reactors/side-effects/) after the handler completes:
 
+<Tabs syncKey="language">
+<TabItem label="C#">
+
 ```csharp
 using Cratis.Chronicle.Events;
 using Cratis.Chronicle.EventSequences;
@@ -92,6 +146,48 @@ public class ReservationReactor : IReactor
         new(@event.MemberId, new MemberActivityRecorded(@event.Isbn));
 }
 ```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import io.cratis.chronicle.events.EventContext
+import io.cratis.chronicle.events.EventType
+import io.cratis.chronicle.eventSequences.EventForEventSourceId
+import io.cratis.chronicle.observation.Reactor
+
+@EventType
+data class MemberActivityRecorded(val isbn: String)
+
+@Reactor
+class ReservationReactor {
+    fun bookReserved(event: BookReserved, context: EventContext) =
+        EventForEventSourceId(event.memberId, MemberActivityRecorded(event.isbn))
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+import io.cratis.chronicle.events.EventContext;
+import io.cratis.chronicle.events.EventType;
+import io.cratis.chronicle.eventSequences.EventForEventSourceId;
+import io.cratis.chronicle.observation.Reactor;
+
+@EventType
+record MemberActivityRecorded(String isbn) {}
+
+@Reactor
+class ReservationReactor {
+    EventForEventSourceId bookReserved(BookReserved event, EventContext context) {
+        return new EventForEventSourceId(event.memberId(), new MemberActivityRecorded(event.isbn()));
+    }
+}
+```
+
+</TabItem>
+</Tabs>
 
 A bare event, or a list of them, lands on the triggering event's event source, with the metadata the reactor resolves for it. `EventForEventSourceId` targets a different event source. The reservation is a fact about the book, and the follow-up belongs to the member. The wrapper carries its own stream, source type, subject, tags and causation, and Chronicle uses only the values on it. Return several and they fan out across event sources in one transaction. Bare events and wrappers can be mixed in the same return.
 
@@ -149,6 +245,9 @@ Elixir and TypeScript have no `ReactorDelivery`, so integrations called from the
 
 A [webhook](https://cratis.io/chronicle/webhooks/) is registered once, with a name, a URL, the event types to forward, and any headers and bearer token:
 
+<Tabs syncKey="language">
+<TabItem label="C#">
+
 ```csharp
 public class WebhooksIndexRegister(IEventStore eventStore)
 {
@@ -162,6 +261,116 @@ public class WebhooksIndexRegister(IEventStore eventStore)
                 .WithBearerToken(Environment.GetEnvironmentVariable("WEBHOOK_TOKEN")!));
 }
 ```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import io.cratis.chronicle.EventStore
+import io.cratis.chronicle.events.EventType
+
+@EventType
+data class WebhooksIndexOrderPlaced(val orderId: String)
+
+suspend fun registerOrderWebhook(store: EventStore) {
+    store.webhooks.register("order-placed-webhook", "https://hooks.example.com/orders") { builder ->
+        builder
+            .withEventType(WebhooksIndexOrderPlaced::class)
+            .withBearerToken(System.getenv("CHRONICLE_WEBHOOK_TOKEN") ?: error("CHRONICLE_WEBHOOK_TOKEN is required"))
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+import io.cratis.chronicle.EventStore;
+import io.cratis.chronicle.events.EventType;
+
+import io.cratis.chronicle.java.WebhookDefinitionBuilderJavaBridge;
+import io.cratis.chronicle.java.WebhooksServiceJavaBridge;
+
+@EventType
+record WebhooksIndexOrderPlaced(String orderId) {}
+
+class WebhooksIndexRegistration {
+    void registerOrderWebhook(EventStore store) {
+        WebhooksServiceJavaBridge.register(store.getWebhooks(), "order-placed-webhook", "https://hooks.example.com/orders", builder -> {
+            WebhookDefinitionBuilderJavaBridge.withEventType(builder, WebhooksIndexOrderPlaced.class)
+                .withBearerToken(java.util.Objects.requireNonNull(System.getenv("CHRONICLE_WEBHOOK_TOKEN"), "CHRONICLE_WEBHOOK_TOKEN is required"));
+        });
+    }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { eventType, IEventStore } from '@cratis/chronicle';
+import { field } from '@cratis/fundamentals';
+
+@eventType()
+class WebhooksIndexAccountOpened {
+    @field(String) readonly ownerName: string;
+
+    constructor(ownerName: string) {
+        this.ownerName = ownerName;
+    }
+}
+
+class WebhooksIndexRegister {
+    constructor(
+        private readonly store: IEventStore,
+        private readonly webhookToken: string
+    ) {}
+
+    async registerWebhook(): Promise<void> {
+        await this.store.webhooks.register(
+            'account-events',
+            'https://example.com/chronicle/webhooks',
+            builder => {
+                builder
+                    .withEventType(WebhooksIndexAccountOpened)
+                    .withHeader('x-source', 'my-app')
+                    .withBearerToken(this.webhookToken);
+            }
+        );
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+```elixir
+defmodule MyApp.Events.WebhooksIndexAccountOpened do
+  use Chronicle.Events.EventType, id: "webhooks-index-account-opened"
+
+  defstruct [:owner_name]
+end
+
+defmodule MyApp.WebhooksIndexRegister do
+  alias MyApp.Events.WebhooksIndexAccountOpened
+
+  def register_webhook do
+    Chronicle.WebHooks.register(
+      "account-events",
+      "https://example.com/chronicle/webhooks",
+      fn builder ->
+        builder
+        |> Chronicle.WebHooks.DefinitionBuilder.with_event_type(WebhooksIndexAccountOpened)
+        |> Chronicle.WebHooks.DefinitionBuilder.with_header("x-source", "my-app")
+        |> Chronicle.WebHooks.DefinitionBuilder.with_bearer_token(System.fetch_env!("WEBHOOK_TOKEN"))
+      end
+    )
+  end
+end
+```
+
+</TabItem>
+</Tabs>
 
 From then on the kernel observes those events and POSTs them. With no event types configured, it forwards the types the registering client knows about. The receiving end needs no Chronicle client, which is the reason to pick a webhook over a reactor.
 
@@ -189,6 +398,9 @@ A [subscription](https://cratis.io/chronicle/subscriptions/) is managed by the k
 
 An [explicit subscription](https://cratis.io/chronicle/subscriptions/explicit-subscriptions/) names the source store and, optionally, the event types:
 
+<Tabs syncKey="language">
+<TabItem label="C#">
+
 ```csharp
 public static class InventoryUpdates
 {
@@ -201,6 +413,99 @@ public static class InventoryUpdates
                 .WithEventType<StockReserved>());
 }
 ```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import io.cratis.chronicle.EventStore
+import io.cratis.chronicle.events.EventType
+
+@EventType
+data class SubscriptionsExplicitFilteringPayrollRunCompleted(val employeeId: String)
+
+@EventType
+data class SubscriptionsExplicitFilteringPayrollRunFailed(val employeeId: String, val reason: String)
+
+suspend fun subscribeToPayrollOutcomes(store: EventStore) {
+    store.eventStoreSubscriptions.subscribe("payroll-outcomes", "PayrollEventStore") { builder ->
+        builder
+            .withEventType(SubscriptionsExplicitFilteringPayrollRunCompleted::class)
+            .withEventType(SubscriptionsExplicitFilteringPayrollRunFailed::class)
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+import io.cratis.chronicle.EventStore;
+import io.cratis.chronicle.events.EventType;
+
+import io.cratis.chronicle.java.EventStoreSubscriptionBuilderJavaBridge;
+import io.cratis.chronicle.java.EventStoreSubscriptionsServiceJavaBridge;
+
+@EventType
+record SubscriptionsExplicitFilteringPayrollRunCompleted(String employeeId) {}
+
+@EventType
+record SubscriptionsExplicitFilteringPayrollRunFailed(String employeeId, String reason) {}
+
+class SubscriptionsExplicitFiltering {
+    void subscribeToPayrollOutcomes(EventStore store) {
+        EventStoreSubscriptionsServiceJavaBridge.subscribe(store.getEventStoreSubscriptions(), "payroll-outcomes", "PayrollEventStore", builder -> {
+            EventStoreSubscriptionBuilderJavaBridge.withEventType(builder, SubscriptionsExplicitFilteringPayrollRunCompleted.class);
+            EventStoreSubscriptionBuilderJavaBridge.withEventType(builder, SubscriptionsExplicitFilteringPayrollRunFailed.class);
+        });
+    }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { IEventStore } from '@cratis/chronicle';
+
+class InventoryUpdates {
+    static async run(store: IEventStore): Promise<void> {
+        await store.subscriptions.subscribe(
+            'inventory-updates',
+            'warehouse-service',
+            builder => builder
+                .withEventType(StockAdjusted)
+                .withEventType(StockReserved)
+        );
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+```elixir
+defmodule MyApp.InventoryUpdates do
+  alias Chronicle.EventStoreSubscriptions.DefinitionBuilder
+  alias MyApp.Events.{StockAdjusted, StockReserved}
+
+  def run do
+    Chronicle.subscribe_to_event_store(
+      "inventory-updates",
+      "warehouse-service",
+      fn builder ->
+        builder
+        |> DefinitionBuilder.with_event_type(StockAdjusted)
+        |> DefinitionBuilder.with_event_type(StockReserved)
+      end,
+      []
+    )
+  end
+end
+```
+
+</TabItem>
+</Tabs>
 
 Without the builder callback it forwards every event type your client knows. With the implicit form, you put `[EventStore("service-name")]` on the event types in a contracts package such as `Authors.Events.Contracts`, and Chronicle routes an observer to the inbox when every type it handles belongs to that store. Reactors, projections and reducers read from `EventSequenceId.Inbox`, and the SDK routes that to the inbox for the right source.
 

@@ -10,6 +10,8 @@ tags:
   - arc
 ---
 
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
 *[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 01 of 23*
 
 A table row holds the last thing that happened to it. Change an author's name in a row and the old name is gone, along with the request that changed it, the person who sent it and the reason. In an event-sourced system the change is a new fact at the end of a log. It gets a sequence number that never changes. The request, the identity behind it and the chain of causes are stored with it, and nothing recorded before it moves.
@@ -30,6 +32,9 @@ Three things in the author feature look alike and do different jobs. `RegisterAu
 
 The names carry the difference. In this pair, both records have the Chronicle attribute:
 
+<Tabs syncKey="language">
+<TabItem label="C#">
+
 ```csharp
 using Cratis.Chronicle.Events;
 
@@ -43,6 +48,104 @@ public record AddressChanged(Address Address);
 [EventType]
 public record UpdateAddress(Address Address);
 ```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import io.cratis.chronicle.events.EventType
+
+data class Address(val street: String, val city: String)
+
+// A fact that happened
+@EventType
+data class AddressChanged(val address: Address)
+
+// An intent (that's a command) or a state blob (that's a read model) — not an event
+@EventType
+data class UpdateAddress(val address: Address)
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+import io.cratis.chronicle.events.EventType;
+
+record Address(String street, String city) {}
+
+// A fact that happened
+@EventType
+record AddressChanged(Address address) {}
+
+// An intent (that's a command) or a state blob (that's a read model) — not an event
+@EventType
+record UpdateAddress(Address address) {}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { eventType } from '@cratis/chronicle';
+import { field } from '@cratis/fundamentals';
+
+class Address {
+    @field(String) readonly street: string;
+    @field(String) readonly city: string;
+
+    constructor(street: string, city: string) {
+        this.street = street;
+        this.city = city;
+    }
+}
+
+// A fact that happened
+@eventType()
+class AddressChanged {
+    @field(Address) readonly address: Address;
+
+    constructor(address: Address) {
+        this.address = address;
+    }
+}
+
+// An intent (that's a command) or a state blob (that's a read model) — not an event
+@eventType()
+class UpdateAddress {
+    @field(Address) readonly address: Address;
+
+    constructor(address: Address) {
+        this.address = address;
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+```elixir
+defmodule MyApp.Address do
+  defstruct [:street, :city]
+end
+
+# A fact that happened
+defmodule MyApp.Events.AddressChanged do
+  use Chronicle.Events.EventType, id: "address-changed"
+
+  defstruct [:address]
+end
+
+# An intent (that's a command) or a state blob (that's a read model) — not an event
+defmodule MyApp.Events.UpdateAddress do
+  use Chronicle.Events.EventType, id: "update-address"
+
+  defstruct [:address]
+end
+```
+
+</TabItem>
+</Tabs>
 
 Both records compile and both register. `UpdateAddress` gives itself away by its name, because it asks for something that may or may not happen. Chronicle can't tell an intent from a fact by looking at the payload, so the name is where the distinction lives.
 
@@ -64,6 +167,9 @@ Each event captures one meaningful change. The kitchen-sink `CustomerUpdated`, c
 
 Nullable properties are where the rule gets strict. An event records what was true at the moment it happened. A nullable property says that part of the fact sometimes didn't happen, which is a contradiction in the event's own terms. When a value is sometimes present and sometimes absent, there are two facts, and each gets its own event:
 
+<Tabs syncKey="language">
+<TabItem label="C#">
+
 ```csharp
 using Cratis.Chronicle.Events;
 
@@ -84,6 +190,154 @@ public record OrderPlaced(OrderId Id, Money Total);
 [EventType]
 public record DiscountApplied(OrderId Id, Money Amount);
 ```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import io.cratis.chronicle.events.EventType
+
+data class OrderId(val value: String)
+data class Money(val amount: Double, val currency: String)
+
+// Nullable smell — "sometimes there's a discount, sometimes not"
+@EventType
+data class OrderPlacedWithNullableDiscount(
+    val id: OrderId,
+    val total: Money,
+    val discount: Money?
+)
+
+// Two facts
+@EventType
+data class OrderPlaced(val id: OrderId, val total: Money)
+
+@EventType
+data class DiscountApplied(val id: OrderId, val amount: Money)
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+import io.cratis.chronicle.events.EventType;
+
+record OrderId(String value) {}
+record Money(double amount, String currency) {}
+
+// Nullable smell — "sometimes there's a discount, sometimes not"
+@EventType
+record OrderPlacedWithNullableDiscount(
+    OrderId id,
+    Money total,
+    Money discount) {}
+
+// Two facts
+@EventType
+record OrderPlaced(OrderId id, Money total) {}
+
+@EventType
+record DiscountApplied(OrderId id, Money amount) {}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { eventType } from '@cratis/chronicle';
+import { field } from '@cratis/fundamentals';
+
+class OrderId {
+    @field(String) readonly value: string;
+
+    constructor(value: string) {
+        this.value = value;
+    }
+}
+
+class Money {
+    @field(Number) readonly amount: number;
+    @field(String) readonly currency: string;
+
+    constructor(amount: number, currency: string) {
+        this.amount = amount;
+        this.currency = currency;
+    }
+}
+
+// Nullable smell — "sometimes there's a discount, sometimes not"
+@eventType()
+class OrderPlacedWithNullableDiscount {
+    @field(OrderId) readonly id: OrderId;
+    @field(Money) readonly total: Money;
+    @field(Money) readonly discount?: Money;
+
+    constructor(id: OrderId, total: Money, discount?: Money) {
+        this.id = id;
+        this.total = total;
+        this.discount = discount;
+    }
+}
+
+// Two facts
+@eventType()
+class OrderPlaced {
+    @field(OrderId) readonly id: OrderId;
+    @field(Money) readonly total: Money;
+
+    constructor(id: OrderId, total: Money) {
+        this.id = id;
+        this.total = total;
+    }
+}
+
+@eventType()
+class DiscountApplied {
+    @field(OrderId) readonly id: OrderId;
+    @field(Money) readonly amount: Money;
+
+    constructor(id: OrderId, amount: Money) {
+        this.id = id;
+        this.amount = amount;
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+```elixir
+defmodule MyApp.OrderId do
+  defstruct [:value]
+end
+
+defmodule MyApp.Money do
+  defstruct [:amount, :currency]
+end
+
+# Nullable smell — "sometimes there's a discount, sometimes not"
+defmodule MyApp.Events.OrderPlacedWithNullableDiscount do
+  use Chronicle.Events.EventType, id: "order-placed-with-nullable-discount"
+
+  defstruct [:id, :total, :discount]
+end
+
+# Two facts
+defmodule MyApp.Events.OrderPlaced do
+  use Chronicle.Events.EventType, id: "order-placed"
+
+  defstruct [:id, :total]
+end
+
+defmodule MyApp.Events.DiscountApplied do
+  use Chronicle.Events.EventType, id: "discount-applied"
+
+  defstruct [:id, :amount]
+end
+```
+
+</TabItem>
+</Tabs>
 
 With two events, a projection that shows discounts listens for `DiscountApplied` and never has to ask whether a null meant "no discount" or "we forgot to send it". Chronicle's .NET [code analysis](https://cratis.io/chronicle/code-analysis/chr0012/) flags a nullable event property with rule CHR0012 as a warning, and a nullable property is still allowed. Data collection is the exception. When a form lets someone leave their middle name empty, the event records exactly what was collected, and null is the true value.
 
@@ -113,6 +367,9 @@ Anything that processes events remembers how far it has come, and that position 
 
 Appending is one call on the event log. The appending docs use a simpler `OrderPlaced`:
 
+<Tabs syncKey="language">
+<TabItem label="C#">
+
 ```csharp
 using Cratis.Chronicle.Events;
 using Cratis.Chronicle.EventSequences;
@@ -136,6 +393,125 @@ public class CheckoutService(IEventLog eventLog)
     }
 }
 ```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import io.cratis.chronicle.IEventStore
+import io.cratis.chronicle.events.EventType
+
+@EventType
+data class OrderPlaced(
+    val customerId: String,
+    val total: Double
+)
+
+class CheckoutService(private val store: IEventStore) {
+    suspend fun placeOrder(orderId: String, customerId: String, total: Double) {
+        val result = store.eventLog.append(
+            orderId,
+            OrderPlaced(customerId, total)
+        )
+
+        if (!result.isSuccess) {
+            // Decide whether to retry or surface a conflict to the caller.
+        }
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+import io.cratis.chronicle.IEventStore;
+import io.cratis.chronicle.events.EventType;
+import io.cratis.chronicle.java.BlockingEventStore;
+
+@EventType
+record OrderPlaced(String customerId, double total) {}
+
+class CheckoutService {
+    private final BlockingEventStore store;
+
+    CheckoutService(IEventStore store) {
+        this.store = new BlockingEventStore(store);
+    }
+
+    void placeOrder(String orderId, String customerId, double total) {
+        var result = store.getEventLog().append(orderId, new OrderPlaced(customerId, total));
+
+        if (!result.isSuccess()) {
+            // Decide whether to retry or surface a conflict to the caller.
+        }
+    }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { eventType, IEventStore } from '@cratis/chronicle';
+import { field } from '@cratis/fundamentals';
+
+@eventType()
+class OrderPlaced {
+    @field(String) customerId: string;
+    @field(Number) total: number;
+
+    constructor(customerId: string, total: number) {
+        this.customerId = customerId;
+        this.total = total;
+    }
+}
+
+class CheckoutService {
+    constructor(private readonly store: IEventStore) {}
+
+    async placeOrder(orderId: string, customerId: string, total: number): Promise<void> {
+        const result = await this.store.eventLog.append(
+            orderId,
+            new OrderPlaced(customerId, total)
+        );
+
+        if (!result.isSuccess) {
+            // Decide whether to retry or surface a conflict to the caller.
+        }
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+```elixir
+defmodule MyApp.Events.OrderPlaced do
+  use Chronicle.Events.EventType, id: "order-placed"
+
+  defstruct [:customer_id, :total]
+end
+
+defmodule MyApp.CheckoutService do
+  def place_order(order_id, customer_id, total) do
+    case Chronicle.append(order_id, %MyApp.Events.OrderPlaced{
+           customer_id: customer_id,
+           total: total
+         }) do
+      :ok ->
+        :ok
+
+      {:error, _reason} = error ->
+        # Decide whether to retry or surface a conflict to the caller.
+        error
+    end
+  end
+end
+```
+
+</TabItem>
+</Tabs>
 
 Behind the call, Chronicle does six things in order:
 
@@ -182,7 +558,10 @@ Three of the fields are set once for an operation and then flow into every appen
 
 `CausedBy` records the identity behind the change: a user, a system or a service, including on-behalf-of chains when a service acts for a person. The display name isn't part of the fact. Rename an identity and the new name shows for every event it ever caused, because the stable key is what the event stores.
 
-Causation records why. It's a chain of links from the root action down to the command, and each link is an occurrence time, a type and a set of properties. Your own code can add a link through `ICausationManager`:
+Causation records why. It's a chain of links from the root action down to the command, and each link is an occurrence time, a type and a set of properties. Your own code can add a link through the causation manager, `ICausationManager` in .NET:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
 
 ```csharp
 using Cratis.Chronicle.Auditing;
@@ -195,6 +574,71 @@ public class PlaceOrderCausation(ICausationManager causationManager)
             new Dictionary<string, string> { ["orderId"] = orderId });
 }
 ```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import io.cratis.chronicle.auditing.CausationType
+import io.cratis.chronicle.auditing.causationManager
+
+// Per thread, not per request or coroutine; clear in finally on thread-pooled paths.
+class PlaceOrderCausation {
+    fun recordPlaceOrder(orderId: String) {
+        causationManager.add(CausationType("MyApp.Commands.PlaceOrder"), mapOf("orderId" to orderId))
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+import io.cratis.chronicle.java.CausationManagerJavaBridge;
+
+import java.util.Map;
+
+import static io.cratis.chronicle.auditing.CausationManagerKt.getCausationManager;
+
+// Per thread, not per request or coroutine; clear in finally on thread-pooled paths.
+class PlaceOrderCausation {
+    void recordPlaceOrder(String orderId) {
+        CausationManagerJavaBridge.add(
+            getCausationManager(),
+            "MyApp.Commands.PlaceOrder",
+            Map.of("orderId", orderId));
+    }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { causationManager, CausationType } from '@cratis/chronicle';
+
+class PlaceOrderCausation {
+    recordPlaceOrder(orderId: string): void {
+        causationManager.add(new CausationType('MyApp.Commands.PlaceOrder'), { orderId });
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+```elixir
+defmodule MyApp.PlaceOrderCausation do
+  alias Chronicle.Auditing.CausationManager
+
+  def record_place_order(order_id) do
+    CausationManager.add("MyApp.Commands.PlaceOrder", %{order_id: order_id})
+  end
+end
+```
+
+</TabItem>
+</Tabs>
 
 In a Cratis application you rarely write that yourself. [Arc's Chronicle integration](https://cratis.io/arc/backend/csharp/chronicle/commands/causation/) adds the command link on its own, and records the command's name and its property values on every event the command appends. For `RegisterAuthor`, that puts the submitted name into the causation of `AuthorRegistered`. Those values are part of the event log. Changing the code later doesn't remove them, and they aren't encrypted under the subject's key. `[PII]` or `[NotAudited]` on a top-level command property keeps its value off new causation chains. A nested object is written as compact JSON, and marking a property inside it doesn't exclude that property. An author's name is personal data, and [*Personal data in an event log*](/personal-data-in-an-event-log/) is about exactly that problem.
 

@@ -21,6 +21,8 @@ tags:
   - ai
 ---
 
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
 A signed-in user registers an author, and author names have to be unique within the user's organization. The whole feature fits on a sticky note.
 
 In a Cratis application, that uniqueness rule is one attribute on an event. Nobody writes a lookup before the write or a lock around it, and there's no per-tenant version of the check either. Chronicle checks the `[Unique]` constraint in its kernel when the event is appended, and Arc's Chronicle integration has already given each tenant a namespace of its own, so the rule holds per organization. Register two different authors under the same name in the same second, and one of the two appends is rejected.
@@ -129,9 +131,29 @@ The team brainstorms on a shared board with live cursors, transfers the events t
 
 [`cratis new`](https://cratis.io/cli/new/) creates a full-stack skeleton from the [Cratis templates](https://cratis.io/templates/), in C# or on Spring Boot with Kotlin or Java, for the database you pick, with proxy generation configured:
 
+<Tabs syncKey="language">
+<TabItem label="C#">
+
 ```bash
 cratis new cratis --language csharp -n MyApp -o MyApp
 ```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```bash
+cratis new cratis --language kotlin -n MyApp -o MyApp
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```bash
+cratis new cratis --language java -n MyApp -o MyApp
+```
+
+</TabItem>
+</Tabs>
 
 Arc recommends a [vertical slice](https://cratis.io/arc/vertical-slices/), with the command, the read model, the screen and the specs in one feature folder, so one change is one diff. Arc doesn't enforce it.
 
@@ -145,6 +167,9 @@ Arc recommends a [vertical slice](https://cratis.io/arc/vertical-slices/), with 
 
 In Arc, `RegisterAuthor` is a [command](https://cratis.io/arc/backend/csharp/commands/model-bound/), which means a record with a `Handle` method. `AuthorId` and `AuthorName` are the feature's own types:
 
+<Tabs syncKey="language">
+<TabItem label="C#">
+
 ```csharp
 [Command]
 public record RegisterAuthor(AuthorId Id, AuthorName Name)
@@ -152,6 +177,43 @@ public record RegisterAuthor(AuthorId Id, AuthorName Name)
     public AuthorRegistered Handle() => new(Name);
 }
 ```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import io.cratis.arc.artifacts.Command
+import io.cratis.arc.artifacts.CommandKey
+import io.cratis.chronicle.events.EventType
+
+@Command
+data class RegisterAuthor(@CommandKey val id: AuthorId, val name: String) {
+    fun handle(): AuthorRegistered = AuthorRegistered(name)
+}
+
+@EventType
+data class AuthorRegistered(val name: String = "")
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+import io.cratis.arc.artifacts.Command;
+import io.cratis.arc.artifacts.CommandKey;
+import io.cratis.chronicle.events.EventType;
+
+@Command
+public record RegisterAuthor(@CommandKey AuthorId id, String name) {
+    public AuthorRegistered handle() { return new AuthorRegistered(name); }
+}
+
+@EventType
+public record AuthorRegistered(String name) { }
+```
+
+</TabItem>
+</Tabs>
 
 That's the whole command. [Arc](https://cratis.io/arc/) gives it an HTTP route and runs validation and [declared authorization](https://cratis.io/arc/backend/csharp/authorizing-commands-and-queries/) on it. The handler returns an `AuthorRegistered` event, and the command can [append the event it returns](https://cratis.io/arc/backend/csharp/chronicle/commands/events/). You write no controller, no DTO and no registration list. The service code, the authorization policy and the storage stay yours.
 

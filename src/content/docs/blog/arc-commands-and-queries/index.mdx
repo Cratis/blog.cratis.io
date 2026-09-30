@@ -11,6 +11,8 @@ tags:
   - validation
 ---
 
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
 *[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 08 of 23*
 
 A C# record marked `[Command]` with a public `Handle()` method is enough for Arc to expose it as a `POST` endpoint, check its authorization, validate it and, with the proxy build package configured, write a TypeScript class the frontend compiles against. There's no controller, no DTO and no list of registrations anywhere in the application. Arc finds the record, reads what's declared on it and builds the rest.
@@ -25,6 +27,9 @@ In [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-
 
 In Arc, `RegisterAuthor` is a [command](https://cratis.io/arc/backend/csharp/commands/model-bound/), which means a record with a `Handle` method. `AuthorId` and `AuthorName` are the feature's own types:
 
+<Tabs syncKey="language">
+<TabItem label="C#">
+
 ```csharp
 [Command]
 public record RegisterAuthor(AuthorId Id, AuthorName Name)
@@ -32,6 +37,43 @@ public record RegisterAuthor(AuthorId Id, AuthorName Name)
     public AuthorRegistered Handle() => new(Name);
 }
 ```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import io.cratis.arc.artifacts.Command
+import io.cratis.arc.artifacts.CommandKey
+import io.cratis.chronicle.events.EventType
+
+@Command
+data class RegisterAuthor(@CommandKey val id: AuthorId, val name: String) {
+    fun handle(): AuthorRegistered = AuthorRegistered(name)
+}
+
+@EventType
+data class AuthorRegistered(val name: String = "")
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+import io.cratis.arc.artifacts.Command;
+import io.cratis.arc.artifacts.CommandKey;
+import io.cratis.chronicle.events.EventType;
+
+@Command
+public record RegisterAuthor(@CommandKey AuthorId id, String name) {
+    public AuthorRegistered handle() { return new AuthorRegistered(name); }
+}
+
+@EventType
+public record AuthorRegistered(String name) { }
+```
+
+</TabItem>
+</Tabs>
 
 That's the whole command. [Arc](https://cratis.io/arc/) gives it an HTTP route and runs validation and [declared authorization](https://cratis.io/arc/backend/csharp/authorizing-commands-and-queries/) on it (`[Authorize]`, roles and policies). The handler returns an `AuthorRegistered` event, and the command can [append the event it returns](https://cratis.io/arc/backend/csharp/chronicle/commands/events/). You write no controller, no DTO and no registration list, and the name travels as a typed value instead of a bare string. The service code, the authorization policy and the storage stay yours.
 
