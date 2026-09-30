@@ -180,7 +180,7 @@ result = WorkItemProgressReducer.reduce(%ProgressRecorded{points: 3}, result, co
 </TabItem>
 </Tabs>
 
-The same sample calls its reactor directly. `new CompletionSummaryReactor().Completed(new WorkItemCompleted(8, 8))` returns a `CompletionSummarized` event, with no event log and no command pipeline injected into the reactor. Chronicle's [reactor testing guide](https://cratis.io/chronicle/testing/reactors/) makes that split the default: the logic goes into a function that returns its side effect as a value, and the framework contract gets its own scenario. The default holds for as long as your reactors return their side effects instead of performing them.
+In .NET, the same sample calls its reactor directly. `new CompletionSummaryReactor().Completed(new WorkItemCompleted(8, 8))` returns a `CompletionSummarized` event, with no event log and no command pipeline injected into the reactor. Chronicle's [reactor testing guide](https://cratis.io/chronicle/testing/reactors/) makes that split the default: the logic goes into a function that returns its side effect as a value, and the framework contract gets its own scenario. The default holds for as long as your reactors return their side effects instead of performing them.
 
 Projections are the exception. A projection is attributes or a fluent definition, and there's no method to call. The cheapest honest test of a projection runs the real projection engine, in memory.
 

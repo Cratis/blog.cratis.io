@@ -238,7 +238,7 @@ Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
 </TabItem>
 </Tabs>
 
-The command returns an `AuthorRegistered` event and Chronicle appends it. The projection declared by `[FromEvent<AuthorRegistered>]` writes the `Author` document to MongoDB. In .NET, `collection.Observe()` sees that document change through a MongoDB change stream, and Arc pushes the new result to every subscribed client.
+The command returns an `AuthorRegistered` event and Chronicle appends it. In .NET, the projection declared by `[FromEvent<AuthorRegistered>]` writes the `Author` document to MongoDB. In .NET, `collection.Observe()` sees that document change through a MongoDB change stream, and Arc pushes the new result to every subscribed client.
 
 ![A diagram titled The live hop, seven numbered cards in two rows joined by arrows. 1 Command, Arc. 2 Event appended, Chronicle. 3 Projection, declared by you and run by Chronicle, writes to MongoDB. The arrow from 3 turns down to the second row and is labeled eventually consistent. 4 Change stream, Arc Observe. 5 SSE hub at slash dot cratis slash queries slash sse. 6 The use hook. 7 Screen. A band at the bottom reads: You write steps 1 and 6 and the query's ISubject return type. Arc and Chronicle run steps 2 to 5.](./the-live-hop.png)
 
