@@ -321,7 +321,7 @@ Not available in Arc for Java.
 </TabItem>
 <TabItem label="TypeScript">
 
-Arc for TypeScript has an experimental aggregate root, which a command asks for with `commandAggregate`:
+Arc for TypeScript, an early source preview, has an experimental aggregate root, which a command asks for with `commandAggregate`:
 
 ```typescript
 @command()
@@ -345,7 +345,7 @@ Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
 </TabItem>
 </Tabs>
 
-Arc discovers the aggregate, loads its history for the command's key before `Handle` runs, and commits its events in the command's transaction. Loading the history isn't, on its own, a concurrency guarantee, and aggregates are C# only today.
+Arc discovers the aggregate, loads its history for the command's key before `Handle` runs, and commits its events in the command's transaction. Loading the history isn't, on its own, a concurrency guarantee, and among Arc's published packages, aggregates are C# only.
 
 ![A diagram titled Three ways to guard a rule, three columns side by side. Chronicle, unique constraint: checked in the kernel at append, per event sequence and namespace. Chronicle, decision read: the append is guarded by the read it decided from. Arc, aggregate: loads one key's history and commits in the command. A band underneath reads: All three append to the same event log.](./consistency-choices.png)
 
