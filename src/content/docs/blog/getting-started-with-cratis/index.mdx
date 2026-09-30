@@ -182,17 +182,16 @@ public record SocialSecurityNumber(string value) : ConceptAs<string>(value);
 <TabItem label="Kotlin">
 
 ```kotlin
-data class SocialSecurityNumber(override val value: String) : ConceptAs<String>
+data class SocialSecurityNumber(private val rawValue: String) : ConceptAs<String> {
+    override fun value(): String = rawValue
+}
 ```
 
 </TabItem>
 <TabItem label="Java">
 
 ```java
-public record SocialSecurityNumber(String value) implements ConceptAs<String> {
-    @Override
-    public String getValue() { return value; }
-}
+public record SocialSecurityNumber(String value) implements ConceptAs<String> { }
 ```
 
 </TabItem>
@@ -238,6 +237,8 @@ No Java equivalent: Arc for Kotlin runs on Spring Boot, which registers the serv
 
 </TabItem>
 <TabItem label="TypeScript">
+
+Arc for TypeScript registers services explicitly:
 
 ```typescript
 export class UserService { }

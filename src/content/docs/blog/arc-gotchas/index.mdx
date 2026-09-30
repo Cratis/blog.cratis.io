@@ -40,7 +40,7 @@ public class IdeaTitleValidator : ConceptValidator<IdeaTitle>
 </TabItem>
 <TabItem label="Kotlin">
 
-These rules run on the server only, and Arc for Kotlin doesn't copy them into the generated TypeScript.
+These rules run on the server only, and, unlike the .NET generator described on this page, Arc for Kotlin doesn't copy them into the generated TypeScript.
 
 ```kotlin
 @Component
@@ -59,7 +59,7 @@ class IdeaTitleValidator : ConceptValidator<IdeaTitle> {
 </TabItem>
 <TabItem label="Java">
 
-These rules run on the server only, and Arc for Kotlin doesn't copy them into the generated TypeScript.
+These rules run on the server only, and, unlike the .NET generator described on this page, Arc for Kotlin doesn't copy them into the generated TypeScript.
 
 ```java
 @Component
@@ -337,7 +337,7 @@ The proxy generator collects the public properties declared directly on a comman
 
 ### The tenant arrives by header name
 
-Arc's header resolver reads the header named in `Tenancy.HttpHeader`, `x-cratis-tenant-id` by default, and a missing header gives an empty tenant:
+In .NET, Arc's header resolver reads the header named in `Tenancy.HttpHeader`, `x-cratis-tenant-id` by default, and a missing header gives an empty tenant:
 
 <Tabs syncKey="language">
 <TabItem label="C#">

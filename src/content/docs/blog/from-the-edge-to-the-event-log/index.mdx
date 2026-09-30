@@ -287,10 +287,9 @@ data class Author(
     val name: AuthorName = AuthorName("")
 ) {
     companion object {
-        // A snapshot of the current instances
         @JvmStatic
-        suspend fun allAuthors(@FromServices eventStore: IEventStore): List<Author> =
-            eventStore.readModels.getInstances(Author::class)
+        fun allAuthors(@FromServices queries: MongoObservableQuery): Flow<List<Author>> =
+            queries.observe<Author>()
     }
 }
 ```
@@ -307,9 +306,8 @@ public class Author {
     public String id = "";
     public AuthorName name = new AuthorName("");
 
-    // A snapshot of the current instances
-    public static List<Author> allAuthors(@FromServices IEventStore store) {
-        return ReadModelsJavaBridge.getInstances(store.getReadModels(), Author.class);
+    public static Flow.Publisher<List<Author>> allAuthors(@FromServices MongoObservableQuery queries) {
+        return queries.observePublisher(Author.class);
     }
 }
 ```
@@ -507,7 +505,7 @@ Once the key has been destroyed, Chronicle can't decrypt anything encrypted with
 
 ## Run it: tenants and services
 
-Events, observers and read models are processed per [namespace](https://cratis.io/chronicle/concepts/namespaces/), so each tenant's data stays apart from the edge to the store. Caller-controlled headers don't prove membership, so check it before any tenant-scoped work, and decide what a request without the header may do: with Arc's default resolvers it lands in Chronicle's default namespace.
+Events, observers and read models are processed per [namespace](https://cratis.io/chronicle/concepts/namespaces/), so each tenant's data stays apart from the edge to the store. Caller-controlled headers don't prove membership, so check it before any tenant-scoped work, and decide what a request without the header may do: in .NET, with Arc's default resolvers it lands in Chronicle's default namespace.
 
 When a Catalog service needs to hear about new authors, [persistent subscriptions](https://cratis.io/chronicle/subscriptions/) carry the events you put in one store's [outbox to another store's inbox](https://cratis.io/chronicle/subscriptions/outbox-inbox/), and the events you don't publish stay in your own log. Appending the private fact and the public event are two appends, not one transaction, so the window between them is yours to design for. [Reactors](https://cratis.io/chronicle/reactors/) and [webhooks](https://cratis.io/chronicle/webhooks/) act on facts too, and both have to allow for running twice. If you run more than one Chronicle server, watch the default [localhost clustering](https://cratis.io/chronicle/hosting/configuration/clustering/): two servers pointed at the same database each form their own single-node cluster, and nothing errors at startup.
 
