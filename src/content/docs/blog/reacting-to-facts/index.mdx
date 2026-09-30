@@ -371,7 +371,7 @@ Delivery stays at-least-once. The id identifies a delivery and makes no promise 
 
 The id is also a persisted key. Renaming a reactor type that has no stable id, moving the reactor to another event sequence or renaming a namespace changes the id and orphans every receipt already written. A reactor that keeps receipts should have a stable id through `[Reactor("...")]`.
 
-Elixir and TypeScript have no `ReactorDelivery`, so integrations called from them have to be idempotent on their own. TypeScript supports `@onceOnly()` and `@replay()` from `@cratis/chronicle` 6.9.0, and Elixir has neither marker. [Where the clients differ](https://cratis.io/chronicle/clients/where-the-clients-differ/) lists the rest.
+Only the .NET client has `ReactorDelivery`, so integrations called from the Kotlin, Java, TypeScript and Elixir clients have to be idempotent on their own. TypeScript supports `@onceOnly()` and `@replay()` from `@cratis/chronicle` 6.9.0, and Elixir has neither marker. [Where the clients differ](https://cratis.io/chronicle/clients/where-the-clients-differ/) lists the rest.
 
 ![A diagram titled One delivery, three arrivals. Three numbered cards run left to right, each headed delivery.Id A. 1, live: effect and receipt written, then it throws. 2, recovery: OnceOnly doesn't apply; receipt found, skipped. 3, replay: OnceOnly skips the handler. Below them, a card labeled your receipt store reads A recorded, with an arrow labeled write from the live card and an arrow labeled check first from the recovery card. Beside it, a chip reads .NET client. An amber note reads: effect done, receipt not written: the retry repeats it; close the gap with one transaction or an idempotency key. A band at the bottom reads: Id from reactor, event store, namespace, event sequence, partition, sequence number.](./one-delivery-three-arrivals.png)
 
@@ -635,7 +635,7 @@ Without the builder callback it forwards every event type your client knows. Wit
 
 Personal data travels with its subject. The subject and its encryption key identity are preserved, and the key is copied into the target store unless that subject was erased there. A forwarded event carrying a `[PII]` value for an erased subject can't be appended in the target until someone authorizes a new key with `AllowNewEncryptionKeyFor`, and until then that event source's partition fails while the rest of the subscription keeps flowing ([compliance and PII in subscriptions](https://cratis.io/chronicle/subscriptions/compliance-and-pii/)). [*Personal data in an event log*](/personal-data-in-an-event-log/) follows that key further.
 
-A reactor on an inbox gets a `ReactorDelivery` that includes the event sequence, so deliveries from each source inbox have their own identity.
+In .NET, a reactor on an inbox gets a `ReactorDelivery` that includes the event sequence, so deliveries from each source inbox have their own identity.
 
 ## Where Chronicle hands over
 
