@@ -242,6 +242,9 @@ Uniqueness is the easy invariant. "A member can have at most three books on loan
 
 **[Decision reads](https://cratis.io/chronicle/read-models/decision-reads/)** fold the read model you decided from and guard the append with it. In .NET, with an order as the example:
 
+<Tabs syncKey="language">
+<TabItem label="C#">
+
 ```csharp
 using Cratis.Chronicle.EventSequences;
 using Cratis.Chronicle.ReadModels;
@@ -263,9 +266,35 @@ if (conflicts.Any())
 // Check result.IsSuccess separately for constraint violations and other append failures.
 ```
 
+</TabItem>
+<TabItem label="Kotlin">
+
+Not available in the Kotlin client.
+
+</TabItem>
+<TabItem label="Java">
+
+Not available in the Java client.
+
+</TabItem>
+<TabItem label="TypeScript">
+
+Not available in the TypeScript client.
+
+</TabItem>
+<TabItem label="Elixir">
+
+Not available in the Elixir client.
+
+</TabItem>
+</Tabs>
+
 It's an optimistic guard, so it doesn't lock and it doesn't retry. The read model has to be a Chronicle projection keyed directly by the event source, with no joins or children, and the cost grows with that key's history.
 
 **Aggregates**, if you want them, come from Arc and not from Chronicle. An Arc command that uses one:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
 
 ```csharp
 [Command]
@@ -278,6 +307,43 @@ public record WithdrawFunds([Key] Guid AccountId, decimal Amount)
     }
 }
 ```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+Not available in Arc for Kotlin.
+
+</TabItem>
+<TabItem label="Java">
+
+Not available in Arc for Java.
+
+</TabItem>
+<TabItem label="TypeScript">
+
+Arc for TypeScript has an experimental aggregate root, which a command asks for with `commandAggregate`:
+
+```typescript
+@command()
+export class WithdrawFunds {
+    @field(Guid) @key() accountId!: Guid;
+    @field(Number) amount = 0;
+
+    @inject(commandAggregate(Account))
+    handle(account: Account): AggregateRootCommitResult {
+        account.withdraw(this.amount);
+        return account.commit();
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
+
+</TabItem>
+</Tabs>
 
 Arc discovers the aggregate, loads its history for the command's key before `Handle` runs, and commits its events in the command's transaction. Loading the history isn't, on its own, a concurrency guarantee, and aggregates are C# only today.
 
@@ -292,6 +358,9 @@ We'd reach for a constraint first, a decision read when the rule really spans ev
 A [`ConcurrencyScope`](https://cratis.io/chronicle/events/concurrency/) states what an append expects about the history it was decided on. It's built from formalized, indexed metadata tags: the event source id, event source type, event stream type, event stream id and event types. These are separate from the tags you add yourself. A narrower scope produces fewer false conflicts, since an append with a different event type on the same account won't collide, and it means more scopes to manage.
 
 The expected position is a sequence number, or `EventSequenceNumber.BeforeFirst` when no matching event may exist yet. Opening an account is that case:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
 
 ```csharp
 [EventType]
@@ -320,11 +389,144 @@ public class AccountService(IEventLog eventLog)
 }
 ```
 
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+@EventType
+data class AccountOpened(val accountName: String)
+
+class AccountService(private val eventLog: IEventLog) {
+    suspend fun tryOpenAccount(accountId: String, accountName: String): Boolean {
+        val concurrencyScope = ConcurrencyScopeBuilder()
+            .withExpectsNoMatchingEvent() // expect no event for this account yet
+            .withEventSourceId()
+            .build()
+
+        val result = eventLog.append(
+            accountId,
+            AccountOpened(accountName),
+            AppendOptions(concurrencyScope = concurrencyScope)
+        )
+
+        if (result.concurrencyViolation != null) {
+            return false
+        }
+
+        return result.isSuccess
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+@EventType
+record AccountOpened(String accountName) {}
+
+class AccountService {
+    private final BlockingEventSequence eventLog;
+
+    AccountService(IEventLog eventLog) {
+        this.eventLog = new BlockingEventSequence(eventLog);
+    }
+
+    boolean tryOpenAccount(String accountId, String accountName) {
+        var concurrencyScope = new ConcurrencyScopeBuilder()
+            .withExpectsNoMatchingEvent() // expect no event for this account yet
+            .withEventSourceId()
+            .build();
+
+        var options = new AppendOptionsBuilder().concurrencyScope(concurrencyScope).build();
+        var result = eventLog.append(accountId, new AccountOpened(accountName), options);
+
+        if (result.getConcurrencyViolation() != null) {
+            return false;
+        }
+
+        return result.isSuccess();
+    }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+@eventType()
+class AccountOpened {
+    @field(String) readonly accountName: string;
+
+    constructor(accountName: string) {
+        this.accountName = accountName;
+    }
+}
+
+class AccountService {
+    constructor(private readonly eventLog: IEventLog) {}
+
+    async tryOpenAccount(accountId: string, accountName: string): Promise<boolean> {
+        const result = await this.eventLog.append(accountId, new AccountOpened(accountName), {
+            concurrencyScope: {
+                sequenceNumber: EventSequenceNumber.beforeFirst.value, // expect no event for this account yet
+                eventSourceId: true
+            }
+        });
+
+        if (result.concurrencyViolation) {
+            return false;
+        }
+
+        return result.isSuccess;
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+The Elixir client can't ask the kernel to expect no matching event. This version reads the account's tail first and expects it to be unchanged.
+
+```elixir
+defmodule MyApp.Events.AccountOpened do
+  use Chronicle.Events.EventType, id: "account-opened"
+
+  defstruct [:account_name]
+end
+
+defmodule MyApp.AccountService do
+  alias Chronicle.EventSequences.EventLog
+  alias Chronicle.Events.ConcurrencyScope
+  alias MyApp.Events.AccountOpened
+
+  def try_open_account(account_id, account_name) do
+    with {:ok, tail} <- EventLog.get_tail_sequence_number(account_id) do
+      scope = ConcurrencyScope.for_event_source(tail)
+
+      case Chronicle.append(account_id, %AccountOpened{account_name: account_name},
+             concurrency_scope: scope
+           ) do
+        :ok -> true
+        {:error, {:concurrency_violations, _violations}} -> false
+        {:error, _reason} -> false
+      end
+    end
+  end
+end
+```
+
+</TabItem>
+</Tabs>
+
 A violation means nothing was appended. `HasConcurrencyViolations` reports it, and `ConcurrencyViolation` carries the expected and actual positions. `ConcurrencyCheckPerformed` says whether a comparison happened at all. A skipped check and a passing check both succeed, and that flag is how a test or a command tells them apart. Against an older kernel it always reads `false`, which under-reports but never over-reports.
 
 By default the .NET client appends through `OptimisticConcurrencyStrategy`. It reads the tail within the scope and sends that as the expected sequence number, so it catches an append that lands between its own tail read and its write. Anything your code read before that point is unprotected. A decision that depends on state you've already read needs an explicit scope. TypeScript, Kotlin/Java and Elixir send no concurrency check by default.
 
 With nothing matching a scope yet, there's no tail to read, so the strategy reports `Unavailable`, which means the same as having no expectation, and the kernel skips the check with a debug log. That covers the first event on a new event source, and the first event with a new source type, stream type or stream id. The `CheckFirstAppendIntoAScope` option turns the check on across the application. It's `false` today and planned to become `true` in the next major version. For one behavior, ask per append:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
 
 ```csharp
 public async Task<bool> TryOpenPartition(EventSourceId accountId, string name)
@@ -343,6 +545,70 @@ public async Task<bool> TryOpenPartition(EventSourceId accountId, string name)
     return result.IsSuccess;
 }
 ```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+suspend fun tryOpenPartition(accountId: String, name: String): Boolean {
+    val concurrencyScope = ConcurrencyScopeBuilder()
+        .withExpectsNoMatchingEvent()
+        .withEventSourceId()
+        .withEventType(EventTypeDescriptor(EventTypeId("PartitionOpened")))
+        .build()
+
+    val result = eventLog.append(
+        accountId,
+        PartitionOpened(name),
+        AppendOptions(concurrencyScope = concurrencyScope)
+    )
+
+    return result.isSuccess
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+boolean tryOpenPartition(String accountId, String name) {
+    var concurrencyScope = new ConcurrencyScopeBuilder()
+        .withExpectsNoMatchingEvent()
+        .withEventSourceId()
+        .withEventType(EventTypeDescriptor.parse("PartitionOpened"))
+        .build();
+
+    var options = new AppendOptionsBuilder().concurrencyScope(concurrencyScope).build();
+    var result = eventLog.append(accountId, new PartitionOpened(name), options);
+
+    return result.isSuccess();
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+async tryOpenPartition(accountId: string, name: string): Promise<boolean> {
+    const result = await this.eventLog.append(accountId, new PartitionOpened(name), {
+        concurrencyScope: {
+            sequenceNumber: EventSequenceNumber.beforeFirst.value,
+            eventSourceId: true,
+            eventTypes: [getEventTypeFor(PartitionOpened)]
+        }
+    });
+
+    return result.isSuccess;
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+The Elixir client can't ask the kernel to expect no matching event.
+
+</TabItem>
+</Tabs>
 
 Opting in can reject appends that used to succeed, so be ready for violations you've never seen before. A client and kernel on mismatched versions fall back to skipping the check and say so in the log. `ExpectingNoMatchingEvent` is the .NET name. The JVM client has `withExpectsNoMatchingEvent()` on `ConcurrencyScopeBuilder`, and TypeScript takes `EventSequenceNumber.beforeFirst` as the scope's sequence number.
 

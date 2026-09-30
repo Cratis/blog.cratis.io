@@ -103,6 +103,63 @@ class EmailNotifications {
 ```
 
 </TabItem>
+<TabItem label="TypeScript">
+
+The TypeScript client finds a handler by name: the method is the camelCase of the event's class name, here `emailConfirmed` for `EmailConfirmed`.
+
+```typescript
+import { EventContext, eventType, reactor } from '@cratis/chronicle';
+import { field } from '@cratis/fundamentals';
+
+@eventType()
+class EmailConfirmed {
+    @field(String) readonly email: string;
+
+    constructor(email: string) {
+        this.email = email;
+    }
+}
+
+@reactor()
+class EmailNotifications {
+    async emailConfirmed(event: EmailConfirmed, context: EventContext): Promise<void> {
+        await this.sendConfirmation(event.email, context.occurred);
+    }
+
+    private async sendConfirmation(email: string, occurred: Date): Promise<void> {}
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+The Elixir client calls a fixed `handle/2` for each event type listed in `@handles`.
+
+```elixir
+defmodule MyApp.Events.EmailConfirmed do
+  use Chronicle.Events.EventType, id: "email-confirmed"
+
+  defstruct [:email]
+end
+
+defmodule MyApp.EmailNotifications do
+  use Chronicle.Reactors.Reactor
+
+  alias MyApp.Events.EmailConfirmed
+
+  @handles EmailConfirmed
+
+  @impl true
+  def handle(%EmailConfirmed{} = event, context) do
+    send_confirmation(event.email, Map.get(context, :occurred))
+    :ok
+  end
+
+  defp send_confirmation(_email, _occurred), do: :ok
+end
+```
+
+</TabItem>
 </Tabs>
 
 Chronicle [discovers the handler methods](https://cratis.io/chronicle/reactors/event-processing/) by their shape. The first parameter is an event type, and the method returns `void`, `Task`, `Task<T>` or one of the side-effect types that show up further down. The method name is yours.
@@ -262,6 +319,9 @@ The second is recovery after a failure. The partition paused, and recovery deliv
 
 For that case the .NET client has [delivery identity](https://cratis.io/chronicle/reactors/delivery-identity/). Declare a `ReactorDelivery` parameter and Chronicle passes in a stable identity for this delivery of this event to this reactor. `delivery.Id` is built from six values Chronicle already has: the reactor id, the event store, the namespace, the event sequence, the partition and the event's sequence number. The same delivery gets the same id on a replay and on a partition recovery. Keep a receipt under that id, check it before the side effect and write it after:
 
+<Tabs syncKey="language">
+<TabItem label="C#">
+
 ```csharp
 [EventType]
 public record CustomerWelcomed(string CustomerId);
@@ -281,6 +341,29 @@ public class WelcomeMailer(IWelcomeMail mail, IDeliveryReceipts receipts) : IRea
     }
 }
 ```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+The Kotlin client has no `ReactorDelivery` parameter.
+
+</TabItem>
+<TabItem label="Java">
+
+The Java client has no `ReactorDelivery` parameter.
+
+</TabItem>
+<TabItem label="TypeScript">
+
+The TypeScript client has no `ReactorDelivery` parameter.
+
+</TabItem>
+<TabItem label="Elixir">
+
+The Elixir client has no `ReactorDelivery` parameter.
+
+</TabItem>
+</Tabs>
 
 `IDeliveryReceipts` is the application's own store. Chronicle keeps no receipts, never sees the mail server and doesn't know whether the effect ran. The gap between the effect and the receipt is still there. Send the mail, crash before `Complete` and the retry sends it again. Writing the effect and the receipt in one database transaction closes the gap, and a remote call can't take part in that transaction. Where you can't close it, pass `delivery.Id` as the idempotency key the remote API accepts. If the integration on the other side is already idempotent, pass the id as its key and leave out the receipt.
 

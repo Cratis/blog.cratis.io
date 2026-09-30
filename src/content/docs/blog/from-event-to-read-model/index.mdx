@@ -23,6 +23,9 @@ That record is the list in [Cratis: from script to stage, and the long run](/fro
 
 The read model is one record:
 
+<Tabs syncKey="language">
+<TabItem label="C#">
+
 ```csharp
 [ReadModel]
 [FromEvent<AuthorRegistered>]
@@ -32,6 +35,81 @@ public record Author(AuthorId Id, AuthorName Name)
         collection.Observe();
 }
 ```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+@io.cratis.arc.artifacts.ReadModel
+@io.cratis.chronicle.readModels.ReadModel
+@FromEvent(AuthorRegistered::class)
+data class Author(
+    @FromEventSourceId val id: AuthorId = AuthorId(UUID(0, 0)),
+    val name: AuthorName = AuthorName("")
+) {
+    companion object {
+        @JvmStatic
+        fun allAuthors(@FromServices queries: MongoObservableQuery): Flow<List<Author>> =
+            queries.observe<Author>()
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+@io.cratis.arc.artifacts.ReadModel
+@io.cratis.chronicle.readModels.ReadModel
+@FromEvent(eventType = AuthorRegistered.class)
+public class Author {
+    @FromEventSourceId
+    public AuthorId id = new AuthorId(new UUID(0, 0));
+
+    public AuthorName name = new AuthorName("");
+
+    public static Flow.Publisher<List<Author>> allAuthors(@FromServices MongoObservableQuery queries) {
+        return queries.observePublisher(Author.class);
+    }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+@readModel()
+@fromEvent(AuthorRegistered)
+export class Author {
+    @field(AuthorId) id!: AuthorId;
+    @field(AuthorName) name!: AuthorName;
+
+    @query({ observable: true }, service(ChronicleReadModels))
+    static allAuthors(models: ChronicleReadModels): Observable<Author[]> {
+        return models.observeAll(Author, author => author.id.toString());
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+Arc for Elixir doesn't exist; use the Chronicle Elixir client directly, where the read model declares the projection:
+
+```elixir
+defmodule MyApp.ReadModels.Author do
+  use Chronicle.ReadModels.ReadModel
+
+  alias MyApp.Events.AuthorRegistered
+
+  defstruct [:id, :name]
+
+  from AuthorRegistered, set: [id: :event_source_id, name: :name]
+end
+```
+
+</TabItem>
+</Tabs>
 
 Two products meet in those few lines. `[FromEvent<AuthorRegistered>]` belongs to Chronicle and declares the [projection](https://cratis.io/chronicle/projections/). Properties with the same name as the event's properties are [mapped automatically](https://cratis.io/chronicle/projections/declarative/auto-map/), and the instance is keyed by the event source, so every author gets an instance of their own. `[ReadModel]` and the static `AllAuthors` method belong to Arc. [`[ReadModel]`](https://cratis.io/arc/backend/csharp/queries/) marks a type that Arc serves through queries, and it works without Chronicle. `AllAuthors` is an observable query that Arc routes, and its generated TypeScript gives the React code an `AllAuthors.use()` hook.
 
@@ -292,6 +370,11 @@ export class Order {
 ```
 
 </TabItem>
+<TabItem label="Elixir">
+
+Not available in the Elixir client.
+
+</TabItem>
 </Tabs>
 
 `Quantity` listens to two events, so the line's quantity is set when it's added and replaced whenever it's adjusted. The same attribute family covers joins with `[Join<T>]` and removal of the whole read model with `[RemovedWith<T>]` on the type.
@@ -322,6 +405,57 @@ public class GroupProjection : IProjectionFor<Group>
 ```
 
 </TabItem>
+<TabItem label="Kotlin">
+
+The fluent builder in the Kotlin client has no child removal, so this projection leaves out `UserRemovedFromGroup`. To remove a child, put `@RemovedWith` on the `@ChildrenFrom` property, as in the model-bound example above.
+
+```kotlin
+import io.cratis.chronicle.projections.IProjectionBuilderFor
+import io.cratis.chronicle.projections.IProjectionFor
+
+class GroupProjection : IProjectionFor<Group> {
+    override fun define(builder: IProjectionBuilderFor<Group>) {
+        builder
+            .from(GroupCreated::class)
+            .children(Group::members, GroupMember::class) { children ->
+                children
+                    .identifiedBy("userId")
+                    .from(UserAddedToGroup::class) { it.usingKey("userId") }
+                    .from(UserRoleChanged::class) { it.usingKey("userId") }
+            }
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+The fluent builder in the Java client has no child removal, so this projection leaves out `UserRemovedFromGroup`. To remove a child, put `@RemovedWith` on the `@ChildrenFrom` property, as in the model-bound example above.
+
+```java
+import io.cratis.chronicle.projections.IProjectionBuilderFor;
+import io.cratis.chronicle.projections.IProjectionFor;
+
+class GroupProjection implements IProjectionFor<Group> {
+    @Override
+    public void define(IProjectionBuilderFor<Group> builder) {
+        builder
+            .from(GroupCreated.class)
+            .children("members", GroupMember.class, children -> {
+                children
+                    .identifiedBy("userId")
+                    .from(UserAddedToGroup.class, fb -> {
+                        fb.usingKey("userId");
+                    })
+                    .from(UserRoleChanged.class, fb -> {
+                        fb.usingKey("userId");
+                    });
+            });
+    }
+}
+```
+
+</TabItem>
 <TabItem label="TypeScript">
 
 ```typescript
@@ -343,6 +477,11 @@ class GroupProjection implements IProjectionFor<Group> {
     }
 }
 ```
+
+</TabItem>
+<TabItem label="Elixir">
+
+Not available in the Elixir client.
 
 </TabItem>
 </Tabs>

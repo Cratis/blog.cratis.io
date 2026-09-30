@@ -538,7 +538,10 @@ The result deserves the `if` in the example. An append that reports a schema, co
 
 ## What travels with every event
 
-An event arrives at whatever reads it together with its context. In the .NET client that's `EventContext`:
+An event arrives at whatever reads it together with its context. In the .NET, JVM and TypeScript clients that's `EventContext`:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
 
 ```csharp
 public record EventContext(
@@ -559,6 +562,67 @@ public record EventContext(
     EventObservationState ObservationState = EventObservationState.Initial,
     Subject Subject = default!);
 ```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+data class EventContext(
+    val sequenceNumber: Long,
+    val eventSourceId: String,
+    val eventType: EventTypeDescriptor,
+    val occurred: Instant,
+    val correlationId: UUID,
+    val causedBy: Identity,
+    val eventSourceType: String = "",
+    val eventStreamType: String = "",
+    val eventStreamId: String = "",
+    val eventStore: String = "",
+    val namespace: String = "",
+    val causation: List<Causation> = emptyList(),
+    val tags: List<String> = emptyList(),
+    val hash: String = "",
+    val observationState: EventObservationState = EventObservationState.none,
+    val subject: String = ""
+)
+```
+
+</TabItem>
+<TabItem label="Java">
+
+Java uses the same class as Kotlin, `io.cratis.chronicle.events.EventContext`, and reads the fields through getters such as `getOccurred()`.
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+export interface EventContext {
+    readonly sequenceNumber: bigint;
+    readonly eventSourceId: string;
+    readonly eventStore?: string;
+    readonly namespace?: string;
+    readonly eventSourceType?: string;
+    readonly eventStreamType?: string;
+    readonly eventStreamId?: string;
+    readonly subject?: string;
+    readonly hash?: string;
+    readonly causedBy?: Identity;
+    readonly observationState?: number;
+    readonly eventType: EventType;
+    readonly occurred: Date;
+    readonly correlationId: string;
+    readonly causation: ReadonlyArray<CausationEntry>;
+    readonly tags: ReadonlyArray<Tag>;
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+The Elixir client passes the event context to `handle/2` as a map with the keys `event_source_id`, `sequence_number`, `occurred`, `event_store` and `namespace`.
+
+</TabItem>
+</Tabs>
 
 Most of the fields place the event in the log and in time, down to the event store and namespace it lives in. `Subject` defaults to the event source id. The namespace matters for the author feature, because with Arc's Chronicle integration each tenant gets a [namespace](https://cratis.io/chronicle/concepts/namespaces/) of its own, with its own events and observers.
 
