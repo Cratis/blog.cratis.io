@@ -171,6 +171,9 @@ In Arc, `RegisterAuthor` is a [command](https://cratis.io/arc/backend/csharp/com
 <TabItem label="C#">
 
 ```csharp
+[EventType]
+public record AuthorRegistered(AuthorName Name);
+
 [Command]
 public record RegisterAuthor(AuthorId Id, AuthorName Name)
 {
@@ -182,46 +185,32 @@ public record RegisterAuthor(AuthorId Id, AuthorName Name)
 <TabItem label="Kotlin">
 
 ```kotlin
-import io.cratis.arc.artifacts.Command
-import io.cratis.arc.artifacts.CommandKey
-import io.cratis.chronicle.events.EventType
+@EventType
+data class AuthorRegistered(val name: AuthorName)
 
 @Command
-data class RegisterAuthor(@CommandKey val id: AuthorId, val name: String) {
+data class RegisterAuthor(@CommandKey val id: AuthorId, val name: AuthorName) {
     fun handle(): AuthorRegistered = AuthorRegistered(name)
 }
-
-@EventType
-data class AuthorRegistered(val name: String = "")
 ```
 
 </TabItem>
 <TabItem label="Java">
 
 ```java
-import io.cratis.arc.artifacts.Command;
-import io.cratis.arc.artifacts.CommandKey;
-import io.cratis.chronicle.events.EventType;
+@EventType
+public record AuthorRegistered(AuthorName name) { }
 
 @Command
-public record RegisterAuthor(@CommandKey AuthorId id, String name) {
+public record RegisterAuthor(@CommandKey AuthorId id, AuthorName name) {
     public AuthorRegistered handle() { return new AuthorRegistered(name); }
 }
-
-@EventType
-public record AuthorRegistered(String name) { }
 ```
 
 </TabItem>
 <TabItem label="TypeScript">
 
 ```typescript
-import { field } from '@cratis/fundamentals';
-import { eventType } from '@cratis/chronicle/events';
-import { command, key } from '@cratis/arc.core';
-import { AuthorId } from '../AuthorId.js';
-import { AuthorName } from '../AuthorName.js';
-
 @eventType()
 export class AuthorRegistered {
     @field(AuthorName) name: AuthorName;

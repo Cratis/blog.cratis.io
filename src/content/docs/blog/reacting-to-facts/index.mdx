@@ -157,7 +157,7 @@ import io.cratis.chronicle.eventSequences.EventForEventSourceId
 import io.cratis.chronicle.observation.Reactor
 
 @EventType
-data class MemberActivityRecorded(val isbn: String)
+data class MemberActivityRecorded(val isbn: Isbn)
 
 @Reactor
 class ReservationReactor {
@@ -176,7 +176,7 @@ import io.cratis.chronicle.eventSequences.EventForEventSourceId;
 import io.cratis.chronicle.observation.Reactor;
 
 @EventType
-record MemberActivityRecorded(String isbn) {}
+record MemberActivityRecorded(Isbn isbn) {}
 
 @Reactor
 class ReservationReactor {
@@ -195,9 +195,9 @@ import { field } from '@cratis/fundamentals';
 
 @eventType()
 class MemberActivityRecorded {
-    @field(String) readonly isbn: string;
+    @field(Isbn) readonly isbn: Isbn;
 
-    constructor(isbn: string = '') {
+    constructor(isbn: Isbn = new Isbn('')) {
         this.isbn = isbn;
     }
 }
@@ -217,7 +217,7 @@ class ReservationReactor {
 defmodule MyApp.Events.MemberActivityRecorded do
   use Chronicle.Events.EventType, id: "member-activity-recorded"
 
-  defstruct [:isbn]
+  defstruct isbn: %MyApp.Isbn{}
 end
 
 defmodule MyApp.ReservationReactor do
@@ -302,6 +302,9 @@ A [webhook](https://cratis.io/chronicle/webhooks/) is registered once, with a na
 <TabItem label="C#">
 
 ```csharp
+using Cratis.Chronicle;
+using Cratis.Chronicle.Webhooks;
+
 public class WebhooksIndexRegister(IEventStore eventStore)
 {
     public async Task RegisterWebhook() =>
@@ -319,18 +322,19 @@ public class WebhooksIndexRegister(IEventStore eventStore)
 <TabItem label="Kotlin">
 
 ```kotlin
-import io.cratis.chronicle.EventStore
-import io.cratis.chronicle.events.EventType
+import io.cratis.chronicle.IEventStore
 
-@EventType
-data class WebhooksIndexOrderPlaced(val orderId: String)
-
-suspend fun registerOrderWebhook(store: EventStore) {
-    store.webhooks.register("order-placed-webhook", "https://hooks.example.com/orders") { builder ->
-        builder
-            .withEventType(WebhooksIndexOrderPlaced::class)
-            .withBearerToken(System.getenv("CHRONICLE_WEBHOOK_TOKEN") ?: error("CHRONICLE_WEBHOOK_TOKEN is required"))
-    }
+class WebhooksIndexRegister(private val eventStore: IEventStore) {
+    suspend fun registerWebhook() =
+        eventStore.webhooks.register(
+            "account-events",
+            "https://example.com/chronicle/webhooks"
+        ) { builder ->
+            builder
+                .withEventType(AccountOpened::class)
+                .withHeader("x-source", "my-app")
+                .withBearerToken(System.getenv("WEBHOOK_TOKEN") ?: error("WEBHOOK_TOKEN is required"))
+        }
 }
 ```
 
@@ -338,21 +342,29 @@ suspend fun registerOrderWebhook(store: EventStore) {
 <TabItem label="Java">
 
 ```java
-import io.cratis.chronicle.EventStore;
-import io.cratis.chronicle.events.EventType;
-
+import io.cratis.chronicle.IEventStore;
 import io.cratis.chronicle.java.WebhookDefinitionBuilderJavaBridge;
 import io.cratis.chronicle.java.WebhooksServiceJavaBridge;
 
-@EventType
-record WebhooksIndexOrderPlaced(String orderId) {}
+import java.util.Objects;
 
-class WebhooksIndexRegistration {
-    void registerOrderWebhook(EventStore store) {
-        WebhooksServiceJavaBridge.register(store.getWebhooks(), "order-placed-webhook", "https://hooks.example.com/orders", builder -> {
-            WebhookDefinitionBuilderJavaBridge.withEventType(builder, WebhooksIndexOrderPlaced.class)
-                .withBearerToken(java.util.Objects.requireNonNull(System.getenv("CHRONICLE_WEBHOOK_TOKEN"), "CHRONICLE_WEBHOOK_TOKEN is required"));
-        });
+class WebhooksIndexRegister {
+    private final IEventStore eventStore;
+
+    WebhooksIndexRegister(IEventStore eventStore) {
+        this.eventStore = eventStore;
+    }
+
+    void registerWebhook() {
+        WebhooksServiceJavaBridge.register(
+            eventStore.getWebhooks(),
+            "account-events",
+            "https://example.com/chronicle/webhooks",
+            builder -> {
+                WebhookDefinitionBuilderJavaBridge.withEventType(builder, AccountOpened.class)
+                    .withHeader("x-source", "my-app")
+                    .withBearerToken(Objects.requireNonNull(System.getenv("WEBHOOK_TOKEN"), "WEBHOOK_TOKEN is required"));
+            });
     }
 }
 ```
@@ -361,33 +373,20 @@ class WebhooksIndexRegistration {
 <TabItem label="TypeScript">
 
 ```typescript
-import { eventType, IEventStore } from '@cratis/chronicle';
-import { field } from '@cratis/fundamentals';
-
-@eventType()
-class WebhooksIndexAccountOpened {
-    @field(String) readonly ownerName: string;
-
-    constructor(ownerName: string) {
-        this.ownerName = ownerName;
-    }
-}
+import { IEventStore } from '@cratis/chronicle';
 
 class WebhooksIndexRegister {
-    constructor(
-        private readonly store: IEventStore,
-        private readonly webhookToken: string
-    ) {}
+    constructor(private readonly eventStore: IEventStore) {}
 
     async registerWebhook(): Promise<void> {
-        await this.store.webhooks.register(
+        await this.eventStore.webhooks.register(
             'account-events',
             'https://example.com/chronicle/webhooks',
             builder => {
                 builder
-                    .withEventType(WebhooksIndexAccountOpened)
+                    .withEventType(AccountOpened)
                     .withHeader('x-source', 'my-app')
-                    .withBearerToken(this.webhookToken);
+                    .withBearerToken(process.env.WEBHOOK_TOKEN!);
             }
         );
     }
@@ -398,14 +397,8 @@ class WebhooksIndexRegister {
 <TabItem label="Elixir">
 
 ```elixir
-defmodule MyApp.Events.WebhooksIndexAccountOpened do
-  use Chronicle.Events.EventType, id: "webhooks-index-account-opened"
-
-  defstruct [:owner_name]
-end
-
 defmodule MyApp.WebhooksIndexRegister do
-  alias MyApp.Events.WebhooksIndexAccountOpened
+  alias MyApp.Events.AccountOpened
 
   def register_webhook do
     Chronicle.WebHooks.register(
@@ -413,7 +406,7 @@ defmodule MyApp.WebhooksIndexRegister do
       "https://example.com/chronicle/webhooks",
       fn builder ->
         builder
-        |> Chronicle.WebHooks.DefinitionBuilder.with_event_type(WebhooksIndexAccountOpened)
+        |> Chronicle.WebHooks.DefinitionBuilder.with_event_type(AccountOpened)
         |> Chronicle.WebHooks.DefinitionBuilder.with_header("x-source", "my-app")
         |> Chronicle.WebHooks.DefinitionBuilder.with_bearer_token(System.fetch_env!("WEBHOOK_TOKEN"))
       end
@@ -455,6 +448,8 @@ An [explicit subscription](https://cratis.io/chronicle/subscriptions/explicit-su
 <TabItem label="C#">
 
 ```csharp
+using Cratis.Chronicle;
+
 public static class InventoryUpdates
 {
     public static Task Run(IEventStore eventStore) =>
@@ -471,21 +466,18 @@ public static class InventoryUpdates
 <TabItem label="Kotlin">
 
 ```kotlin
-import io.cratis.chronicle.EventStore
-import io.cratis.chronicle.events.EventType
+import io.cratis.chronicle.IEventStore
 
-@EventType
-data class SubscriptionsExplicitFilteringPayrollRunCompleted(val employeeId: String)
-
-@EventType
-data class SubscriptionsExplicitFilteringPayrollRunFailed(val employeeId: String, val reason: String)
-
-suspend fun subscribeToPayrollOutcomes(store: EventStore) {
-    store.eventStoreSubscriptions.subscribe("payroll-outcomes", "PayrollEventStore") { builder ->
-        builder
-            .withEventType(SubscriptionsExplicitFilteringPayrollRunCompleted::class)
-            .withEventType(SubscriptionsExplicitFilteringPayrollRunFailed::class)
-    }
+object InventoryUpdates {
+    suspend fun run(eventStore: IEventStore) =
+        eventStore.eventStoreSubscriptions.subscribe(
+            "inventory-updates",
+            "warehouse-service"
+        ) { builder ->
+            builder
+                .withEventType(StockAdjusted::class)
+                .withEventType(StockReserved::class)
+        }
 }
 ```
 
@@ -493,24 +485,20 @@ suspend fun subscribeToPayrollOutcomes(store: EventStore) {
 <TabItem label="Java">
 
 ```java
-import io.cratis.chronicle.EventStore;
-import io.cratis.chronicle.events.EventType;
-
+import io.cratis.chronicle.IEventStore;
 import io.cratis.chronicle.java.EventStoreSubscriptionBuilderJavaBridge;
 import io.cratis.chronicle.java.EventStoreSubscriptionsServiceJavaBridge;
 
-@EventType
-record SubscriptionsExplicitFilteringPayrollRunCompleted(String employeeId) {}
-
-@EventType
-record SubscriptionsExplicitFilteringPayrollRunFailed(String employeeId, String reason) {}
-
-class SubscriptionsExplicitFiltering {
-    void subscribeToPayrollOutcomes(EventStore store) {
-        EventStoreSubscriptionsServiceJavaBridge.subscribe(store.getEventStoreSubscriptions(), "payroll-outcomes", "PayrollEventStore", builder -> {
-            EventStoreSubscriptionBuilderJavaBridge.withEventType(builder, SubscriptionsExplicitFilteringPayrollRunCompleted.class);
-            EventStoreSubscriptionBuilderJavaBridge.withEventType(builder, SubscriptionsExplicitFilteringPayrollRunFailed.class);
-        });
+final class InventoryUpdates {
+    static void run(IEventStore eventStore) {
+        EventStoreSubscriptionsServiceJavaBridge.subscribe(
+            eventStore.getEventStoreSubscriptions(),
+            "inventory-updates",
+            "warehouse-service",
+            builder -> {
+                EventStoreSubscriptionBuilderJavaBridge.withEventType(builder, StockAdjusted.class);
+                EventStoreSubscriptionBuilderJavaBridge.withEventType(builder, StockReserved.class);
+            });
     }
 }
 ```
@@ -522,8 +510,8 @@ class SubscriptionsExplicitFiltering {
 import { IEventStore } from '@cratis/chronicle';
 
 class InventoryUpdates {
-    static async run(store: IEventStore): Promise<void> {
-        await store.subscriptions.subscribe(
+    static async run(eventStore: IEventStore): Promise<void> {
+        await eventStore.subscriptions.subscribe(
             'inventory-updates',
             'warehouse-service',
             builder => builder

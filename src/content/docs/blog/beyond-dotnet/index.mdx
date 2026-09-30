@@ -52,8 +52,6 @@ import io.cratis.arc.artifacts.Command;
 import io.cratis.arc.artifacts.CommandKey;
 import io.cratis.arc.authorization.AllowAnonymous;
 import io.cratis.chronicle.events.EventType;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
 
 @EventType
 public record TaskCreated(String title) {}
@@ -61,8 +59,8 @@ public record TaskCreated(String title) {}
 @Command
 @AllowAnonymous
 public record CreateTask(@CommandKey String id, String title) {
-    public CompletionStage<TaskCreated> handle() {
-        return CompletableFuture.completedFuture(new TaskCreated(title));
+    public TaskCreated handle() {
+        return new TaskCreated(title);
     }
 }
 ```
@@ -73,7 +71,7 @@ public record CreateTask(@CommandKey String id, String title) {
 ```typescript
 import { field } from '@cratis/fundamentals';
 import { eventType } from '@cratis/chronicle/events';
-import { command, key } from '@cratis/arc.core';
+import { allowAnonymous, command, key } from '@cratis/arc.core';
 
 @eventType()
 export class TaskCreated {
@@ -82,6 +80,7 @@ export class TaskCreated {
 }
 
 @command()
+@allowAnonymous()
 export class CreateTask {
     @field(String) @key() id = '';
     @field(String) title = '';
@@ -128,7 +127,7 @@ Two things are shared and everything else belongs to a language. The Chronicle k
 
 A command is a `@Command` class with a `handle()` method, and a query is a companion or static method on a `@ReadModel` type. KSP generates the handlers at compile time, so nothing is found by reflection when the application runs. Routes come from names, and `CreateTask` becomes `POST /api/create-task`. The package segments to leave out of a route are set twice, once in the Gradle plugin as `cratisArc.endpoints.segmentsToSkip` and once at runtime as `cratis.arc.endpoints.segments-to-skip-for-route`. If the two disagree, the starter refuses to start. [*Arc gotchas*](/arc-gotchas/) covers names doing the mapping on .NET. On the JVM, a mismatch is caught at startup.
 
-A query stays live by returning something that emits. In Kotlin that's a `Flow` or a `StateFlow`. In Java it's a JDK `Flow.Publisher` or Arc's `ObservableState<T>`, and with the optional `arc-rxjava3` artifact it can be an RxJava 3 `Observable`. From the [observable queries guide](https://cratis.io/arc/backend/kotlin/guides/observable-queries/), with the TypeScript tab from Arc for TypeScript's Tasks sample:
+A query stays live by returning something that emits. In Kotlin that's a `Flow` or a `StateFlow`. In Java it's a JDK `Flow.Publisher` or Arc's `ObservableState<T>`, and with the optional `arc-rxjava3` artifact it can be an RxJava 3 `Observable`. The Kotlin and Java tabs follow the [observable queries guide](https://cratis.io/arc/backend/kotlin/guides/observable-queries/), and the TypeScript tab follows Arc for TypeScript's guide to observable queries:
 
 <Tabs syncKey="language">
 <TabItem label="Kotlin">
@@ -165,13 +164,16 @@ public record TaskView(String id, String title) {
 <TabItem label="TypeScript">
 
 ```typescript
-@readModel()
-export class TaskItem {
-    @field(TaskId) id!: TaskId;
-    @field(TaskTitle) title!: TaskTitle;
+const tasks = new BehaviorSubject<TaskView[]>([]);
 
-    @query()
-    static observeAllTasks(tasks: Tasks): BehaviorSubject<TaskItem[]> { return tasks.observeAll(); }
+@readModel()
+@allowAnonymous()
+export class TaskView {
+    @field(String) id!: string;
+    @field(String) title!: string;
+
+    @query({ observable: true })
+    static all(): Observable<TaskView[]> { return tasks; }
 }
 ```
 

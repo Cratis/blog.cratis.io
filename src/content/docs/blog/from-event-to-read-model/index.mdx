@@ -59,6 +59,10 @@ The [model-bound](https://cratis.io/chronicle/projections/model-bound/) form put
 <TabItem label="C#">
 
 ```csharp
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.Keys;
+using Cratis.Chronicle.Projections.ModelBound;
+
 [EventType]
 public record AccountOpened(string Name, decimal InitialBalance);
 
@@ -76,22 +80,28 @@ public record AccountInfo(
 ```kotlin
 import io.cratis.chronicle.events.EventType
 import io.cratis.chronicle.projections.FromEvent
+import io.cratis.chronicle.projections.FromEventSourceId
 import io.cratis.chronicle.projections.SetFrom
 import io.cratis.chronicle.readModels.ReadModel
+import java.math.BigDecimal
+import java.util.UUID
 
 @EventType
 data class AccountOpened(
     val name: String,
-    val initialBalance: Double
+    val initialBalance: BigDecimal
 )
 
 @ReadModel
 @FromEvent(AccountOpened::class)
 data class AccountInfo(
-    val name: String = "",
+    @FromEventSourceId
+    val id: UUID = UUID(0, 0),
+
+    val name: String = "",                         // AutoMap: same name as event property
 
     @SetFrom("initialBalance")
-    val balance: Double = 0.0
+    val balance: BigDecimal = BigDecimal.ZERO
 )
 ```
 
@@ -101,19 +111,26 @@ data class AccountInfo(
 ```java
 import io.cratis.chronicle.events.EventType;
 import io.cratis.chronicle.projections.FromEvent;
+import io.cratis.chronicle.projections.FromEventSourceId;
 import io.cratis.chronicle.projections.SetFrom;
 import io.cratis.chronicle.readModels.ReadModel;
 
+import java.math.BigDecimal;
+import java.util.UUID;
+
 @EventType
-record AccountOpened(String name, double initialBalance) {}
+record AccountOpened(String name, BigDecimal initialBalance) {}
 
 @ReadModel
 @FromEvent(eventType = AccountOpened.class)
 class AccountInfo {
-    public String name = "";
+    @FromEventSourceId
+    public UUID id = new UUID(0, 0);
+
+    public String name = "";                       // AutoMap: same name as event property
 
     @SetFrom(propertyPath = "initialBalance")
-    public double balance = 0;
+    public BigDecimal balance = BigDecimal.ZERO;
 }
 ```
 
@@ -133,7 +150,7 @@ export class AccountOpened {
 @fromEvent(AccountOpened)
 export class AccountInfo {
     id: Guid = Guid.empty;
-    @field(String) name = '';
+    @field(String) name = '';                      // AutoMap: same name as event property
 
     @setFrom(AccountOpened, 'initialBalance')
     balance = 0;
@@ -171,44 +188,26 @@ A read model with a collection inside it uses [children](https://cratis.io/chron
 <TabItem label="C#">
 
 ```csharp
+public record OrderLine(
+    [Key] Guid Id,
+    [SetFrom<LineItemAdded>(nameof(LineItemAdded.ProductName))] string Product,
+    [SetFrom<LineItemAdded>(nameof(LineItemAdded.InitialQuantity))]
+    [SetFrom<QuantityAdjusted>(nameof(QuantityAdjusted.NewQuantity))] int Quantity);
+
 public record Order(
     [Key] Guid Id,
     [SetFrom<OrderCreated>(nameof(OrderCreated.CustomerName))] string Customer,
     [ChildrenFrom<LineItemAdded>(key: nameof(LineItemAdded.ItemId))]
     [RemovedWith<LineItemRemoved>(key: nameof(LineItemRemoved.ItemId))]
     IEnumerable<OrderLine> Lines);
-
-public record OrderLine(
-    [Key] Guid Id,
-    [SetFrom<LineItemAdded>(nameof(LineItemAdded.ProductName))] string Product,
-    [SetFrom<LineItemAdded>(nameof(LineItemAdded.InitialQuantity))]
-    [SetFrom<QuantityAdjusted>(nameof(QuantityAdjusted.NewQuantity))] int Quantity);
 ```
 
 </TabItem>
 <TabItem label="Kotlin">
 
 ```kotlin
-import io.cratis.chronicle.projections.ChildrenFrom
-import io.cratis.chronicle.projections.FromEvent
-import io.cratis.chronicle.projections.RemovedWith
-import io.cratis.chronicle.projections.SetFrom
-import io.cratis.chronicle.readModels.ReadModel
-
-@ReadModel
-@FromEvent(OrderCreated::class)
-data class Order(
-    @SetFrom("customerName", OrderCreated::class)
-    val customer: String = "",
-
-    @ChildrenFrom(LineItemAdded::class, key = "itemId", identifiedBy = "itemId")
-    @ChildrenFrom(QuantityAdjusted::class, key = "itemId", identifiedBy = "itemId")
-    @RemovedWith(LineItemRemoved::class, key = "itemId")
-    val lines: List<OrderLine> = emptyList()
-)
-
 data class OrderLine(
-    val itemId: String = "",
+    val id: UUID = UUID(0, 0),
 
     @SetFrom("productName", LineItemAdded::class)
     val product: String = "",
@@ -217,35 +216,29 @@ data class OrderLine(
     @SetFrom("newQuantity", QuantityAdjusted::class)
     val quantity: Int = 0
 )
+
+@ReadModel
+@FromEvent(OrderCreated::class)
+data class Order(
+    @FromEventSourceId
+    val id: UUID = UUID(0, 0),
+
+    @SetFrom("customerName", OrderCreated::class)
+    val customer: String = "",
+
+    @ChildrenFrom(LineItemAdded::class, key = "itemId", identifiedBy = "id")
+    @ChildrenFrom(QuantityAdjusted::class, key = "itemId", identifiedBy = "id")
+    @RemovedWith(LineItemRemoved::class, key = "itemId")
+    val lines: List<OrderLine> = emptyList()
+)
 ```
 
 </TabItem>
 <TabItem label="Java">
 
 ```java
-import io.cratis.chronicle.projections.ChildrenFrom;
-import io.cratis.chronicle.projections.FromEvent;
-import io.cratis.chronicle.projections.RemovedWith;
-import io.cratis.chronicle.projections.SetFrom;
-import io.cratis.chronicle.readModels.ReadModel;
-
-import java.util.Collections;
-import java.util.List;
-
-@ReadModel
-@FromEvent(eventType = OrderCreated.class)
-class Order {
-    @SetFrom(propertyPath = "customerName", eventType = OrderCreated.class)
-    public String customer = "";
-
-    @ChildrenFrom(eventType = LineItemAdded.class, key = "itemId", identifiedBy = "itemId")
-    @ChildrenFrom(eventType = QuantityAdjusted.class, key = "itemId", identifiedBy = "itemId")
-    @RemovedWith(eventType = LineItemRemoved.class, key = "itemId")
-    public List<OrderLine> lines = Collections.emptyList();
-}
-
 class OrderLine {
-    public String itemId = "";
+    public UUID id = new UUID(0, 0);
 
     @SetFrom(propertyPath = "productName", eventType = LineItemAdded.class)
     public String product = "";
@@ -254,15 +247,27 @@ class OrderLine {
     @SetFrom(propertyPath = "newQuantity", eventType = QuantityAdjusted.class)
     public int quantity = 0;
 }
+
+@ReadModel
+@FromEvent(eventType = OrderCreated.class)
+class Order {
+    @FromEventSourceId
+    public UUID id = new UUID(0, 0);
+
+    @SetFrom(propertyPath = "customerName", eventType = OrderCreated.class)
+    public String customer = "";
+
+    @ChildrenFrom(eventType = LineItemAdded.class, key = "itemId", identifiedBy = "id")
+    @ChildrenFrom(eventType = QuantityAdjusted.class, key = "itemId", identifiedBy = "id")
+    @RemovedWith(eventType = LineItemRemoved.class, key = "itemId")
+    public List<OrderLine> lines = Collections.emptyList();
+}
 ```
 
 </TabItem>
 <TabItem label="TypeScript">
 
 ```typescript
-import { childrenFrom, Guid, removedWith, setFrom } from '@cratis/chronicle';
-import { field } from '@cratis/fundamentals';
-
 export class OrderLine {
     id: Guid = Guid.empty;
 
@@ -299,6 +304,8 @@ A [declarative projection](https://cratis.io/chronicle/projections/declarative/c
 <TabItem label="C#">
 
 ```csharp
+using Cratis.Chronicle.Projections;
+
 public class GroupProjection : IProjectionFor<Group>
 {
     public void Define(IProjectionBuilderFor<Group> builder) => builder

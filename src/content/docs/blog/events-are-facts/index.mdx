@@ -196,9 +196,11 @@ public record DiscountApplied(OrderId Id, Money Amount);
 
 ```kotlin
 import io.cratis.chronicle.events.EventType
+import java.math.BigDecimal
+import java.util.UUID
 
-data class OrderId(val value: String)
-data class Money(val amount: Double, val currency: String)
+data class OrderId(val value: UUID)
+data class Money(val amount: BigDecimal, val currency: String)
 
 // Nullable smell — "sometimes there's a discount, sometimes not"
 @EventType
@@ -222,8 +224,11 @@ data class DiscountApplied(val id: OrderId, val amount: Money)
 ```java
 import io.cratis.chronicle.events.EventType;
 
-record OrderId(String value) {}
-record Money(double amount, String currency) {}
+import java.math.BigDecimal;
+import java.util.UUID;
+
+record OrderId(UUID value) {}
+record Money(BigDecimal amount, String currency) {}
 
 // Nullable smell — "sometimes there's a discount, sometimes not"
 @EventType
@@ -245,12 +250,12 @@ record DiscountApplied(OrderId id, Money amount) {}
 
 ```typescript
 import { eventType } from '@cratis/chronicle';
-import { field } from '@cratis/fundamentals';
+import { field, Guid } from '@cratis/fundamentals';
 
 class OrderId {
-    @field(String) readonly value: string;
+    @field(Guid) readonly value: Guid;
 
-    constructor(value: string) {
+    constructor(value: Guid) {
         this.value = value;
     }
 }
@@ -398,18 +403,19 @@ public class CheckoutService(IEventLog eventLog)
 <TabItem label="Kotlin">
 
 ```kotlin
-import io.cratis.chronicle.IEventStore
+import io.cratis.chronicle.eventSequences.IEventLog
 import io.cratis.chronicle.events.EventType
+import java.math.BigDecimal
 
 @EventType
 data class OrderPlaced(
     val customerId: String,
-    val total: Double
+    val total: BigDecimal
 )
 
-class CheckoutService(private val store: IEventStore) {
-    suspend fun placeOrder(orderId: String, customerId: String, total: Double) {
-        val result = store.eventLog.append(
+class CheckoutService(private val eventLog: IEventLog) {
+    suspend fun placeOrder(orderId: String, customerId: String, total: BigDecimal) {
+        val result = eventLog.append(
             orderId,
             OrderPlaced(customerId, total)
         )
@@ -425,22 +431,24 @@ class CheckoutService(private val store: IEventStore) {
 <TabItem label="Java">
 
 ```java
-import io.cratis.chronicle.IEventStore;
+import io.cratis.chronicle.eventSequences.IEventLog;
 import io.cratis.chronicle.events.EventType;
-import io.cratis.chronicle.java.BlockingEventStore;
+import io.cratis.chronicle.java.BlockingEventSequence;
+
+import java.math.BigDecimal;
 
 @EventType
-record OrderPlaced(String customerId, double total) {}
+record OrderPlaced(String customerId, BigDecimal total) {}
 
 class CheckoutService {
-    private final BlockingEventStore store;
+    private final BlockingEventSequence eventLog;
 
-    CheckoutService(IEventStore store) {
-        this.store = new BlockingEventStore(store);
+    CheckoutService(IEventLog eventLog) {
+        this.eventLog = new BlockingEventSequence(eventLog);
     }
 
-    void placeOrder(String orderId, String customerId, double total) {
-        var result = store.getEventLog().append(orderId, new OrderPlaced(customerId, total));
+    void placeOrder(String orderId, String customerId, BigDecimal total) {
+        var result = eventLog.append(orderId, new OrderPlaced(customerId, total));
 
         if (!result.isSuccess()) {
             // Decide whether to retry or surface a conflict to the caller.
@@ -453,7 +461,7 @@ class CheckoutService {
 <TabItem label="TypeScript">
 
 ```typescript
-import { eventType, IEventStore } from '@cratis/chronicle';
+import { eventType, IEventLog } from '@cratis/chronicle';
 import { field } from '@cratis/fundamentals';
 
 @eventType()
@@ -468,10 +476,10 @@ class OrderPlaced {
 }
 
 class CheckoutService {
-    constructor(private readonly store: IEventStore) {}
+    constructor(private readonly eventLog: IEventLog) {}
 
     async placeOrder(orderId: string, customerId: string, total: number): Promise<void> {
-        const result = await this.store.eventLog.append(
+        const result = await this.eventLog.append(
             orderId,
             new OrderPlaced(customerId, total)
         );

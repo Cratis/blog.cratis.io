@@ -30,12 +30,11 @@ The name's [`ConceptAs<T>` type is marked `[PII]`](https://cratis.io/chronicle/c
 
 ```csharp
 using Cratis.Chronicle.Compliance.GDPR;
+using Cratis.Concepts;
 
 [PII]
 public record PiiConceptsPersonName(string Value) : ConceptAs<string>(Value)
 {
-    public static readonly PiiConceptsPersonName NotSet = new(string.Empty);
-
     public static implicit operator string(PiiConceptsPersonName name) => name.Value;
     public static implicit operator PiiConceptsPersonName(string value) => new(value);
 }
@@ -89,7 +88,7 @@ class PiiConceptsPersonName extends ConceptAs<string> {
 <TabItem label="Elixir">
 
 ```elixir
-defmodule MyApp.Compliance.PiiWithConcepts.PersonName do
+defmodule MyApp.PiiConceptsPersonName do
   use Chronicle.Concept, type: :string
   pii()
 end
