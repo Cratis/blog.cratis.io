@@ -70,8 +70,8 @@ record ConstraintsModelBoundUniqueProjectCreated(@Unique String name, String des
 ```typescript
 import { eventType, unique } from '@cratis/chronicle';
 
-@eventType('constraints-model-bound-project-created')
-class CmbProjectCreated {
+@eventType()
+class ConstraintsModelBoundUniqueProjectCreated {
     @unique() name = '';
     description = '';
 }
@@ -107,6 +107,10 @@ The model-bound form is the one to reach for first. Naming the constraint lets a
 <TabItem label="C#">
 
 ```csharp
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.Events.Constraints;
+using Cratis.Concepts;
+
 [EventType]
 public record UserRegistered([property: Unique(name: "UniqueEmail")] string Email, string DisplayName);
 
@@ -121,9 +125,11 @@ public record UserRemoved(UserId UserId);
 <TabItem label="Kotlin">
 
 ```kotlin
+import io.cratis.chronicle.concepts.ConceptAs
 import io.cratis.chronicle.constraints.RemoveConstraint
 import io.cratis.chronicle.constraints.Unique
 import io.cratis.chronicle.events.EventType
+import java.util.UUID
 
 @EventType
 data class UserRegistered(
@@ -131,25 +137,37 @@ data class UserRegistered(
     val displayName: String
 )
 
+data class UserId(override val value: UUID) : ConceptAs<UUID>
+
 @EventType
 @RemoveConstraint("UniqueEmail")
-data class UserRemoved(val userId: String)
+data class UserRemoved(val userId: UserId)
 ```
 
 </TabItem>
 <TabItem label="Java">
 
 ```java
+import io.cratis.chronicle.concepts.ConceptAs;
 import io.cratis.chronicle.constraints.RemoveConstraint;
 import io.cratis.chronicle.constraints.Unique;
 import io.cratis.chronicle.events.EventType;
 
+import java.util.UUID;
+
 @EventType
 record UserRegistered(@Unique(id = "UniqueEmail") String email, String displayName) {}
 
+record UserId(UUID value) implements ConceptAs<UUID> {
+    @Override
+    public UUID getValue() {
+        return value;
+    }
+}
+
 @EventType
 @RemoveConstraint("UniqueEmail")
-record UserRemoved(String userId) {}
+record UserRemoved(UserId userId) {}
 ```
 
 </TabItem>
@@ -157,17 +175,26 @@ record UserRemoved(String userId) {}
 
 ```typescript
 import { eventType, removeConstraint, unique } from '@cratis/chronicle';
+import { ConceptAs, field, Guid } from '@cratis/fundamentals';
 
-@eventType('user-registered')
+@eventType()
 class UserRegistered {
     @unique('UniqueEmail') email = '';
     displayName = '';
 }
 
-@eventType('user-removed')
+class UserId extends ConceptAs<Guid> {
+    static readonly valueType = Guid;
+
+    constructor(value: Guid) {
+        super(value);
+    }
+}
+
+@eventType()
 @removeConstraint('UniqueEmail')
 class UserRemoved {
-    userId = '';
+    @field(UserId) userId = new UserId(Guid.empty);
 }
 ```
 
@@ -183,10 +210,14 @@ defmodule MyApp.Events.UserRegistered do
   unique(:email, name: "UniqueEmail")
 end
 
+defmodule MyApp.UserId do
+  use Chronicle.Concept, type: :uuid
+end
+
 defmodule MyApp.Events.UserRemoved do
   use Chronicle.Events.EventType, id: "user-removed"
 
-  defstruct [:user_id]
+  defstruct user_id: %MyApp.UserId{}
 
   remove_constraint("UniqueEmail")
 end
