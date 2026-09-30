@@ -20,7 +20,7 @@ import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 The series ends on the template because it's the first thing to run once you've decided to try Cratis, and it leans on smaller tools that earlier parts only mention in passing.
 
-The feature from [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) has almost the same shape as the template's sample slice. A signed-in user registers an author, and author names are unique within the organization. Swap the template's name for an author's name and most of the work is already laid out.
+The feature from [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) has almost the same shape as the template's sample slice. A signed-in user registers an author, and author names are unique within the organization.
 
 ## The first hour
 
@@ -37,13 +37,13 @@ yarn dev
 
 `dotnet run` and `yarn dev` each want a terminal of their own.
 
-Creating the project runs post-creation actions that add the Cratis NuGet packages at their current release and install the frontend dependencies. The template source leaves its package versions open on purpose, and the generated `.csproj` records the versions it resolved, so two projects scaffolded a week apart can differ. `dotnet new` asks before it runs the frontend install. In a script or a dev container nobody is there to answer, and it waits, so pass `--allow-scripts yes`. Add `--packageManager none` as well to pin the packages and skip the install.
+Creating the project runs post-creation actions that add the Cratis NuGet packages at their current release and install the frontend dependencies. The template source leaves its package versions open on purpose, and the generated `.csproj` records the versions it resolved, so two projects scaffolded a week apart can differ. `dotnet new` asks before it runs the frontend install. In a script or a dev container nobody is there to answer, and Cratis.Templates 1.7.2 keeps re-prompting instead of moving on, so pass `--allow-scripts yes`. Add `--packageManager none` as well to pin the packages and skip the install.
 
 `--Database` picks MongoDB, the default, or PostgreSQL, SQL Server or SQLite. Any choice other than MongoDB swaps Arc's MongoDB package for its Entity Framework Core one and points Chronicle's sink at SQL.
 
 `docker compose up -d` starts the Chronicle development image, which bundles MongoDB, and an Aspire dashboard. The compose file is for development. It publishes its ports on every network interface and the Chronicle image uses well-known development credentials, so keep it on a machine you trust. With the default MongoDB setup, events and read models live inside the Chronicle container. `docker compose stop` keeps them and `docker compose down` deletes them.
 
-The backend listens on `http://localhost:5000`, with Swagger at `/swagger`. Vite serves the frontend on `http://localhost:9000` and forwards `/api`, `/.cratis` and `/swagger` to the backend. Register a name on the Demo page and three things happen. The backend logs `Registered: <name>` from the sample reactor, the name appears in the list, and the event shows up in the [Chronicle Workbench](https://cratis.io/chronicle/workbench/) at `https://localhost:35000`, once you've accepted the self-signed development certificate and signed in with the development account.
+The backend listens on `http://localhost:5000`, with Swagger at `/swagger`. Vite serves the frontend on `http://localhost:9000` and forwards `/api`, `/.cratis` and `/swagger` to the backend. Port 5000 has to be free because the Vite proxy is fixed to it, and so does 27017, because the Chronicle image advertises its MongoDB replica-set member as `localhost:27017`. Register a name on the Demo page and three things happen. The backend logs `Registered: <name>` from the sample reactor, the name appears in the list, and the event shows up in the [Chronicle Workbench](https://cratis.io/chronicle/workbench/) at `https://localhost:35000`, once you've accepted the self-signed development certificate and signed in with the development account.
 
 ![A diagram titled The first hour, six numbered steps. 1 Install: dotnet new install Cratis.Templates. 2 Scaffold: dotnet new cratis -n MyStore. 3 Start: docker compose up -d. 4 Run: dotnet run and yarn dev. 5 Register: a name on the Demo page. 6 Inspect: the event in the Workbench. Below, a folder labeled What you get: SomeModule/SomeFeature/, with Registration holding a command, an event, a reactor and a dialog, and Listing holding a read model, an observable query and a list page. A footer reads: Needs the .NET 10 SDK, Docker Compose and Node. Development only.](./first-hour.png)
 
@@ -51,7 +51,92 @@ The backend listens on `http://localhost:5000`, with Swagger at `/swagger`. Vite
 
 ### What the template writes
 
-The [`cratis` template](https://cratis.io/templates/cratis-web/) puts its sample under `SomeModule/SomeFeature/`, in two vertical slices. `Registration/` holds a `[Command]` record, a `Registered` event, a reactor and a dialog. `Listing/` holds a `[ReadModel]` projected from that event, an observable query and a list page. The command is short:
+The [`cratis` template](https://cratis.io/templates/cratis-web/) puts its sample under `SomeModule/SomeFeature/`, in two vertical slices.
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```text
+SomeModule/SomeFeature/
+├── Listing/
+│   ├── index.ts
+│   ├── Listing.cs
+│   ├── Listing.ts
+│   └── ListingPage.tsx
+├── Registration/
+│   ├── index.ts
+│   ├── RegisterDialog.tsx
+│   ├── Registration.cs
+│   └── Registration.ts
+├── index.ts
+├── SomeFeature.tsx
+├── SomeId.cs
+└── SomeName.cs
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```text
+src/main/kotlin/com/example/somemodule/somefeature/
+├── listing/
+│   └── Listing.kt
+├── registration/
+│   └── Registration.kt
+├── SomeId.kt
+└── SomeName.kt
+
+SomeModule/SomeFeature/
+├── Listing/
+│   ├── index.ts
+│   └── ListingPage.tsx
+├── Registration/
+│   ├── index.ts
+│   └── RegisterDialog.tsx
+├── index.ts
+└── SomeFeature.tsx
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```text
+src/main/java/com/example/somemodule/somefeature/
+├── listing/
+│   ├── Listing.java
+│   └── ListingReducer.java
+├── registration/
+│   ├── Register.java
+│   ├── Registered.java
+│   └── RegistrationReactor.java
+├── SomeId.java
+└── SomeName.java
+
+SomeModule/SomeFeature/
+├── Listing/
+│   ├── index.ts
+│   └── ListingPage.tsx
+├── Registration/
+│   ├── index.ts
+│   └── RegisterDialog.tsx
+├── index.ts
+└── SomeFeature.tsx
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+No TypeScript template: `--language` takes `csharp`, `kotlin` or `java`.
+
+</TabItem>
+<TabItem label="Elixir">
+
+No Elixir template: `--language` takes `csharp`, `kotlin` or `java`.
+
+</TabItem>
+</Tabs>
+
+`Registration/` holds a `[Command]` record, a `Registered` event, a reactor and a dialog, and `Listing/` a read model built from that event, a query and a list page. C# projects the read model with `[FromEvent<Registered>]` behind an observable query. Kotlin and Java use a reducer and a plain query, and keep the backend under `src/main`, apart from the frontend. The command is short:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
@@ -74,11 +159,12 @@ public record Register(SomeName Name)
 
 ```kotlin
 @Command
-data class Register(val name: SomeName) {
-    fun handle(): Pair<SomeId, EventForEventSourceId> {
-        val someId = SomeId.new()
-        return someId to EventForEventSourceId(someId.value().toString(), Registered(name))
-    }
+@AllowAnonymous
+data class Register(
+    @CommandKey val id: SomeId,
+    val name: SomeName
+) {
+    fun handle(): Registered = Registered(name)
 }
 ```
 
@@ -87,10 +173,10 @@ data class Register(val name: SomeName) {
 
 ```java
 @Command
-public record Register(SomeName name) {
-    public Pair<SomeId, EventForEventSourceId> handle() {
-        var someId = SomeId.newId();
-        return new Pair<>(someId, new EventForEventSourceId(someId.value().toString(), new Registered(name)));
+@AllowAnonymous
+public record Register(@CommandKey SomeId id, SomeName name) {
+    public CompletionStage<Registered> handle() {
+        return CompletableFuture.completedFuture(new Registered(name()));
     }
 }
 ```
@@ -123,7 +209,7 @@ Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
 </TabItem>
 </Tabs>
 
-`Handle()` returns the identity it chose and the event to append, and Arc appends it. The project has no controller and registers no route. [Arc derives the route from the namespace](https://cratis.io/arc/backend/csharp/proxy-generation/configuration/routing/), and the build generates the TypeScript proxy the dialog calls, next to its C# source. The route settings live in `appsettings.json` and have matching `CratisProxies*` properties in the `.csproj`, and the two have to change together. [*Arc gotchas: where a convention decides for you*](/arc-gotchas/) shows what happens when they don't, and why a project laid out like this one should leave `CratisProxiesSkipOutputDeletion` at `true`.
+In C# and TypeScript, `Handle()` returns the identity it chose and the event to append, and Arc appends it. The Kotlin and Java templates take the identity as the command's `@CommandKey`, return only the event, and Arc appends it to that key. The project has no controller and registers no route. [Arc derives the route from the namespace](https://cratis.io/arc/backend/csharp/proxy-generation/configuration/routing/), and the build generates the TypeScript proxy the dialog calls, next to its C# source. The route settings live in `appsettings.json` and have matching `CratisProxies*` properties in the `.csproj`, and the two have to change together. [*Arc gotchas: where a convention decides for you*](/arc-gotchas/) shows what happens when they don't, and why a project laid out like this one should leave `CratisProxiesSkipOutputDeletion` at `true`.
 
 For the author feature, `Register` becomes `RegisterAuthor`, `SomeName` becomes a concept for the author's name, and the listing becomes the list of authors. Uniqueness within the organization is the part the template leaves out. That's a Chronicle constraint, covered in [*Rules that hold when you write*](/rules-that-hold-when-you-write/), and the tenant comes from the edge, as [*Tenancy and identity end to end*](/tenancy-and-identity-end-to-end/) explains.
 
@@ -143,11 +229,50 @@ A few differences from `dotnet new` matter on the first run. `--language` (`csha
 
 When it's done, `cratis new` synchronizes the project's AI configuration, the same work `cratis ai update` does. Every template ships a `.cratis/ai.json` that selects the Cratis AI profiles, languages and assistant integrations, so after `dotnet new` you run `cratis ai update` yourself, and after `cratis new` there's nothing left to run. [*AI across the Cratis stack*](/ai-across-the-cratis-stack/) goes into what that installs, and [*The Cratis CLI, from diagnose to llm-context*](/the-cratis-cli/) covers the rest of the CLI.
 
-The package holds four .NET templates. `cratis` is the web application above, and `cratis-aspire` is the same application orchestrated with .NET Aspire. `cratis-chronicle-console` is a console app connected to Chronicle, and `cratis-chronicle-web` an ASP.NET Core app connected to Chronicle, for when you want the event store without Arc. The Kotlin and Java variants of `cratis` give you a Spring Boot backend with Arc and Chronicle, proxies generated through the Arc Gradle plugin, and the same React and Vite frontend. [*Beyond .NET*](/beyond-dotnet/) covers how those differ from the .NET stack.
+The package holds four .NET templates. `cratis` is the web application above, and `cratis-aspire` is the same application orchestrated with .NET Aspire. A minimal AppHost that runs Chronicle for a project looks like this:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+var builder = DistributedApplication.CreateBuilder(args);
+
+var chronicle = builder.AddCratisChronicle();
+
+builder.AddContainer("api", "my-org/my-api")
+    .WithReference(chronicle);
+
+builder.Build().Run();
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+No Kotlin equivalent: Aspire hosting for Chronicle is a .NET package.
+
+</TabItem>
+<TabItem label="Java">
+
+No Java equivalent: Aspire hosting for Chronicle is a .NET package.
+
+</TabItem>
+<TabItem label="TypeScript">
+
+No TypeScript equivalent: Aspire hosting for Chronicle is a .NET package.
+
+</TabItem>
+<TabItem label="Elixir">
+
+No Elixir equivalent: Aspire hosting for Chronicle is a .NET package.
+
+</TabItem>
+</Tabs>
+
+The template's AppHost also sets `Cratis__Chronicle__ConnectionString` on the backend, because the client reads `Cratis:Chronicle:ConnectionString`, not Aspire's `ConnectionStrings`. `cratis-chronicle-console` and `cratis-chronicle-web` connect a console app and an ASP.NET Core app to Chronicle, for when you want the event store without Arc. The Kotlin and Java variants of `cratis` generate their proxies through the Arc Gradle plugin, and [*Beyond .NET*](/beyond-dotnet/) covers how they differ from the .NET stack.
 
 ## One feature, one folder
 
-Arc recommends a [vertical slice](https://cratis.io/arc/vertical-slices/), with the command, the read model, the screen and the specs in one feature folder, so one change is one diff. Arc doesn't enforce it. We still recommend it, because when a feature is spread across five layer folders, reviewing one change means opening all five. The template's `Registration/` and `Listing/` folders are already laid out that way.
+Arc recommends a [vertical slice](https://cratis.io/arc/vertical-slices/), with the command, the read model, the screen and the specs in one feature folder, so one change is one diff. Arc doesn't enforce it. We still recommend it, because when a feature is spread across five layer folders, reviewing one change means opening all five. The C# template's `Registration/` and `Listing/` folders are already laid out that way.
 
 ![A diagram titled One feature, one folder, with two panels side by side. By layer: Controllers, Services, Data, Frontend and Tests folders, captioned A piece of the change in each. By feature: a Registration folder labeled Arc, holding RegisterAuthor.cs, Author.cs, RegisterAuthor.tsx and when_registering_author.cs, captioned Command, read model, screen and spec.](./one-feature-one-folder.png)
 
@@ -159,7 +284,7 @@ The template is a starting point for your own application. The [samples](https:/
 
 What a sample leaves out is part of its design. *Chronicle Backend* appends a fact and reads one event source's history over HTTP, without projections or a frontend, and its specs run without external infrastructure. *Idea Loom* shows generated contracts, model-bound commands, an observable query and a `CommandDialog` on Arc and React, and it deliberately doesn't use Chronicle, keeping its current state in memory. *Chronicle Operations Diagnosis* creates one failed partition on purpose, for you to find with the CLI and the Workbench. *Model-First Library* compiles one `.play` file and runs its accepted and rejected examples through Stage. It needs locally built Screenplay and Stage checkouts, and it checks the model without running a live Chronicle command. *Library* is the larger one, with lending and membership. *Full-stack author registration* is the author feature from the hub as a sample: `RegisterAuthor` returns `AuthorRegistered`, a projection keeps an observable author list, and a React screen calls the generated proxies. It covers registration and listing only, so the uniqueness constraint isn't in it, and it runs on the template's development credentials.
 
-Focused samples leave things out so one concept stays visible, and neither the samples nor the templates are production templates. Stage, which the model-first sample runs, is experimental. The Samples repository has no release tags, so there's no sample version to match against your packages. If a sample doesn't build against the version you have installed, report it in the Samples repository. One loop works for any of them: read the README, run the happy path, open the Workbench when Chronicle is involved, and change one thing.
+Neither the samples nor the templates are production templates. The Samples repository has no release tags, so there's no sample version to match against your packages. If a sample doesn't build against the version you have installed, report it in the Samples repository. One loop works for any of them: read the README, run the happy path, open the Workbench when Chronicle is involved, and change one thing.
 
 ## Fundamentals, underneath everything
 
@@ -265,7 +390,7 @@ The folder and class names carry the meaning. A `for_<unit>` folder, a `when_<be
 
 ## Reading the specs back with Synopsis
 
-[Synopsis](https://github.com/Cratis/Synopsis) reads the executable examples a repository already has and writes them out as one searchable HTML page, organized by module and feature, with every statement linked back to the code it came from. It turns recognized specification shapes in C#, JavaScript, TypeScript, Gherkin and Screenplay into that page without running them. On the C# side that covers Cratis Specifications and six other frameworks, xUnit, NUnit and MSTest among them, and on the JavaScript side runners from Vitest and Jest to Playwright.
+[Synopsis](https://github.com/Cratis/Synopsis) reads the executable examples a repository already has and writes them out as one searchable HTML page, organized by module and feature, with every statement linked back to the code it came from. It turns recognized specification shapes in C#, JavaScript, TypeScript, Gherkin and Screenplay into that page. On the C# side that covers Cratis Specifications and six other frameworks, xUnit, NUnit and MSTest among them, and on the JavaScript side runners from Vitest and Jest to Playwright.
 
 A spec written with Cratis Specifications:
 
@@ -316,7 +441,7 @@ THEN   Confirm the loan
 
 It works from static analysis. C# goes through Roslyn syntax trees without a semantic compilation, JavaScript and TypeScript through a scanner, and it never loads or runs code from the repository it reads, so there's no restore and no test run. That also sets its limit. The page says what the specs describe, not whether they pass, and it doesn't judge whether they're good specs. Install it with `dotnet tool install --global Cratis.Synopsis.Tool` and run `synopsis . --open`. The output is one file with full-text search and no server or external assets, and `--format both` writes a JSON model beside it. Module and feature names come from folder conventions, and a `synopsis.json` handles other layouts.
 
-Synopsis is a standalone tool and library today. There's no `cratis synopsis` command and no Studio view of it yet. It has no page on cratis.io, so the README is the documentation.
+Synopsis is a standalone tool and library today. There's no `cratis synopsis` command and no Studio view of it yet. Its README is the documentation.
 
 ## Narrator and Lens: two windows onto a running system
 
@@ -337,7 +462,7 @@ Narrator is a VS Code extension for browsing Chronicle artifacts and event histo
 
 It reads the log and the schemas and changes nothing in the store. That config file can hold client credentials and an access token in plain text, so treat it like any other file with a secret in it. [*Chronicle Workbench, screen by screen*](/chronicle-workbench/) covers the browser tool.
 
-[Lens](https://cratis.io/tools/lens/) is a browser extension for the Arc side, and its current release is 0.0.1. It detects a running Arc application in the current tab, lists its commands and queries by namespace, runs them from a form built from their schema and shows diagnostics for observable queries. It also switches the active user and tenant, which it adds as request headers when the application calls its backend. That makes it a development tool for exercising an Arc application as different users and tenants. It depends on finding an Arc application it can detect, and it's no stand-in for testing your authorization.
+[Lens](https://cratis.io/tools/lens/) is a browser extension for the Arc side, and its current release is 0.0.1. It detects a running Arc application in the current tab, lists its commands and queries by namespace, runs them from a form built from their schema and shows diagnostics for observable queries. It also switches the active user and tenant, which it adds as request headers when the application calls its backend. That makes it a development tool for exercising an Arc application as different users and tenants. It needs an Arc application it can detect, and it doesn't replace testing your authorization.
 
 ## cratis.io, and where each page comes from
 
@@ -367,9 +492,9 @@ Ante, in the Build it row, is the separate invitation and onboarding lobby for u
 
 Not everything in that table is at the same stage. Screenplay, Stage, Scene and Prologue are experimental, and so are Narrator and Prompter, which answers questions about the docs in Discord, so their syntax and behavior can still change. Arc for TypeScript is an early preview, available as source only. The Cratis AI corpus and its hooks are in preview. [Cratis Studio](https://cratis.studio) is live and in beta. [Cratis Direct](https://cratis.direct) is a control plane for agentic engineering. We run our own engineering on it today. For everyone else it's coming soon at cratis.direct.
 
-Starting fresh, run `cratis new cratis --language csharp -n MyApp -o MyApp`, or pass `kotlin` or `java`, then follow [Build a full app](https://cratis.io/build-a-full-app/). With the .NET 10 SDK, `dotnet new install Cratis.Templates` and then `dotnet new cratis` gets you the same C# skeleton. Keep each feature in one folder.
+Starting fresh, scaffold with `cratis new` or `dotnet new cratis`, then follow [Build a full app](https://cratis.io/build-a-full-app/).
 
-To learn by example, start with *Full-stack author registration*, or pick one of the [samples](https://cratis.io/samples/) that matches what you want to understand, and read its list of what it leaves out before you start.
+To learn by example, start with *Full-stack author registration*, or pick one of the [samples](https://cratis.io/samples/) that matches what you want to understand, and read what it leaves out first.
 
 For the event history on its own, follow [Get started with Chronicle](https://cratis.io/chronicle/get-started/), append a few events and open the [Workbench](https://cratis.io/chronicle/workbench/). To operate it, `brew tap cratis/cratis && brew install cratis`, then run [`cratis chronicle diagnose`](https://cratis.io/cli/chronicle/diagnose/), and keep `retry-partition` ahead of `replay` in your runbook.
 

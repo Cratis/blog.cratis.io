@@ -47,7 +47,49 @@ cratis render ./plays \
 
 `cratis render` publishes new files only after the model compiles, binds to an executable model, is admitted for execution, plans for the target and passes artifact validation. If an earlier publication was interrupted, it recovers that first. The output is deterministic, down to a manifest that records the model's semantic revision and the hash of every file. It refuses to overwrite a generated file you've edited unless you pass `--force`, and it never overwrites a file it didn't generate, with or without `--force`. It runs no Git command. `--name` sets the application's identity, while `--project-name` and `--root-namespace` change only how it's rendered.
 
-`cratis` is the only target that ships, and the [renderer-target guide](https://cratis.io/screenplay/stage/guides/build-renderer-target/) describes how another one would be built. A plan for a whole application holds the generated C# for concepts, commands, events, projections and specifications, a frontend shell, and eight backend scaffold files: `Directory.Build.props`, `Directory.Build.targets`, `Directory.Packages.props`, the project and solution files, `Program.cs`, `appsettings.json` and `docker-compose.yml`. Stage 4.22.1 renders for .NET 10 and pins Arc 22.25.0 and Chronicle 19.8.1, with Components 4.14.0, Scene 4.2.0 and Fundamentals 7.19.6 for the frontend. cli 3.21.0 renders with, and `cratis run` starts, Stage 4.20.0, which has the same pins. The specification runner described below is the 4.22.1 image, which you pull by tag. Those versions belong to those Stage releases, and they say nothing about which other versions work.
+`cratis` is the only target that ships, and the [renderer-target guide](https://cratis.io/screenplay/stage/guides/build-renderer-target/) describes how another one would be built. A plan for a whole application holds the generated C# for concepts, commands, events, projections and specifications, a frontend shell, and eight backend scaffold files. With cli 3.21.0, an author model renders to this, scaffold files marked:
+
+```text
+out/
+├── .frontend/
+│   ├── index.css
+│   ├── index.html
+│   ├── main.tsx
+│   ├── tsconfig.json
+│   ├── tsconfig.node.json
+│   └── vite.config.ts
+├── Authors/
+│   └── Registration/
+│       ├── AuthorList/
+│       │   └── AuthorList.cs
+│       └── RegisterAuthor/
+│           ├── RegisterAuthor.cs
+│           ├── UniqueAuthorName.cs
+│           └── when_registering_an_author.cs
+├── Common/
+│   ├── AuthorId.cs
+│   └── AuthorName.cs
+├── GeneratedPolicies/
+│   └── Policies.cs
+├── src/
+│   └── bindings.ts
+├── .cratis-render.json
+├── .gitignore
+├── appsettings.json                           # scaffold
+├── Directory.Build.props                      # scaffold
+├── Directory.Build.targets                    # scaffold
+├── Directory.Packages.props                   # scaffold
+├── docker-compose.yml                         # scaffold
+├── GeneratedPolicyRegistration.cs
+├── MyApplication.csproj                       # scaffold
+├── MyApplication.slnx                         # scaffold
+├── package.json
+├── Program.cs                                 # scaffold
+├── scene.json
+└── tsconfig.json
+```
+
+Stage 4.22.1 renders for .NET 10 and pins Arc 22.25.0 and Chronicle 19.8.1, with Components 4.14.0, Scene 4.2.0 and Fundamentals 7.19.6 for the frontend. cli 3.21.0 renders with, and `cratis run` starts, Stage 4.20.0, which has the same pins. The specification runner described below is the 4.22.1 image, which you pull by tag. Those versions belong to those Stage releases, and they say nothing about which other versions work.
 
 The generated code follows the model closely. A command implements `ICanProvideEventSourceId` from the property the model marks as `identifier`, its event is appended through the value `Handle()` returns, and the generated acceptance specs check both the event source ID and the payload.
 
@@ -120,7 +162,7 @@ The specification runner is for a build pipeline. It compiles the model, checks 
 
 The model-first Library model in [Cratis Samples](https://cratis.io/samples/) has a specification of this kind:
 
-```text
+```screenplay
 slice StateChange AddBook
   command AddBook
     bookId     BookId identifier
@@ -170,7 +212,7 @@ Each layer knows only the one above it. The model has no URL, CSS class, React t
 
 In a `.play` file, a [screen](https://cratis.io/screenplay/screens/) lives in a `StateView` slice. The lending example from [*Screenplay*](/screenplay-an-event-model-you-can-compile/) declares its screen at the level of intent, with the data and the query it comes from:
 
-```text
+```screenplay
       screen OnLoan
         data OnLoanReadModel[] via query BooksOnLoan
 ```

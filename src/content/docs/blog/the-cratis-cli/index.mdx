@@ -57,7 +57,7 @@ We built the CLI so you can ask the running system instead of comparing sequence
   ✗ Issues detected — review items above
 ```
 
-The failing row names the next command, and `diagnose` exits nonzero when failed partitions exist, so it works as a check in a script too. [`failed-partitions show`](https://cratis.io/cli/chronicle/failed-partitions/) then gives the exception for each attempt:
+The failing row names the next command, and `diagnose` exits nonzero when failed partitions exist, so it works as a check in a script too. [`failed-partitions show`](https://cratis.io/cli/chronicle/failed-partitions/) then gives the exception and a short stack trace for each attempt, shown here trimmed:
 
 ```text
 FailedPartition: caadc869-1251-41d0-9063-6947eaf74043
@@ -68,6 +68,10 @@ Attempts:        5
   --- Attempt at 2026-07-28T12:17:56.6680000+00:00 (Seq# 22) ---
   Exception has been thrown by the target of an invocation.
   smtp.bookshop.local: connection refused
+  StackTrace:
+    at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(…)
+    at System.Reflection.RuntimeMethodInfo.Invoke(…)
+    at Cratis.Chronicle.Reactors.ReactorInvoker.Invoke(Object content, EventContext eventContext)
 ```
 
 The partition is a book's ISBN, because that's the event source ID the application uses. For us it would be the author's ID. Failures are addressed by your own keys, so you can go straight from "this author is missing" to "this author's partition failed, and here's why".
@@ -159,7 +163,7 @@ The actions sit on keys in the view where they apply. `R` replays the selected o
 
 For the author feature, typing "author" into the `Ctrl+P` palette would bring up the projection's observer, the `AuthorRegistered` event type, the projection declaration and the `Author` read model in one list, and picking one jumps to its view with the filter already applied.
 
-Each action opens a confirmation dialog that shows its target. Read the event store, namespace and target in it before confirming, because the dialog confirms whatever is selected. The terminal workbench covers observation and jobs. It has no screens for appending, revising or redacting events, and no projection editor.
+Each action opens a confirmation dialog that shows only its target. The event store and namespace are in the status bar, so read them and the target before confirming, because the dialog confirms whatever is selected. The terminal workbench covers observation and jobs. It has no screens for appending, revising or redacting events, and no projection editor.
 
 ## Output for scripts
 

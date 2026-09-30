@@ -42,7 +42,7 @@ The slice is the smallest thing a model is made of, and its four types follow ev
 
 The author feature is one `StateChange` slice and one `StateView` slice. In the lending version from [Getting started](https://cratis.io/screenplay/getting-started/), a member borrows a book:
 
-```text
+```screenplay
     slice StateChange BorrowBook
       command BorrowBook
         bookId     BookId
@@ -63,7 +63,15 @@ The author feature is one `StateChange` slice and one `StateView` slice. In the 
 
 A reviewer sees the whole write in one diff. `authorize IsMember` names the policy that decides who may run the command. The `validate` block holds the rules, each with the message a user gets back. `produces` maps the command's values onto the event, and `$context.occurred` fills in when it happened. An event never carries its event source ID, so marking one of its properties as the `identifier` is a compile error (`PLAY0019`). `bookId` here is ordinary data on the event.
 
-For the author feature, `RegisterAuthor` sits where `BorrowBook` is. The rule that names are unique within the organization goes in a `constraint`, another construct a slice can hold. A declared event is a statement of intent. `AuthorRegistered` in the model says the system is meant to be able to record it, and only the event log says it did.
+For the author feature, `RegisterAuthor` sits where `BorrowBook` is. The rule that names are unique goes in a `constraint`, another construct a slice can hold:
+
+```screenplay
+      constraint UniqueAuthorName
+        unique name on AuthorRegistered
+        message "An author with this name is already registered."
+```
+
+A constraint covers one event sequence in one namespace, and a namespace per tenant makes that one organization. A declared event is a statement of intent. `AuthorRegistered` in the model says the system is meant to be able to record it, and only the event log says it did.
 
 An event can also declare a `generation`. Generations have to be in range and contiguous within a slice (`PLAY0446` to `PLAY0448`), and [*Year two*](/four-changes-in-year-two/) goes through what they're for.
 
@@ -71,7 +79,7 @@ An event can also declare a `generation`. Generations have to be in range and co
 
 The same page adds the read side of lending to the file:
 
-```text
+```screenplay
     slice StateView OnLoan
       query BooksOnLoan => OnLoanReadModel[]
 
@@ -92,7 +100,7 @@ A model means something without any code in it. A few points in the language acc
 
 [Concepts](https://cratis.io/screenplay/concepts/) are the typed values a model is built from, and they're where personal data is marked:
 
-```text
+```screenplay
 concept EmailAddress     : String   @pii
 concept NationalIdNumber : String   @pii @sensitive
 concept BankAccount : String @pii @sensitive

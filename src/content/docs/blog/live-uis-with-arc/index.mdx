@@ -369,7 +369,34 @@ Arc also has [dialogs without Components](https://cratis.io/arc/frontend/react/d
 
 The board wraps its component in `withViewModel`. [Arc's MVVM support](https://cratis.io/arc/frontend/react/mvvm/using-view-model/) makes the view model an `@injectable()` class from tsyringe, observable through MobX, and the view re-renders when a property it read changes.
 
-In the Ideas board, the view model owns exactly three things: `searchTerm`, `setSearchTerm` and `filter`. Filtering the list that's already loaded is view behaviour, so it lives in the view model, and a spec in the sample tests the filter by title and summary without rendering anything. The live data still comes from the hook in the component.
+In the Ideas board, the whole view model is this:
+
+```typescript
+import { injectable } from 'tsyringe';
+import { Idea } from './Idea';
+
+@injectable()
+export class BoardViewModel {
+    searchTerm = '';
+
+    setSearchTerm(value: string) {
+        this.searchTerm = value;
+    }
+
+    filter(ideas: Idea[]): Idea[] {
+        const normalizedSearch = this.searchTerm.trim().toLowerCase();
+        if (!normalizedSearch) {
+            return ideas;
+        }
+
+        return ideas.filter(idea =>
+            idea.title.toLowerCase().includes(normalizedSearch) ||
+            idea.summary.toLowerCase().includes(normalizedSearch));
+    }
+}
+```
+
+Filtering the list that's already loaded is view behaviour, so it lives in the view model, and a spec in the sample tests the filter by title and summary without rendering anything. The live data still comes from the hook in the component.
 
 `withViewModel` observes only the render of the component it wraps. A child component that reads observable view-model state directly sits outside that boundary and won't re-render when the state changes. Pass plain values down as props, or wrap the child in `observer()` from `@cratis/arc.react.mvvm`.
 
