@@ -13,7 +13,7 @@ tags:
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-*[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 09 of 23*
+*[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 09 of 25*
 
 In Arc, the difference between a query that loads a list once and a query that keeps pushing new results to a React screen is the return type of one C# method, as long as the data it returns comes from a source that notifies on change. Return a list and the browser gets a snapshot. Return an `ISubject` of that list and the generated hook subscribes, and the server pushes later results to it over Server-Sent Events or WebSocket. The C# record stays the same. The generator writes an observable query class instead of a plain one, and the component still calls `.use()`, whose tuple is `[result, setSorting]` instead of `[result, perform, setSorting]`.
 

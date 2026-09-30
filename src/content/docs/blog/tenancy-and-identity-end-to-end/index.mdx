@@ -13,7 +13,7 @@ tags:
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-*[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 11 of 23*
+*[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 11 of 25*
 
 AuthProxy forwards the tenant it resolved in a header named `Tenant-ID`. Arc, left on its defaults, reads the tenant from a header named `x-cratis-tenant-id`. Put the two together without configuring either, and Arc ignores the tenant AuthProxy resolved. A request with no `x-cratis-tenant-id` header gets no tenant, and Arc's Chronicle integration sends it to Chronicle's `Default` namespace. Nothing fails, and every organization ends up in one event log. A request that carries `x-cratis-tenant-id` gets whatever tenant the caller put there, because AuthProxy passes that header through.
 
