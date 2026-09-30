@@ -77,6 +77,8 @@ public class Author {
 </TabItem>
 <TabItem label="TypeScript">
 
+Arc for TypeScript reads the projected read model through Chronicle's read models, `ChronicleReadModels`, not from a MongoDB collection.
+
 ```typescript
 @readModel()
 @fromEvent(AuthorRegistered)

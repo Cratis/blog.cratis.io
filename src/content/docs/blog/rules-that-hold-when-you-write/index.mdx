@@ -321,21 +321,7 @@ Not available in Arc for Java.
 </TabItem>
 <TabItem label="TypeScript">
 
-Arc for TypeScript, an early source preview, has an experimental aggregate root, which a command asks for with `commandAggregate`:
-
-```typescript
-@command()
-export class WithdrawFunds {
-    @field(Guid) @key() accountId!: Guid;
-    @field(Number) amount = 0;
-
-    @inject(commandAggregate(Account))
-    handle(account: Account): AggregateRootCommitResult {
-        account.withdraw(this.amount);
-        return account.commit();
-    }
-}
-```
+Aggregates aren't in a published Arc for TypeScript package.
 
 </TabItem>
 <TabItem label="Elixir">
@@ -345,7 +331,7 @@ Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
 </TabItem>
 </Tabs>
 
-Arc discovers the aggregate, loads its history for the command's key before `Handle` runs, and commits its events in the command's transaction. Loading the history isn't, on its own, a concurrency guarantee, and among Arc's published packages, aggregates are C# only.
+Arc discovers the aggregate, loads its history for the command's key before `Handle` runs, and commits its events in the command's transaction. Loading the history isn't, on its own, a concurrency guarantee, and aggregates are C# only today.
 
 ![A diagram titled Three ways to guard a rule, three columns side by side. Chronicle, unique constraint: checked in the kernel at append, per event sequence and namespace. Chronicle, decision read: the append is guarded by the read it decided from. Arc, aggregate: loads one key's history and commits in the command. A band underneath reads: All three append to the same event log.](./consistency-choices.png)
 
@@ -486,35 +472,7 @@ class AccountService {
 </TabItem>
 <TabItem label="Elixir">
 
-The Elixir client can't ask the kernel to expect no matching event. This version reads the account's tail first and expects it to be unchanged.
-
-```elixir
-defmodule MyApp.Events.AccountOpened do
-  use Chronicle.Events.EventType, id: "account-opened"
-
-  defstruct [:account_name]
-end
-
-defmodule MyApp.AccountService do
-  alias Chronicle.EventSequences.EventLog
-  alias Chronicle.Events.ConcurrencyScope
-  alias MyApp.Events.AccountOpened
-
-  def try_open_account(account_id, account_name) do
-    with {:ok, tail} <- EventLog.get_tail_sequence_number(account_id) do
-      scope = ConcurrencyScope.for_event_source(tail)
-
-      case Chronicle.append(account_id, %AccountOpened{account_name: account_name},
-             concurrency_scope: scope
-           ) do
-        :ok -> true
-        {:error, {:concurrency_violations, _violations}} -> false
-        {:error, _reason} -> false
-      end
-    end
-  end
-end
-```
+The Elixir client can't express an expectation that no event exists yet.
 
 </TabItem>
 </Tabs>

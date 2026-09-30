@@ -162,7 +162,7 @@ end
 </TabItem>
 </Tabs>
 
-Chronicle [discovers the handler methods](https://cratis.io/chronicle/reactors/event-processing/) by their shape. The first parameter is an event type, and the method returns `void`, `Task`, `Task<T>` or one of the side-effect types that show up further down. The method name is yours.
+Chronicle [discovers the handler methods](https://cratis.io/chronicle/reactors/event-processing/) by their shape. The first parameter is an event type, and the method returns `void`, `Task`, `Task<T>` or one of the side-effect types that show up further down. In the .NET, Kotlin and Java clients the method name is yours.
 
 Chronicle resolves the other parameters. `EventContext` can sit in any position. A read model built by a projection or a reducer can be a parameter too, and Chronicle reads it directly instead of asking the service provider. Anything else comes from the service provider, which is how a mail sender or a payment client gets in. This dependency resolution is a .NET capability. Kotlin, Elixir and TypeScript handlers take the event and, optionally, its context.
 
