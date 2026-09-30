@@ -11,6 +11,8 @@ tags:
   - typescript
 ---
 
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
 *[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 22 of 23*
 
 A validation rule that applies only sometimes on the server can apply every time in the browser. Arc's proxy generator copies the rules it recognizes from a C# validator into the generated TypeScript, and it doesn't copy `When` or `Unless` conditions. A rule that sat inside a condition can arrive on the client [without it](https://cratis.io/arc/backend/csharp/proxy-generation/validation/), and a form will then refuse input the server would have accepted.
@@ -25,12 +27,46 @@ The server is where validation counts. For a command, Arc runs authorization fir
 
 The browser gets a copy. At build time the proxy generator loads the compiled assembly, finds the validator for each command, creates an instance and inspects its rules, then writes the ones it can express into the generated TypeScript. In the Arc and React sample the idea title is a concept with a validator of its own:
 
+<Tabs syncKey="language">
+<TabItem label="C#">
+
 ```csharp
 public class IdeaTitleValidator : ConceptValidator<IdeaTitle>
 {
     public IdeaTitleValidator() => RuleFor(_ => _.Value).NotEmpty().MaximumLength(72);
 }
 ```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+Kotlin concept validators run on the server only. Arc doesn't copy them into the generated TypeScript.
+
+</TabItem>
+<TabItem label="Java">
+
+Java concept validators run on the server only. Arc doesn't copy them into the generated TypeScript.
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+@validator(IdeaTitle)
+export class IdeaTitleValidator extends ConceptValidator<IdeaTitle> {
+    constructor() {
+        super();
+        this.ruleFor(title => title.value).notEmpty().maxLength(72);
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
+
+</TabItem>
+</Tabs>
 
 and the generated command proxy carries one statement per rule:
 
@@ -95,10 +131,56 @@ A conventional route is the API prefix, the artifact's namespace with a configur
 
 The generator and the server each compute that route from their own settings. The Arc and React sample sets both sides, in the project file and in `Program.cs`, and the generated client for its `CaptureIdea` command in `Arc.React.Ideas.Board` carries `route = '/api/ideas/board'`:
 
+<Tabs syncKey="language">
+<TabItem label="C#">
+
 ```xml
 <CratisProxiesSegmentsToSkip>2</CratisProxiesSegmentsToSkip>
 <CratisProxiesSkipCommandNameInRoute>true</CratisProxiesSkipCommandNameInRoute>
 ```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+cratisArc {
+    endpoints {
+        segmentsToSkip.set(2)
+        includeCommandNames.set(false)
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```kotlin
+cratisArc {
+    endpoints {
+        segmentsToSkip.set(2)
+        includeCommandNames.set(false)
+    }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```bash
+arc-proxygenerator --project tsconfig.json --artifacts src --output src \
+  --use-proxy-file-suffix --segments-to-skip 2 --skip-command-name-in-route
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
+
+</TabItem>
+</Tabs>
+
+<Tabs syncKey="language">
+<TabItem label="C#">
 
 ```csharp
 builder.AddCratisArc(options =>
@@ -108,6 +190,45 @@ builder.AddCratisArc(options =>
     options.GeneratedApis.SegmentsToSkipForRoute = 2;
 });
 ```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```properties
+cratis.arc.endpoints.route-prefix=api
+cratis.arc.endpoints.include-command-name-in-route=false
+cratis.arc.endpoints.segments-to-skip-for-route=2
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```properties
+cratis.arc.endpoints.route-prefix=api
+cratis.arc.endpoints.include-command-name-in-route=false
+cratis.arc.endpoints.segments-to-skip-for-route=2
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+const builder = ArcApplication.createBuilder({
+    generatedApis: {
+        routePrefix: 'api',
+        includeCommandNameInRoute: false,
+        segmentsToSkipForRoute: 2
+    }
+});
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
+
+</TabItem>
+</Tabs>
 
 The build properties configure the generator only and don't change the running application's endpoints. `IncludeCommandNameInRoute` and `IncludeQueryNameInRoute` are the inverse of the generator's skip properties, and both sides default to skipping no segments. The templates skip one and put the server side in `appsettings.json`. Change one side without the other and the generated client calls a route the backend doesn't map.
 
@@ -127,11 +248,53 @@ Returning the identity with the event, as the `cratis` template's `Register` com
 
 `[EventType]` takes an optional ID, and without one the [event type](https://cratis.io/chronicle/concepts/event-type/) is identified by its type name:
 
+<Tabs syncKey="language">
+<TabItem label="C#">
+
 ```csharp
 /// <param name="id">Optional identifier of the event type, if not used it will default to the type name.</param>
 /// <param name="generation"><see cref="EventTypeGeneration"/> represented as <see cref="uint"/>.</param>
 public sealed class EventTypeAttribute(string id = "", uint generation = EventTypeGeneration.FirstValue) : Attribute
 ```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+/**
+ * @property id The UUID string identifier for this event type. If empty, the class simple name is used.
+ * @property generation The generation number of this event type. Defaults to 1.
+ */
+annotation class EventType(
+    val id: String = "",
+    val generation: Int = 1
+)
+```
+
+</TabItem>
+<TabItem label="Java">
+
+Java uses the Kotlin client's `@EventType` annotation, and the class's simple name is the identity when `id` is empty.
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+/**
+ * - `@eventType()` -> uses class name as id, generation 1, tombstone false.
+ */
+export function eventType(): ChronicleClassDecorator;
+export function eventType(id: string): ChronicleClassDecorator;
+export function eventType(id: string, generation: number): ChronicleClassDecorator;
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+The Elixir client has no default: `id:` is required in `use Chronicle.Events.EventType`.
+
+</TabItem>
+</Tabs>
 
 Rename `AuthorRegistered` and the events you append from then on carry the new identity, while the ones already stored keep the old one. Give an event that has to last an explicit ID. When you add a [generation](https://cratis.io/chronicle/concepts/event-type-migrations/), put `[EventTypeGenerationFor<T>]` on the previous one. It takes the ID from the current generation's own `[EventType]`, so the two can't drift apart the way hand-typed IDs on both can. Analyzer [CHR0037](https://cratis.io/chronicle/code-analysis/chr0037/) warns when the generations a migration names don't resolve to the same event type differing only by generation. It looks at migrations, so a rename without one gets no warning from it. [*Year two*](/four-changes-in-year-two/) goes further into changing events.
 
@@ -145,10 +308,40 @@ The proxy generator collects the public properties declared directly on a comman
 
 Arc's header resolver reads the header named in `Tenancy.HttpHeader`, `x-cratis-tenant-id` by default, and a missing header gives an empty tenant:
 
+<Tabs syncKey="language">
+<TabItem label="C#">
+
 ```csharp
 var headerName = options.Value.Tenancy.HttpHeader;
 return context.Headers.TryGetValue(headerName, out var tenantId) ? tenantId : string.Empty;
 ```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+context.header(options.headerName).toTenantIdOrNull()
+```
+
+</TabItem>
+<TabItem label="Java">
+
+Java uses the Kotlin implementation, `HeaderTenantIdResolver`.
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+if (source === TenantResolverType.Header) selected = request.headers.get(header) ?? undefined;
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
+
+</TabItem>
+</Tabs>
 
 AuthProxy forwards the tenant it resolved as `Tenant-ID`, so Arc has to be told that name with `options.UseHeaderTenancy(...)`, or the tenant never arrives. A [resolver](https://cratis.io/arc/backend/csharp/tenancy/resolvers/) selects a tenant and doesn't check that the user belongs to it. [*Tenancy and identity end to end*](/tenancy-and-identity-end-to-end/) follows the header from AuthProxy to a Chronicle namespace.
 

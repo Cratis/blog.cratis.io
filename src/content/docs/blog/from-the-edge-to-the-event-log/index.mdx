@@ -153,6 +153,16 @@ cratis new cratis --language java -n MyApp -o MyApp
 ```
 
 </TabItem>
+<TabItem label="TypeScript">
+
+No TypeScript template: `--language` takes `csharp`, `kotlin` or `java`.
+
+</TabItem>
+<TabItem label="Elixir">
+
+No Elixir template: `--language` takes `csharp`, `kotlin` or `java`.
+
+</TabItem>
 </Tabs>
 
 Arc recommends a [vertical slice](https://cratis.io/arc/vertical-slices/), with the command, the read model, the screen and the specs in one feature folder, so one change is one diff. Arc doesn't enforce it.
@@ -227,6 +237,11 @@ export class RegisterAuthor {
 ```
 
 </TabItem>
+<TabItem label="Elixir">
+
+Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
+
+</TabItem>
 </Tabs>
 
 That's the whole command. [Arc](https://cratis.io/arc/) gives it an HTTP route and runs validation and [declared authorization](https://cratis.io/arc/backend/csharp/authorizing-commands-and-queries/) on it. The handler returns an `AuthorRegistered` event, and the command can [append the event it returns](https://cratis.io/arc/backend/csharp/chronicle/commands/events/). You write no controller, no DTO and no registration list. The service code, the authorization policy and the storage stay yours.
@@ -247,6 +262,9 @@ Chronicle checks [constraints](https://cratis.io/chronicle/constraints/), such a
 
 A [projection](https://cratis.io/chronicle/projections/) turns `AuthorRegistered` events into an `Author` read model, and in the model-bound form the read model declares its own projection. This is the `Author` from Arc's [event sourcing walkthrough](https://cratis.io/arc/backend/csharp/chronicle/add-event-sourcing/):
 
+<Tabs syncKey="language">
+<TabItem label="C#">
+
 ```csharp
 [ReadModel]
 [FromEvent<AuthorRegistered>]
@@ -257,6 +275,84 @@ public record Author(AuthorId Id, AuthorName Name)
 }
 ```
 
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+@io.cratis.arc.artifacts.ReadModel
+@io.cratis.chronicle.readModels.ReadModel
+@FromEvent(AuthorRegistered::class)
+data class Author(
+    @FromEventSourceId val id: String = "",
+    val name: AuthorName = AuthorName("")
+) {
+    companion object {
+        // A snapshot of the current instances
+        @JvmStatic
+        suspend fun allAuthors(@FromServices eventStore: IEventStore): List<Author> =
+            eventStore.readModels.getInstances(Author::class)
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+@io.cratis.arc.artifacts.ReadModel
+@io.cratis.chronicle.readModels.ReadModel
+@FromEvent(eventType = AuthorRegistered.class)
+public class Author {
+    @FromEventSourceId
+    public String id = "";
+    public AuthorName name = new AuthorName("");
+
+    // A snapshot of the current instances
+    public static List<Author> allAuthors(@FromServices IEventStore store) {
+        return ReadModelsJavaBridge.getInstances(store.getReadModels(), Author.class);
+    }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+@readModel()
+@fromEvent(AuthorRegistered)
+export class Author {
+    @field(AuthorId) id!: AuthorId;
+    @field(AuthorName) name!: AuthorName;
+
+    @query({ observable: true }, service(ChronicleReadModels))
+    static allAuthors(models: ChronicleReadModels): Observable<Author[]> {
+        return models.observeAll(Author, author => author.id.toString());
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+```elixir
+defmodule MyApp.ReadModels.Author do
+  use Chronicle.ReadModels.ReadModel
+
+  alias MyApp.Events.AuthorRegistered
+
+  defstruct [:id, :name]
+
+  from AuthorRegistered,
+    set: [
+      id: :event_source_id,
+      name: :name
+    ]
+end
+```
+
+</TabItem>
+</Tabs>
+
 `[FromEvent<AuthorRegistered>]` is the whole projection. Chronicle projections [map matching property names by default](https://cratis.io/chronicle/projections/declarative/auto-map/), so the event's `Name` lands on the read model's `Name` with no mapping to write, and the instance is keyed by the event source, the author. The projection runs inside Chronicle's kernel. The append returns before it has run, and the read model catches up afterwards, with each author's events processed in order. When a fold needs real code, a [reducer](https://cratis.io/chronicle/projections/choosing-a-read-model-style/) is a method that takes the event, the current state and the event context and returns the next state.
 
 `AllAuthors` is an [observable query](https://cratis.io/arc/backend/csharp/queries/model-bound/observable-queries/), a static method on the read model that Arc also routes. The generated React client gets the current result and then supported later updates. Here `collection.Observe()` watches the MongoDB collection the projection writes to, through change streams, so it needs a MongoDB replica set, and Arc's MongoDB setup has to agree with Chronicle's sink on database, collection names and keys.
@@ -264,6 +360,9 @@ public record Author(AuthorId Id, AuthorName Name)
 ## Test it: the smallest test that can catch the bug
 
 The decision in `RegisterAuthor` is a method. Call `Handle()`, compare the event it returns, and the decision is tested without starting a server or faking an event log. [Arc's testing guide](https://cratis.io/arc/backend/csharp/testing/) makes that direct call the starting point for a deterministic decision:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
 
 ```csharp
 using Cratis.Specifications;
@@ -279,6 +378,70 @@ public class when_deciding_to_register_an_author : Specification
     [Fact] void should_record_the_name() => _event.Name.ShouldEqual(_name);
 }
 ```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import kotlin.test.assertEquals
+import org.junit.jupiter.api.Test
+
+class WhenDecidingToRegisterAnAuthor {
+    private val name = AuthorName("Jane Austen")
+
+    @Test
+    fun `records the name`() {
+        val event = RegisterAuthor(AuthorId.new(), name).handle()
+
+        assertEquals(name, event.name)
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+import org.junit.jupiter.api.Test;
+
+public class WhenDecidingToRegisterAnAuthor {
+    private final AuthorName name = new AuthorName("Jane Austen");
+
+    @Test
+    void recordsTheName() {
+        var event = new RegisterAuthor(AuthorId.newId(), name).handle();
+
+        assertEquals(name, event.name());
+    }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { strictEqual } from 'node:assert';
+import { describe, it } from 'vitest';
+
+describe('when deciding to register an author', () => {
+    const event = Object.assign(new RegisterAuthor(), {
+        id: AuthorId.create(),
+        name: new AuthorName('Jane Austen')
+    }).handle();
+
+    it('should record the name', () => { strictEqual(event.name.value, 'Jane Austen'); });
+});
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
+
+</TabItem>
+</Tabs>
 
 An event is a record, so expecting one is an equality check on a value. The uniqueness rule isn't in `Handle()`, though. Chronicle checks it at append, so a duplicate name needs the next step up. A reducer can be tested with a direct call too, by passing it an event and the current state, as the [Processing sample](https://github.com/Cratis/Samples/tree/fa14190297024ef1b25a7fb468b47441e3b53538/Chronicle/Processing) does. A `Handle()` that calls a service or reads the clock is still testable, but it isn't a pure function just because it lives on a command.
 
@@ -302,9 +465,43 @@ On the event side, Chronicle has a first-class .NET SDK and [clients](https://cr
 
 The author's name is personal data. Mark its [`ConceptAs<T>` type `[PII]`](https://cratis.io/chronicle/compliance/pii-with-concepts/) once, and Chronicle encrypts every event property of that type with the key of the event's subject. With Arc's Chronicle integration the value also stays out of the causation record. [Erasure](https://cratis.io/chronicle/compliance/erasing-a-subject/) is one call:
 
+<Tabs syncKey="language">
+<TabItem label="C#">
+
 ```csharp
 await eventStore.PII.DeleteEncryptionKeyFor("person-42");
 ```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+eventStore.compliance.deleteEncryptionKey("person-42")
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+ComplianceServiceJavaBridge.deleteEncryptionKey(eventStore.unwrap().getCompliance(), "person-42");
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+await eventStore.pii.deleteEncryptionKey('person-42');
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+```elixir
+Chronicle.Compliance.delete_encryption_key("person-42")
+```
+
+</TabItem>
+</Tabs>
 
 Once the key has been destroyed, Chronicle can't decrypt anything encrypted with it, and the event keeps its place in the log. The key belongs to a subject within a namespace, so a person in two tenants needs two erasures, and backups and copies outside Chronicle need their own handling. `[NotAudited]` keeps a command's secret out of the causation record, and `[Encrypted]` protects an operational secret under a key that erasing a person doesn't touch. [Part 6](/personal-data-in-an-event-log/) lists the other places erasure stops, and how a restore can undo one.
 
