@@ -207,7 +207,7 @@ The scope is one event sequence in one namespace. A constraint doesn't reach acr
 
 Uniqueness is the easy invariant. "A member can have at most three books on loan" spans many events, and there you have choices. Chronicle [supports decisions scoped this way](https://cratis.io/chronicle/dynamic-consistency-boundary/), what the community calls a [dynamic consistency boundary](https://dcb.events/), through constraints, concurrency scopes and, in the .NET client, decision reads.
 
-**Concurrency scopes** make an append fail if matching events were appended since you read. By default, the first append into a scope isn't checked unless you opt in, per append with `ExpectingNoMatchingEvent()` in .NET (the JVM client has an equivalent), or with the `CheckFirstAppendIntoAScope` setting. The TypeScript and Elixir clients can't ask for it. The [concurrency docs](https://cratis.io/chronicle/events/concurrency/) have the details.
+**Concurrency scopes** make an append fail if matching events were appended since you read. By default, the first append into a scope isn't checked unless you opt in, per append with `ExpectingNoMatchingEvent()` in .NET (the JVM and TypeScript clients have an equivalent), or with the `CheckFirstAppendIntoAScope` setting. The Elixir client can't ask for it. The [concurrency docs](https://cratis.io/chronicle/events/concurrency/) have the details.
 
 **[Decision reads](https://cratis.io/chronicle/read-models/decision-reads/)** fold the read model you decided from and guard the append with it. In .NET, with an order as the example:
 
@@ -313,13 +313,13 @@ public async Task<bool> TryOpenPartition(EventSourceId accountId, string name)
 }
 ```
 
-Opting in can reject appends that used to succeed, so be ready for violations you've never seen before. A client and kernel on mismatched versions fall back to skipping the check and say so in the log. `ExpectingNoMatchingEvent` exists in the .NET and JVM clients.
+Opting in can reject appends that used to succeed, so be ready for violations you've never seen before. A client and kernel on mismatched versions fall back to skipping the check and say so in the log. `ExpectingNoMatchingEvent` is the .NET name. The JVM client has `withExpectsNoMatchingEvent()` on `ConcurrencyScopeBuilder`, and TypeScript takes `EventSequenceNumber.beforeFirst` as the scope's sequence number.
 
 `AppendMany` takes scopes per event source, so one decision that spans several sources gets a check for each of them in one atomic append.
 
 Pick a constraint for a rule every writer must obey forever, whatever the client asked for. Pick a scope when what matters is that the facts behind this particular decision haven't changed.
 
-![A diagram titled What checked means. A frame labeled Default, one scope: account-7 holds two numbered cards joined by an arrow. 1, first into the scope, in amber: no tail, check skipped, ConcurrencyCheckPerformed = false. 2, next append: compared with tail, ConcurrencyCheckPerformed = true. A second frame, labeled Opt in: ExpectingNoMatchingEvent(), holds card 1 again, first into the scope: expected BeforeFirst, ConcurrencyCheckPerformed = true, next to a chip reading .NET and JVM clients. A note at the bottom reads: CheckFirstAppendIntoAScope: false by default. Setting it to true turns the check on across the application.](./what-checked-means.png)
+![A diagram titled What checked means. A frame labeled Default, one scope: account-7 holds two numbered cards joined by an arrow. 1, first into the scope, in amber: no tail, check skipped, ConcurrencyCheckPerformed = false. 2, next append: compared with tail, ConcurrencyCheckPerformed = true. A second frame, labeled Opt in: ExpectingNoMatchingEvent(), holds card 1 again, first into the scope: expected BeforeFirst, ConcurrencyCheckPerformed = true, next to a chip reading .NET, JVM, TypeScript. A note at the bottom reads: CheckFirstAppendIntoAScope: false by default. Setting it to true turns the check on across the application.](./what-checked-means.png)
 
 *The first append into a scope is checked only when you ask.*
 

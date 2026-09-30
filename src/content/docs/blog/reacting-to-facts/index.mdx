@@ -187,6 +187,59 @@ class ReservationReactor {
 ```
 
 </TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { EventContext, EventForEventSourceId, eventType, reactor } from '@cratis/chronicle';
+import { field } from '@cratis/fundamentals';
+
+@eventType()
+class MemberActivityRecorded {
+    @field(String) readonly isbn: string;
+
+    constructor(isbn: string = '') {
+        this.isbn = isbn;
+    }
+}
+
+@reactor()
+class ReservationReactor {
+    async bookReserved(event: BookReserved, context: EventContext): Promise<EventForEventSourceId> {
+        return { eventSourceId: event.memberId, event: new MemberActivityRecorded(event.isbn) };
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+```elixir
+defmodule MyApp.Events.MemberActivityRecorded do
+  use Chronicle.Events.EventType, id: "member-activity-recorded"
+
+  defstruct [:isbn]
+end
+
+defmodule MyApp.ReservationReactor do
+  use Chronicle.Reactors.Reactor
+
+  alias Chronicle.EventSequences.EventForEventSourceId
+  alias MyApp.Events.{BookReserved, MemberActivityRecorded}
+
+  @handles BookReserved
+
+  @impl true
+  def handle(%BookReserved{} = event, _context) do
+    {:ok,
+     %EventForEventSourceId{
+       event_source_id: event.member_id,
+       event: %MemberActivityRecorded{isbn: event.isbn}
+     }}
+  end
+end
+```
+
+</TabItem>
 </Tabs>
 
 A bare event, or a list of them, lands on the triggering event's event source, with the metadata the reactor resolves for it. `EventForEventSourceId` targets a different event source. The reservation is a fact about the book, and the follow-up belongs to the member. The wrapper carries its own stream, source type, subject, tags and causation, and Chronicle uses only the values on it. Return several and they fan out across event sources in one transaction. Bare events and wrappers can be mixed in the same return.
@@ -195,7 +248,7 @@ Sometimes the follow-up should land only if nothing else has happened to the tri
 
 The append isn't fire-and-forget. A constraint violation, a concurrency conflict or an error fails the reactor's partition with the details, and the retry policy takes over from there. Chronicle never splits a return into partial appends.
 
-A returned event is a new fact, so a replay of the reactor would append it again. Handlers that return events should be marked `[OnceOnly]`. The .NET analyzer reports CHR0022 when a handler returns an event, or a list of events, without it, and it doesn't flag the `EventForEventSourceId` and `EventsWithConcurrencyScopes` wrappers. C#, Kotlin and Java append what a handler returns, and from `io.cratis:chronicle` 6.5.0 Kotlin and Java append a returned list as one transaction. In Elixir the return value only reports success or failure, and TypeScript doesn't look at it, so handlers in those clients call the append API themselves.
+A returned event is a new fact, so a replay of the reactor would append it again. Handlers that return events should be marked `[OnceOnly]`. The .NET analyzer reports CHR0022 when a handler returns an event, or a list of events, without it, and it doesn't flag the `EventForEventSourceId` and `EventsWithConcurrencyScopes` wrappers. Every client appends what a handler returns, and in Elixir that means returning `{:ok, event}` or `{:ok, events}` from `handle/2`. From `io.cratis:chronicle` 6.5.0 Kotlin and Java append a returned list as one transaction, and TypeScript and Elixir send a returned list in a single append call.
 
 An [`IReadModelReactor`](https://cratis.io/chronicle/read-models/reacting-to-changes/) has methods named `Added`, `Modified` and `Removed`, and reacts to read model changes instead of events. It's a convenience over the watch API, and it can take the `EventContext` and services from the container. It can return events, but those appends are best effort: a failure is logged and nothing retries, because a read model reactor has no partition to fail. For reactions that must be retried, react to the event with a reactor.
 
