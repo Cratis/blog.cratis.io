@@ -1,6 +1,6 @@
 ---
-title: "Part 17: Stage and Scene: what happens after a model compiles"
-date: 2026-09-30T09:07:00Z
+title: "From script to stage · Part 17: Stage and Scene: what happens after a model compiles"
+date: 2026-09-30T09:17:00Z
 authors: sindre
 excerpt: "Stage renders a narrow slice of a Screenplay model into C# on Arc and Chronicle, boots a throwaway sandbox and runs the model's examples, and refuses with a code whatever it can't express. Scene is the UI model between a screen in the model and React."
 tags:
@@ -12,13 +12,13 @@ tags:
   - chronicle
 ---
 
-*[From the edge to the event log](/from-the-edge-to-the-event-log/) · Part 17 of 23*
+*[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 17 of 23*
 
 A Screenplay model in which one event declares two generations passes `cratis screenplay validate`. Hand the same model to `cratis render`, and it reports `STAGE-ESM-016`, explains it with `CLI-RENDER-003`, and publishes nothing. The model is valid, and the renderer can't turn it into code faithfully, so it doesn't turn it into code at all.
 
 [Stage](https://github.com/Cratis/Stage) is the experimental part of the Cratis modeling layer that takes a compiled model somewhere. It renders the part of the model it supports into a C# application on Arc and Chronicle, boots a disposable sandbox, and runs the model's Given/When/Then examples. [Scene](https://github.com/Cratis/Scene), also experimental, describes a user interface without describing a platform, and it's how a `screen` in the model reaches React. Both are in early development.
 
-The running example is the feature from [From the edge to the event log](/from-the-edge-to-the-event-log/): a signed-in user registers an author, and author names are unique within the organization. [*Screenplay*](/screenplay-an-event-model-you-can-compile/) wrote it down as a `RegisterAuthor` slice. What happens to that slice next depends on which of Stage's jobs you ask for, and on whether the slice stays inside what Stage supports.
+The running example is the feature from [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/): a signed-in user registers an author, and author names are unique within the organization. [*Screenplay*](/screenplay-an-event-model-you-can-compile/) wrote it down as a `RegisterAuthor` slice. What happens to that slice next depends on which of Stage's jobs you ask for, and on whether the slice stays inside what Stage supports.
 
 ## One input, three jobs
 

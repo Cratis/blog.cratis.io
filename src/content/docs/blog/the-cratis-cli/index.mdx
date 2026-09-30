@@ -1,6 +1,6 @@
 ---
-title: "Part 14: The Cratis CLI, from diagnose to llm-context"
-date: 2026-09-30T09:10:00Z
+title: "From script to stage · Part 14: The Cratis CLI, from diagnose to llm-context"
+date: 2026-09-30T09:14:00Z
 authors: sindre
 excerpt: "A diagnostic summary that fails on a failed partition and not on lag, a full-screen terminal workbench for the box you reached over SSH, and a command catalog that tells an agent which commands change the server."
 tags:
@@ -11,11 +11,11 @@ tags:
   - event-sourcing
 ---
 
-*[From the edge to the event log](/from-the-edge-to-the-event-log/) · Part 14 of 23*
+*[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 14 of 23*
 
 `cratis chronicle diagnose` exits nonzero when the server is unreachable or when a failed partition exists. An observer that's far behind the tail leaves the exit code at zero, and that's deliberate.
 
-The Cratis [CLI](https://cratis.io/cli/) inspects and diagnoses Chronicle from a terminal, full-screen workbench included, and it also hosts `cratis new`, `cratis ai`, `cratis screenplay` and `cratis render`. Most of it is about the running Chronicle, and the running example is the feature from [From the edge to the event log](/from-the-edge-to-the-event-log/): a signed-in user registers an author, and author names are unique within the organization.
+The Cratis [CLI](https://cratis.io/cli/) inspects and diagnoses Chronicle from a terminal, full-screen workbench included, and it also hosts `cratis new`, `cratis ai`, `cratis screenplay` and `cratis render`. Most of it is about the running Chronicle, and the running example is the feature from [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/): a signed-in user registers an author, and author names are unique within the organization.
 
 ## Installing it
 

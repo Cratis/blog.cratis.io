@@ -1,6 +1,6 @@
 ---
-title: "Part 04: Reacting to facts"
-date: 2026-09-30T09:20:00Z
+title: "From script to stage · Part 04: Reacting to facts"
+date: 2026-09-30T09:04:00Z
 authors: sindre
 excerpt: "Reactors, webhooks and outbox-to-inbox subscriptions carry what happened to whoever cares. A failing handler stops one partition, a reactor can return its follow-up facts, and a stable delivery id is what lets a side effect survive running twice."
 tags:
@@ -11,11 +11,11 @@ tags:
   - event-sourcing
 ---
 
-*[From the edge to the event log](/from-the-edge-to-the-event-log/) · Part 04 of 23*
+*[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 04 of 23*
 
 A reactor that charges a card and then crashes before it records the charge will charge the card again on the retry. Chronicle delivers events to reactors at least once, and it never sees your payment provider, so it has no way of knowing whether the charge went through. What it can do is tell your handler, every time the same event arrives, that this is the same delivery.
 
-In [From the edge to the event log](/from-the-edge-to-the-event-log/), a signed-in user registers an author, and author names are unique within the organization. Once `AuthorRegistered` is in the log, the feature stops being about one request. A welcome mail may need to go out, an external system may need to hear about it, and a Catalog service elsewhere in the company may need to learn that the author exists. Each of those reacts to a fact that's already recorded, and Chronicle has three ways to carry it.
+In [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/), a signed-in user registers an author, and author names are unique within the organization. Once `AuthorRegistered` is in the log, the feature stops being about one request. A welcome mail may need to go out, an external system may need to hear about it, and a Catalog service elsewhere in the company may need to learn that the author exists. Each of those reacts to a fact that's already recorded, and Chronicle has three ways to carry it.
 
 ## Three ways out of the log
 

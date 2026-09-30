@@ -1,6 +1,6 @@
 ---
-title: "Part 08: Arc: commands and queries without the plumbing"
-date: 2026-09-30T09:16:00Z
+title: "From script to stage · Part 08: Arc: commands and queries without the plumbing"
+date: 2026-09-30T09:08:00Z
 authors: sindre
 excerpt: "A command is a record with a Handle method and a query is a static method on the read model it returns. What Arc builds from those two shapes, in which order it checks a request, what reaches the generated TypeScript, and what stays the application's job."
 tags:
@@ -11,11 +11,11 @@ tags:
   - validation
 ---
 
-*[From the edge to the event log](/from-the-edge-to-the-event-log/) · Part 08 of 23*
+*[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 08 of 23*
 
 A C# record marked `[Command]` with a public `Handle()` method is enough for Arc to expose it as a `POST` endpoint, check its authorization, validate it and, with the proxy build package configured, write a TypeScript class the frontend compiles against. There's no controller, no DTO and no list of registrations anywhere in the application. Arc finds the record, reads what's declared on it and builds the rest.
 
-In [From the edge to the event log](/from-the-edge-to-the-event-log/), a signed-in user registers an author, and author names are unique within the organization. Arc owns the second step of that feature, between the edge that knows who the user is and the event store that records what happened.
+In [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/), a signed-in user registers an author, and author names are unique within the organization. Arc owns the second step of that feature, between the edge that knows who the user is and the event store that records what happened.
 
 ![A diagram titled One feature, layer by layer. A frame labeled Tenant: Acme holds six numbered cards in two columns, each naming its product. 1 AuthProxy: sign-in and tenant, Tenant-ID header. 2 Arc: command, generated TypeScript proxy. 3 Chronicle: namespace, one per tenant, via Arc. 4 Chronicle: append, unique name checked, AuthorRegistered. 5 Chronicle: view, the Author read model, by projection. 6 Components: screen, React, aligned with Arc.](./one-feature-by-layer.png)
 

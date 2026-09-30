@@ -1,6 +1,6 @@
 ---
-title: "Part 18: Prologue: a first model of the system you already have"
-date: 2026-09-30T09:06:00Z
+title: "From script to stage · Part 18: Prologue: a first model of the system you already have"
+date: 2026-09-30T09:18:00Z
 authors: sindre
 excerpt: "Prologue stands beside a running system, records the metadata of what it does, and proposes a Screenplay model for a person to correct. What it watches, what it never records, how it groups what it sees, and what a language model may and may not change."
 tags:
@@ -11,13 +11,13 @@ tags:
   - ai
 ---
 
-*[From the edge to the event log](/from-the-edge-to-the-event-log/) · Part 18 of 23*
+*[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 18 of 23*
 
 Prologue can stand beside a running system, watch what it does, and hand back a `.play` file describing it, without recording a single row value or request body. What it does record is metadata: which endpoint was called, which tables and columns changed, which spans the system emitted. That metadata can still be sensitive, and the model it produces is a draft for a person to correct.
 
 [Prologue](https://cratis.io/prologue/) is an experimental assisted-discovery tool that captures approved metadata signals and proposes a Cratis event model for human correction. Most systems exist long before anyone models them, and those are the ones it's for. The model it proposes is written in Screenplay, the language from [*Screenplay*](/screenplay-an-event-model-you-can-compile/), so the first model of an old system starts from a draft instead of a blank page.
 
-The series follows one feature, from [From the edge to the event log](/from-the-edge-to-the-event-log/): a signed-in user registers an author, and author names are unique within the organization. Picture that feature already running in an ASP.NET application with a SQL database and no event model anywhere. Prologue can see a `POST` reach it and the write to an authors table that follows. Whether that pair of observations is called `RegisterAuthor`, and that names are unique per organization, is for a person to settle.
+The series follows one feature, from [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/): a signed-in user registers an author, and author names are unique within the organization. Picture that feature already running in an ASP.NET application with a SQL database and no event model anywhere. Prologue can see a `POST` reach it and the write to an authors table that follows. Whether that pair of observations is called `RegisterAuthor`, and that names are unique per organization, is for a person to settle.
 
 ## Evidence instead of memory
 

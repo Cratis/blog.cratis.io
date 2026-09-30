@@ -1,6 +1,6 @@
 ---
-title: "Part 10: Beyond .NET"
-date: 2026-09-30T09:14:00Z
+title: "From script to stage · Part 10: Beyond .NET"
+date: 2026-09-30T09:10:00Z
 authors: sindre
 excerpt: "Chronicle has clients for .NET, Kotlin and Java, TypeScript and Elixir, and Arc has servers on ASP.NET Core, Spring Boot and, as a source preview, Node.js. What each one gives you today, which registry it comes from, and the defaults that still differ from .NET."
 tags:
@@ -11,11 +11,11 @@ tags:
   - elixir
 ---
 
-*[From the edge to the event log](/from-the-edge-to-the-event-log/) · Part 10 of 23*
+*[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 10 of 23*
 
 Chronicle has clients for .NET, Kotlin and Java, TypeScript and Elixir, and all of them append to the same kernel through the same contract. Only one of them checks concurrency on an append unless you ask it to. The .NET client reads the tail of the event source and sends the sequence number it expects, so an append that lands between that read and its write fails. The Kotlin and Java client appends with no concurrency scope, and the TypeScript and Elixir clients send no check at all.
 
-That's one line in a table of differences, and it matters the day a second team picks a second language. In [From the edge to the event log](/from-the-edge-to-the-event-log/), a signed-in user registers an author, and author names are unique within the organization. The feature is written in C#, and nothing in the rule needs C#. A JVM or Node team can build the same feature on Cratis, once they know what exists for their language and where it departs from the .NET path.
+That's one line in a table of differences, and it matters the day a second team picks a second language. In [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/), a signed-in user registers an author, and author names are unique within the organization. The feature is written in C#, and nothing in the rule needs C#. A JVM or Node team can build the same feature on Cratis, once they know what exists for their language and where it departs from the .NET path.
 
 ## One contract, several ecosystems
 

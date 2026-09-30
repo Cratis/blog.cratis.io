@@ -1,6 +1,6 @@
 ---
-title: "Part 03: From event to read model"
-date: 2026-09-30T09:21:00Z
+title: "From script to stage · Part 03: From event to read model"
+date: 2026-09-30T09:03:00Z
 authors: sindre
 excerpt: "One attribute turns AuthorRegistered into a list on a screen. Model-bound, fluent and PDL projections, reducers for when attributes can't say it, where read models are stored, how a live list learns about changes, and what Chronicle does when a projection changes or has to be rebuilt."
 tags:
@@ -11,11 +11,11 @@ tags:
   - event-sourcing
 ---
 
-*[From the edge to the event log](/from-the-edge-to-the-event-log/) · Part 03 of 23*
+*[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 03 of 23*
 
 `[FromEvent<AuthorRegistered>]` on a record is a complete projection. Chronicle maps the event's `Name` onto the read model's `Name` because the names match, keys each instance by the author, runs the projection in its kernel and writes the result to a database that a query can read. There's no handler and no mapping code to write.
 
-That record is the list in [From the edge to the event log](/from-the-edge-to-the-event-log/), where a signed-in user registers an author and the author shows up in a list that updates on its own. When that list is wrong, the cause is somewhere in what the attribute sets up.
+That record is the list in [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/), where a signed-in user registers an author and the author shows up in a list that updates on its own. When that list is wrong, the cause is somewhere in what the attribute sets up.
 
 ## The author list, end to end
 

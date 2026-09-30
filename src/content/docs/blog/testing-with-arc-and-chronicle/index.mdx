@@ -1,5 +1,5 @@
 ---
-title: "Part 12: Testing with Arc and Chronicle"
+title: "From script to stage · Part 12: Testing with Arc and Chronicle"
 date: 2026-09-30T09:12:00Z
 authors: sindre
 excerpt: "Most specs in a Cratis application can call a method and compare the event it returns. What the in-process scenarios add on top, the ways a green spec proves nothing, and the few tests that still need a real Chronicle and a running host."
@@ -11,13 +11,13 @@ tags:
   - event-sourcing
 ---
 
-*[From the edge to the event log](/from-the-edge-to-the-event-log/) · Part 12 of 23*
+*[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 12 of 23*
 
 A spec for "a second author with the same name is rejected" can pass without the first author ever reaching the event log. On an Arc `CommandScenario`, `Given` seeds an in-memory read model, and nothing it seeds is appended to the log that Chronicle checks a `[Unique]` constraint against. The spec sits in the right folder and carries the right name, and the constraint it's named after is never exercised.
 
 That's one of a handful of ways a spec in an event-sourced application can go green and prove nothing, and they all come from losing track of what a given kind of test actually runs. Cratis offers several kinds, from calling a method to running a real Chronicle in Docker, and for most rules the cheapest one is enough.
 
-The feature is the one from [From the edge to the event log](/from-the-edge-to-the-event-log/): a signed-in user registers an author, and author names are unique within the organization.
+The feature is the one from [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/): a signed-in user registers an author, and author names are unique within the organization.
 
 ## Start with the function
 

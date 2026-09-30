@@ -1,6 +1,6 @@
 ---
-title: "Part 05: Rules that hold when you write"
-date: 2026-09-30T09:19:00Z
+title: "From script to stage · Part 05: Rules that hold when you write"
+date: 2026-09-30T09:05:00Z
 authors: sindre
 excerpt: "Checking a read model before you append enforces nothing. Constraints, concurrency scopes, decision reads and Arc aggregates check at write time, and each reaches a different set of appends."
 tags:
@@ -11,11 +11,11 @@ tags:
   - event-sourcing
 ---
 
-*[From the edge to the event log](/from-the-edge-to-the-event-log/) · Part 05 of 23*
+*[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 05 of 23*
 
 An event-sourced system has no table to put a `UNIQUE` index on. A rule that has to hold at write time has to be checked where the event is committed.
 
-The sticky-note feature from [From the edge to the event log](/from-the-edge-to-the-event-log/) has exactly such a rule. A signed-in user registers an author, and author names are unique within the user's organization. Chronicle and Arc have four tools for rules like that, and they differ in what they check, where the check runs and which clients have them.
+The sticky-note feature from [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) has exactly such a rule. A signed-in user registers an author, and author names are unique within the user's organization. Chronicle and Arc have four tools for rules like that, and they differ in what they check, where the check runs and which clients have them.
 
 A read-model race approves "Withdraw 200" twice against a lagging balance in Arc's [bank-account example](https://cratis.io/arc/backend/csharp/chronicle/aggregates/). Neither check was wrong. Both were answered from state that hadn't caught up yet.
 
