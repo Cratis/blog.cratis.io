@@ -173,6 +173,9 @@ Keys are held per [subject](https://cratis.io/chronicle/concepts/subject/). The 
 
 An Arc command sets the subject by [returning it next to the event](https://cratis.io/arc/backend/csharp/chronicle/compliance/subject/):
 
+<Tabs syncKey="language">
+<TabItem label="C#">
+
 ```csharp
 using Cratis.Arc.Chronicle.Commands;
 using Cratis.Arc.Commands.ModelBound;
@@ -192,6 +195,118 @@ public record PlaceOrder(EventSourceId OrderId, CustomerId CustomerId, decimal A
 [EventType]
 public record OrderPlaced(CustomerId CustomerId, decimal Amount);
 ```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+In Arc for Kotlin the command implements `CommandEventSubjectProvider` instead of returning the subject next to the event.
+
+```kotlin
+import io.cratis.arc.artifacts.Command
+import io.cratis.arc.artifacts.CommandEventSubjectProvider
+import io.cratis.arc.artifacts.CommandKey
+import io.cratis.chronicle.events.EventType
+import java.math.BigDecimal
+
+@Command
+data class PlaceOrder(
+    @CommandKey val orderId: String,
+    val customerId: String,
+    val amount: BigDecimal
+) : CommandEventSubjectProvider {
+    override fun eventSubject(): String = customerId
+
+    fun handle(): OrderPlaced = OrderPlaced(customerId, amount)
+}
+
+@EventType
+data class OrderPlaced(val customerId: String, val amount: BigDecimal)
+```
+
+</TabItem>
+<TabItem label="Java">
+
+In Arc for Java the command implements `CommandEventSubjectProvider` instead of returning the subject next to the event.
+
+```java
+import io.cratis.arc.artifacts.Command;
+import io.cratis.arc.artifacts.CommandEventSubjectProvider;
+import io.cratis.arc.artifacts.CommandKey;
+import io.cratis.chronicle.events.EventType;
+
+import java.math.BigDecimal;
+
+@Command
+public record PlaceOrder(@CommandKey String orderId, String customerId, BigDecimal amount)
+    implements CommandEventSubjectProvider {
+    @Override
+    public String eventSubject() {
+        return customerId;
+    }
+
+    public OrderPlaced handle() {
+        return new OrderPlaced(customerId, amount);
+    }
+}
+
+@EventType
+record OrderPlaced(String customerId, BigDecimal amount) {}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+In Arc for TypeScript the command computes the subject in `getSubject()` instead of returning it next to the event.
+
+```typescript
+import { field } from '@cratis/fundamentals';
+import { eventType } from '@cratis/chronicle/events';
+import { command, key } from '@cratis/arc.core';
+
+@command()
+export class PlaceOrder {
+    @field(String) @key() orderId = '';
+    @field(String) customerId = '';
+    @field(Number) amount = 0;
+
+    getSubject(): string { return this.customerId; }
+
+    handle(): OrderPlaced { return new OrderPlaced(this.customerId, this.amount); }
+}
+
+@eventType()
+export class OrderPlaced {
+    @field(String) customerId: string;
+    @field(Number) amount: number;
+    constructor(customerId = '', amount = 0) { this.customerId = customerId; this.amount = amount; }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+Arc for Elixir doesn't exist; with the Chronicle Elixir client you pass the subject as an append option.
+
+```elixir
+defmodule MyApp.Events.OrderPlaced do
+  use Chronicle.Events.EventType, id: "order-placed"
+
+  defstruct [:customer_id, :amount]
+end
+
+defmodule MyApp.PlaceOrder do
+  def place(order_id, customer_id, amount) do
+    Chronicle.append(
+      order_id,
+      %MyApp.Events.OrderPlaced{customer_id: customer_id, amount: amount},
+      subject: customer_id
+    )
+  end
+end
+```
+
+</TabItem>
+</Tabs>
 
 A command can also implement `ICanProvideSubject`. The `Subject` is append metadata and never becomes the command's response. Arc doesn't infer the subject from the signed-in user, and an aggregate's `Apply()` doesn't forward it.
 
@@ -240,6 +355,9 @@ Queries through `IReadModels` release values automatically. An instance that arr
 
 With Arc's Chronicle integration, the [causation](https://cratis.io/arc/backend/csharp/chronicle/commands/causation/) of every event a command appends records the command's name and its property values. Keys are camelCased, concepts render as their inner value, and nested objects become compact JSON, truncated at 1,024 characters with a marker. `[PII]` keeps a top-level value off that chain, whether it sits on the property, the command, the positional parameter or the concept. Arc's own `[NotAudited]` does the same for secrets that aren't personal data:
 
+<Tabs syncKey="language">
+<TabItem label="C#">
+
 ```csharp
 [Command]
 public record ChangePassword(
@@ -250,6 +368,41 @@ public record ChangePassword(
     public PasswordChanged Handle(IPasswordHasher hasher) => new(hasher.Hash(NewPassword));
 }
 ```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+Arc for Kotlin records the command's type and key in the causation chain, not its property values, so there's no `NotAudited` marker.
+
+</TabItem>
+<TabItem label="Java">
+
+Arc for Java records the command's type and key in the causation chain, not its property values, so there's no `NotAudited` marker.
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+@command()
+export class ChangePassword {
+    @field(String) @key() user = '';
+    @field(String) @notAudited() oldPassword = '';
+    @field(String) @notAudited() newPassword = '';
+
+    @inject(PasswordHasher)
+    handle(hasher: PasswordHasher): PasswordChanged {
+        return new PasswordChanged(hasher.hash(this.newPassword));
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
+
+</TabItem>
+</Tabs>
 
 The decision fails closed, so a property whose exclusion can't be decided is left out. Exclusion isn't recursive, and a marked member inside a nested object still ends up in that JSON. Arc's analyzer ARCCHR0009 warns when a command property's name reads like a secret and carries no marker.
 
@@ -271,6 +424,9 @@ A [redaction](https://cratis.io/chronicle/events/redaction/) removes content. Re
 
 An observer hears about a redaction only if it subscribes to the original event type and also handles `EventRedacted`:
 
+<Tabs syncKey="language">
+<TabItem label="C#">
+
 ```csharp
 [EventType]
 public record RedactionPersonRegistered(string Name);
@@ -286,6 +442,29 @@ public class RedactionPersonReactor : IReactor
     }
 }
 ```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+Not available in the Kotlin client.
+
+</TabItem>
+<TabItem label="Java">
+
+Not available in the Java client.
+
+</TabItem>
+<TabItem label="TypeScript">
+
+Not available in the TypeScript client.
+
+</TabItem>
+<TabItem label="Elixir">
+
+Not available in the Elixir client.
+
+</TabItem>
+</Tabs>
 
 That handler is where a read model gets cleaned up or a downstream system gets told. Redaction doesn't reach database oplogs, backups, or copies already forwarded to another event store through outbox and inbox, and it doesn't clean read models by itself.
 
