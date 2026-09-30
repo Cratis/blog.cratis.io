@@ -73,7 +73,34 @@ public record AuthorRegistered(String name) { }
 ```
 
 </TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { field } from '@cratis/fundamentals';
+import { eventType } from '@cratis/chronicle/events';
+import { command, key } from '@cratis/arc.core';
+import { AuthorId } from '../AuthorId.js';
+import { AuthorName } from '../AuthorName.js';
+
+@eventType()
+export class AuthorRegistered {
+    @field(AuthorName) name: AuthorName;
+    constructor(name: AuthorName = new AuthorName('')) { this.name = name; }
+}
+
+@command()
+export class RegisterAuthor {
+    @key() @field(AuthorId) id!: AuthorId;
+    @field(AuthorName) name!: AuthorName;
+
+    handle(): AuthorRegistered { return new AuthorRegistered(this.name); }
+}
+```
+
+</TabItem>
 </Tabs>
+
+The TypeScript tab is Arc for TypeScript, an early source preview whose packages aren't on npm yet.
 
 That's the whole command. [Arc](https://cratis.io/arc/) gives it an HTTP route and runs validation and [declared authorization](https://cratis.io/arc/backend/csharp/authorizing-commands-and-queries/) on it (`[Authorize]`, roles and policies). The handler returns an `AuthorRegistered` event, and the command can [append the event it returns](https://cratis.io/arc/backend/csharp/chronicle/commands/events/). You write no controller, no DTO and no registration list, and the name travels as a typed value instead of a bare string. The service code, the authorization policy and the storage stay yours.
 
