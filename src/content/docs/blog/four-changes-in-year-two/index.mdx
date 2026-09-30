@@ -52,7 +52,7 @@ public record AuthorRegisteredV1(string Name);
 </TabItem>
 <TabItem label="Kotlin">
 
-These clients repeat the explicit id on every generation.
+The Kotlin client repeats the explicit id on every generation.
 
 ```kotlin
 import io.cratis.chronicle.events.EventType
@@ -69,7 +69,7 @@ data class AuthorRegisteredV1(val name: String)
 </TabItem>
 <TabItem label="Java">
 
-These clients repeat the explicit id on every generation.
+The Java client repeats the explicit id on every generation.
 
 ```java
 import io.cratis.chronicle.events.EventType;
@@ -86,7 +86,7 @@ record AuthorRegisteredV1(String name) {}
 </TabItem>
 <TabItem label="TypeScript">
 
-These clients repeat the explicit id on every generation.
+The TypeScript client repeats the explicit id on every generation.
 
 ```typescript
 import { eventType } from '@cratis/chronicle';
@@ -119,7 +119,7 @@ class AuthorRegisteredV1 {
 </TabItem>
 <TabItem label="Elixir">
 
-These clients repeat the explicit id on every generation.
+The Elixir client repeats the explicit id on every generation.
 
 ```elixir
 defmodule MyApp.Events.AuthorRegistered do
@@ -244,6 +244,10 @@ The Elixir client takes property names as atoms or strings and writes a snake_ca
 
 ```elixir
 defmodule MyApp.Migrations.AuthorRegisteredMigration do
+  # Needed until Cratis/Chronicle.Elixir#90 is fixed.
+  require MyApp.Events.AuthorRegisteredV1
+  require MyApp.Events.AuthorRegistered
+
   use Chronicle.Events.Migration,
     from: {MyApp.Events.AuthorRegisteredV1, generation: 1},
     to: {MyApp.Events.AuthorRegistered, generation: 2}

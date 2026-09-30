@@ -246,15 +246,17 @@ using MongoDB.Driver;
 
 namespace Banking.Accounts;
 
+public enum AccountRole { AccountReader, Admin, Auditor }
+
 [ReadModel]
-[Roles("AccountReader")]
+[Roles(nameof(AccountRole.AccountReader))]
 public record DebitAccount(AccountId Id, AccountName Name, decimal Balance)
 {
     [Path("/api/accounts")]
     public static IEnumerable<DebitAccount> AllAccounts(IMongoCollection<DebitAccount> collection) =>
         collection.Find(_ => true).ToList();
 
-    [Roles("Admin", "Auditor")]
+    [Roles(nameof(AccountRole.Admin), nameof(AccountRole.Auditor))]
     [Path("/api/accounts/overdrawn")]
     public static IEnumerable<DebitAccount> OverdrawnAccounts(IMongoCollection<DebitAccount> collection) =>
         collection.Find(account => account.Balance < 0).ToList();
@@ -388,7 +390,7 @@ builder.AddCratisArc(options =>
 </TabItem>
 <TabItem label="Kotlin">
 
-In Arc for Kotlin and Java this is a Spring property; a request without the header has no tenant (`null`) unless `cratis.arc.tenancy.required` is set, which rejects it with a 400, and the Chronicle integration uses the default event store for a null tenant.
+In Arc for Kotlin and Java this is a Spring property. A request without the header has no tenant (`null`) unless `cratis.arc.tenancy.required` is set, which rejects it with a 400, and the Chronicle integration uses the default event store for a null tenant.
 
 ```properties
 cratis.arc.tenancy.header-name=Tenant-ID
@@ -397,7 +399,7 @@ cratis.arc.tenancy.header-name=Tenant-ID
 </TabItem>
 <TabItem label="Java">
 
-In Arc for Kotlin and Java this is a Spring property; a request without the header has no tenant (`null`) unless `cratis.arc.tenancy.required` is set, which rejects it with a 400, and the Chronicle integration uses the default event store for a null tenant.
+In Arc for Kotlin and Java this is a Spring property. A request without the header has no tenant (`null`) unless `cratis.arc.tenancy.required` is set, which rejects it with a 400, and the Chronicle integration uses the default event store for a null tenant.
 
 ```properties
 cratis.arc.tenancy.header-name=Tenant-ID
@@ -406,7 +408,7 @@ cratis.arc.tenancy.header-name=Tenant-ID
 </TabItem>
 <TabItem label="TypeScript">
 
-In Arc for TypeScript this is the `tenancy.httpHeader` option; a request without the header has no `tenantId` (`undefined`) unless `tenancy.required` is set, which answers 400, and the Chronicle integration then appends in the `Default` namespace.
+In Arc for TypeScript this is the `tenancy.httpHeader` option. A request without the header has no `tenantId` (`undefined`) unless `tenancy.required` is set, which answers 400, and the Chronicle integration then appends in the `Default` namespace.
 
 ```typescript
 import { ArcApplication } from '@cratis/arc.core';

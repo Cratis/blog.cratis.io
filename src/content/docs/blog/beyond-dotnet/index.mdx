@@ -23,7 +23,7 @@ That's one line in a table of differences, and it matters the day a second team 
 
 Not every team is on .NET, and not every service in one system should have to be. Arc's [HTTP contract](https://cratis.io/arc/http-contract/) is shared across three server implementations, and each generates TypeScript proxies for the frontend, though each has gaps of its own.
 
-On the JVM, [Arc for Kotlin](https://cratis.io/arc/backend/kotlin/) is a Spring Boot implementation for Kotlin and Java, published to Maven Central. This command and its event come from its Chronicle Spring Boot sample, trimmed, and the TypeScript tab has the same command from Arc for TypeScript's Chronicle guide:
+On the JVM, [Arc for Kotlin](https://cratis.io/arc/backend/kotlin/) is a Spring Boot implementation for Kotlin and Java, published to Maven Central. This command and its event come from its Chronicle Spring Boot sample, trimmed, and the C# and TypeScript tabs have the same command, the TypeScript one from Arc for TypeScript's Chronicle guide:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
@@ -154,7 +154,7 @@ Two things are shared and everything else belongs to a language. The Chronicle k
 
 A command is a `@Command` class with a `handle()` method, and a query is a companion or static method on a `@ReadModel` type. KSP generates the handlers at compile time, so nothing is found by reflection when the application runs. Routes come from names, and `CreateTask` becomes `POST /api/create-task`. The package segments to leave out of a route are set twice, once in the Gradle plugin as `cratisArc.endpoints.segmentsToSkip` and once at runtime as `cratis.arc.endpoints.segments-to-skip-for-route`. If the two disagree, the starter refuses to start. [*Arc gotchas*](/arc-gotchas/) covers names doing the mapping on .NET. On the JVM, a mismatch is caught at startup.
 
-A query stays live by returning something that emits. In Kotlin that's a `Flow` or a `StateFlow`. In Java it's a JDK `Flow.Publisher` or Arc's `ObservableState<T>`, and with the optional `arc-rxjava3` artifact it can be an RxJava 3 `Observable`. The Kotlin and Java tabs follow the [observable queries guide](https://cratis.io/arc/backend/kotlin/guides/observable-queries/), and the TypeScript tab follows Arc for TypeScript's guide to observable queries:
+A query stays live by returning something that emits. In Kotlin that's a `Flow` or a `StateFlow`. In Java it's a JDK `Flow.Publisher` or Arc's `ObservableState<T>`, and with the optional `arc-rxjava3` artifact it can be an RxJava 3 `Observable`. The Kotlin and Java tabs follow the [observable queries guide](https://cratis.io/arc/backend/kotlin/guides/observable-queries/), the TypeScript tab follows Arc for TypeScript's guide to observable queries, and the C# tab is the same query for .NET:
 
 <Tabs syncKey="language">
 <TabItem label="C#">

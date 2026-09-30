@@ -283,7 +283,7 @@ public record Author(AuthorId Id, AuthorName Name)
 @io.cratis.chronicle.readModels.ReadModel
 @FromEvent(AuthorRegistered::class)
 data class Author(
-    @FromEventSourceId val id: String = "",
+    @FromEventSourceId val id: AuthorId = AuthorId(UUID(0, 0)),
     val name: AuthorName = AuthorName("")
 ) {
     companion object {
@@ -303,7 +303,7 @@ data class Author(
 @FromEvent(eventType = AuthorRegistered.class)
 public class Author {
     @FromEventSourceId
-    public String id = "";
+    public AuthorId id = new AuthorId(new UUID(0, 0));
     public AuthorName name = new AuthorName("");
 
     public static Flow.Publisher<List<Author>> allAuthors(@FromServices MongoObservableQuery queries) {
