@@ -329,7 +329,7 @@ The Kotlin client's `ReadModelScenario` folds a reducer.
 ```kotlin
 class WhenAnAuthorIsRegistered {
     private val authorId = "author-1"
-    private val name = "Jane Austen"
+    private val name = AuthorName("Jane Austen")
 
     @Test
     fun `the author has the name`() = runBlocking {
@@ -349,7 +349,7 @@ The Java client calls the reducer method directly.
 
 ```java
 class WhenAnAuthorIsRegistered {
-    private final String name = "Jane Austen";
+    private final AuthorName name = new AuthorName("Jane Austen");
 
     @Test
     void theAuthorHasTheName() {
@@ -370,7 +370,7 @@ The TypeScript client's `ReadModelScenario` evaluates a `@fromEvent` model-bound
 ```typescript
 describe('when an author is registered', () => {
     const authorId = 'author-1';
-    const name = 'Jane Austen';
+    const name = new AuthorName('Jane Austen');
     const scenario = new ReadModelScenario(Author);
 
     beforeEach(async () => {

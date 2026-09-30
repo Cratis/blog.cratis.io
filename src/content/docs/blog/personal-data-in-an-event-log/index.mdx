@@ -385,7 +385,7 @@ Arc for Java records the command's type and key in the causation chain, not its 
 ```typescript
 @command()
 export class ChangePassword {
-    @field(String) @key() user = '';
+    @field(UserId) @key() user!: UserId;
     @field(String) @notAudited() oldPassword = '';
     @field(String) @notAudited() newPassword = '';
 

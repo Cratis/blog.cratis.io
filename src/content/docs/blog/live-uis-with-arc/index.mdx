@@ -181,7 +181,10 @@ Arc for Kotlin and Java observe the collection with `MongoObservableQuery`, whic
 @ReadModel
 @io.cratis.chronicle.readModels.ReadModel
 @FromEvent(AuthorRegistered::class)
-data class Author(@FromEventSourceId val id: String = "", val name: String = "") {
+data class Author(
+    @FromEventSourceId val id: AuthorId = AuthorId(UUID(0, 0)),
+    val name: String = ""
+) {
     companion object {
         @JvmStatic
         fun allAuthors(@FromServices queries: MongoObservableQuery): Flow<List<Author>> =
@@ -201,7 +204,7 @@ Arc for Kotlin and Java observe the collection with `MongoObservableQuery`, whic
 @FromEvent(eventType = AuthorRegistered.class)
 public class Author {
     @FromEventSourceId
-    public String id = "";
+    public AuthorId id = new AuthorId(new UUID(0, 0));
 
     public String name = "";
 
