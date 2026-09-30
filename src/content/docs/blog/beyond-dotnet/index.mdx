@@ -11,6 +11,8 @@ tags:
   - elixir
 ---
 
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
 *[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 10 of 23*
 
 Chronicle has clients for .NET, Kotlin and Java, TypeScript and Elixir, and all of them append to the same kernel through the same contract. Only one of them checks concurrency on an append unless you ask it to. The .NET client reads the tail of the event source and sends the sequence number it expects, so an append that lands between that read and its write fails. The Kotlin and Java client appends with no concurrency scope, and the TypeScript and Elixir clients send no check at all.
@@ -22,6 +24,9 @@ That's one line in a table of differences, and it matters the day a second team 
 Not every team is on .NET, and not every service in one system should have to be. Arc's [HTTP contract](https://cratis.io/arc/http-contract/) is shared across three server implementations, and each generates TypeScript proxies for the frontend, though each has gaps of its own.
 
 On the JVM, [Arc for Kotlin](https://cratis.io/arc/backend/kotlin/) is a Spring Boot implementation for Kotlin and Java, published to Maven Central. This command and its event come from its Chronicle Spring Boot sample, trimmed:
+
+<Tabs syncKey="language">
+<TabItem label="Kotlin">
 
 ```kotlin
 import io.cratis.arc.artifacts.Command
@@ -38,6 +43,32 @@ data class CreateTask(@CommandKey val id: String, val title: String) {
     fun handle(): TaskCreated = TaskCreated(title)
 }
 ```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+import io.cratis.arc.artifacts.Command;
+import io.cratis.arc.artifacts.CommandKey;
+import io.cratis.arc.authorization.AllowAnonymous;
+import io.cratis.chronicle.events.EventType;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+
+@EventType
+public record TaskCreated(String title) {}
+
+@Command
+@AllowAnonymous
+public record CreateTask(@CommandKey String id, String title) {
+    public CompletionStage<TaskCreated> handle() {
+        return CompletableFuture.completedFuture(new TaskCreated(title));
+    }
+}
+```
+
+</TabItem>
+</Tabs>
 
 The command returns the event, and Arc's Chronicle integration, which the sample uses, appends it to the event source named by `@CommandKey`. Arc for Kotlin also has validation, authorization, tenancy, observable queries and in-process command scenarios. It isn't at parity with .NET. Command operations and aggregates aren't in it, and it runs only on Spring Boot.
 
@@ -74,6 +105,9 @@ A command is a `@Command` class with a `handle()` method, and a query is a compa
 
 A query stays live by returning something that emits. In Kotlin that's a `Flow` or a `StateFlow`. In Java it's a JDK `Flow.Publisher` or Arc's `ObservableState<T>`, and with the optional `arc-rxjava3` artifact it can be an RxJava 3 `Observable`. From the [observable queries guide](https://cratis.io/arc/backend/kotlin/guides/observable-queries/):
 
+<Tabs syncKey="language">
+<TabItem label="Kotlin">
+
 ```kotlin
 private val _tasks = MutableStateFlow<List<TaskView>>(emptyList())
 
@@ -86,6 +120,24 @@ data class TaskView(val id: String, val title: String) {
     }
 }
 ```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+@ReadModel
+@AllowAnonymous
+public record TaskView(String id, String title) {
+    private static final ObservableState<List<TaskView>> tasks = new ObservableState<>(List.of());
+
+    public static Flow.Publisher<List<TaskView>> all() {
+        return tasks;
+    }
+}
+```
+
+</TabItem>
+</Tabs>
 
 `MutableStateFlow` does the job `ISubject<T>` does on .NET, and the state it holds matters. A source that only emits has nothing to answer a plain HTTP request with, so a snapshot GET against it returns `202 Not Ready` unless the caller passes `waitForFirstResult=true`. The transports are the ones .NET uses, Server-Sent Events, WebSocket and an HTTP snapshot.
 

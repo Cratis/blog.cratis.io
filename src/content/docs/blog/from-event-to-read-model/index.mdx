@@ -11,6 +11,8 @@ tags:
   - event-sourcing
 ---
 
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
 *[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 03 of 23*
 
 `[FromEvent<AuthorRegistered>]` on a record is a complete projection. Chronicle maps the event's `Name` onto the read model's `Name` because the names match, keys each instance by the author, runs the projection in its kernel and writes the result to a database that a query can read. There's no handler and no mapping code to write.
@@ -53,6 +55,9 @@ Model-bound is [the default](https://cratis.io/chronicle/projections/) for most 
 
 The [model-bound](https://cratis.io/chronicle/projections/model-bound/) form puts the mapping on the record. Names that match are mapped, and `[SetFrom<T>]` maps one that doesn't:
 
+<Tabs syncKey="language">
+<TabItem label="C#">
+
 ```csharp
 [EventType]
 public record AccountOpened(string Name, decimal InitialBalance);
@@ -65,7 +70,105 @@ public record AccountInfo(
     decimal Balance);
 ```
 
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import io.cratis.chronicle.events.EventType
+import io.cratis.chronicle.projections.FromEvent
+import io.cratis.chronicle.projections.SetFrom
+import io.cratis.chronicle.readModels.ReadModel
+
+@EventType
+data class AccountOpened(
+    val name: String,
+    val initialBalance: Double
+)
+
+@ReadModel
+@FromEvent(AccountOpened::class)
+data class AccountInfo(
+    val name: String = "",
+
+    @SetFrom("initialBalance")
+    val balance: Double = 0.0
+)
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+import io.cratis.chronicle.events.EventType;
+import io.cratis.chronicle.projections.FromEvent;
+import io.cratis.chronicle.projections.SetFrom;
+import io.cratis.chronicle.readModels.ReadModel;
+
+@EventType
+record AccountOpened(String name, double initialBalance) {}
+
+@ReadModel
+@FromEvent(eventType = AccountOpened.class)
+class AccountInfo {
+    public String name = "";
+
+    @SetFrom(propertyPath = "initialBalance")
+    public double balance = 0;
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { eventType, fromEvent, Guid, setFrom } from '@cratis/chronicle';
+import { field } from '@cratis/fundamentals';
+
+@eventType()
+export class AccountOpened {
+    name = '';
+    initialBalance = 0;
+}
+
+@fromEvent(AccountOpened)
+export class AccountInfo {
+    id: Guid = Guid.empty;
+    @field(String) name = '';
+
+    @setFrom(AccountOpened, 'initialBalance')
+    balance = 0;
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+```elixir
+defmodule MyApp.Events.AccountOpened do
+  use Chronicle.Events.EventType, id: "account-opened"
+
+  defstruct [:name, :initial_balance]
+end
+
+defmodule MyApp.ReadModels.AccountInfo do
+  use Chronicle.ReadModels.ReadModel
+
+  alias MyApp.Events.AccountOpened
+
+  defstruct [:id, :name, balance: 0]
+
+  from AccountOpened,
+    set: [id: :event_source_id, name: :name, balance: :initial_balance]
+end
+```
+
+</TabItem>
+</Tabs>
+
 A read model with a collection inside it uses [children](https://cratis.io/chronicle/projections/model-bound/children/). Each child has a key, events add or update the child with that key, and another event removes it:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
 
 ```csharp
 public record Order(
@@ -82,11 +185,118 @@ public record OrderLine(
     [SetFrom<QuantityAdjusted>(nameof(QuantityAdjusted.NewQuantity))] int Quantity);
 ```
 
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import io.cratis.chronicle.projections.ChildrenFrom
+import io.cratis.chronicle.projections.FromEvent
+import io.cratis.chronicle.projections.RemovedWith
+import io.cratis.chronicle.projections.SetFrom
+import io.cratis.chronicle.readModels.ReadModel
+
+@ReadModel
+@FromEvent(OrderCreated::class)
+data class Order(
+    @SetFrom("customerName", OrderCreated::class)
+    val customer: String = "",
+
+    @ChildrenFrom(LineItemAdded::class, key = "itemId", identifiedBy = "itemId")
+    @ChildrenFrom(QuantityAdjusted::class, key = "itemId", identifiedBy = "itemId")
+    @RemovedWith(LineItemRemoved::class, key = "itemId")
+    val lines: List<OrderLine> = emptyList()
+)
+
+data class OrderLine(
+    val itemId: String = "",
+
+    @SetFrom("productName", LineItemAdded::class)
+    val product: String = "",
+
+    @SetFrom("initialQuantity", LineItemAdded::class)
+    @SetFrom("newQuantity", QuantityAdjusted::class)
+    val quantity: Int = 0
+)
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+import io.cratis.chronicle.projections.ChildrenFrom;
+import io.cratis.chronicle.projections.FromEvent;
+import io.cratis.chronicle.projections.RemovedWith;
+import io.cratis.chronicle.projections.SetFrom;
+import io.cratis.chronicle.readModels.ReadModel;
+
+import java.util.Collections;
+import java.util.List;
+
+@ReadModel
+@FromEvent(eventType = OrderCreated.class)
+class Order {
+    @SetFrom(propertyPath = "customerName", eventType = OrderCreated.class)
+    public String customer = "";
+
+    @ChildrenFrom(eventType = LineItemAdded.class, key = "itemId", identifiedBy = "itemId")
+    @ChildrenFrom(eventType = QuantityAdjusted.class, key = "itemId", identifiedBy = "itemId")
+    @RemovedWith(eventType = LineItemRemoved.class, key = "itemId")
+    public List<OrderLine> lines = Collections.emptyList();
+}
+
+class OrderLine {
+    public String itemId = "";
+
+    @SetFrom(propertyPath = "productName", eventType = LineItemAdded.class)
+    public String product = "";
+
+    @SetFrom(propertyPath = "initialQuantity", eventType = LineItemAdded.class)
+    @SetFrom(propertyPath = "newQuantity", eventType = QuantityAdjusted.class)
+    public int quantity = 0;
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { childrenFrom, Guid, removedWith, setFrom } from '@cratis/chronicle';
+import { field } from '@cratis/fundamentals';
+
+export class OrderLine {
+    id: Guid = Guid.empty;
+
+    @setFrom(LineItemAdded, 'productName')
+    product = '';
+
+    @setFrom(LineItemAdded, 'initialQuantity')
+    @setFrom(QuantityAdjusted, 'newQuantity')
+    quantity = 0;
+}
+
+export class Order {
+    id: Guid = Guid.empty;
+
+    @setFrom(OrderCreated, 'customerName')
+    customer = '';
+
+    @childrenFrom(LineItemAdded, 'itemId')
+    @removedWith(LineItemRemoved, 'itemId')
+    @field(Array, { genericArguments: [OrderLine] }) lines: OrderLine[] = [];
+}
+```
+
+</TabItem>
+</Tabs>
+
 `Quantity` listens to two events, so the line's quantity is set when it's added and replaced whenever it's adjusted. The same attribute family covers joins with `[Join<T>]` and removal of the whole read model with `[RemovedWith<T>]` on the type.
 
 ## Fluent: when attributes run out
 
 A [declarative projection](https://cratis.io/chronicle/projections/declarative/children/) implements `IProjectionFor<T>` and describes the same things through a builder. Children with keys and removal look like this:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
 
 ```csharp
 public class GroupProjection : IProjectionFor<Group>
@@ -103,6 +313,32 @@ public class GroupProjection : IProjectionFor<Group>
                 .UsingKey(e => e.UserId)));
 }
 ```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { IProjectionBuilderFor, IProjectionFor, projection } from '@cratis/chronicle';
+
+@projection()
+class GroupProjection implements IProjectionFor<Group> {
+    define(builder: IProjectionBuilderFor<Group>): void {
+        builder
+            .from(GroupCreated)
+            .children<GroupMember>(m => m.members, children => children
+                .identifiedBy(m => m.userId)
+                .from(UserAddedToGroup, b => b
+                    .usingKey(e => e.userId))
+                .from(UserRoleChanged, b => b
+                    .usingKey(e => e.userId))
+                .removedWith(UserRemovedFromGroup, b => b
+                    .usingKey(e => e.userId)));
+    }
+}
+```
+
+</TabItem>
+</Tabs>
 
 A [join](https://cratis.io/chronicle/projections/declarative/joins/) brings in events from another event source, with `.Join<GroupCreated>(j => j.On(m => m.GroupId))` picking up the group's own events for every read model that points at it. `FromEvery` applies a mapping for every event the projection handles, and `.FromEvery(_ => _.Set(m => m.LastUpdated).ToEventContextProperty(c => c.Occurred))` stamps a last-updated time from the event's context. A projection joins events. It can't join another read model, and a read model that needs data from two sources gets it from both sources' events.
 
