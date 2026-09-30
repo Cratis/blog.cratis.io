@@ -143,7 +143,7 @@ Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
 </TabItem>
 </Tabs>
 
-`Task<ISubject<T>>` is allowed as well. An arbitrary `IObservable<T>` isn't something Arc discovers as a query. You can compose with Rx operators such as `Select` or `CombineLatest`, as long as the subscription you return releases every upstream subscription when it's disposed and passes terminal errors on. The direct transports dispose the subscription they receive.
+In .NET, `Task<ISubject<T>>` is allowed as well, and an arbitrary `IObservable<T>` isn't something Arc discovers as a query. You can compose with Rx operators such as `Select` or `CombineLatest`, as long as the subscription you return releases every upstream subscription when it's disposed and passes terminal errors on. The direct transports dispose the subscription they receive.
 
 The return type alone doesn't open a connection. The client decides whether it wants a one-off snapshot, a direct SSE or WebSocket connection, or a subscription on a shared hub, and the default is the hub.
 
@@ -155,9 +155,9 @@ Arc's [real-time tutorial](https://cratis.io/arc/tutorial/real-time/) includes a
 
 The samples show two paths, and they differ in what sits between the command and the subject the query returns.
 
-In the Ideas board there's no event store. The command's `Handle(IdeaStore store)` calls `store.Capture(...)`, which pushes a new list into the `BehaviorSubject`. The query returns that same subject, so every subscriber gets the new list, the hub sends it to the browser and the hook re-renders. The command writes to a current-state store, and the query observes that same store.
+In the .NET Ideas board there's no event store. The command's `Handle(IdeaStore store)` calls `store.Capture(...)`, which pushes a new list into the `BehaviorSubject`. The query returns that same subject, so every subscriber gets the new list, the hub sends it to the browser and the hook re-renders. The command writes to a current-state store, and the query observes that same store.
 
-With Chronicle and MongoDB, the chain is longer. This is the author list from Cratis's [full-app walkthrough](https://cratis.io/build-a-full-app/):
+With Chronicle and MongoDB, the chain is longer. In .NET, this is the author list from Cratis's [full-app walkthrough](https://cratis.io/build-a-full-app/):
 
 <Tabs syncKey="language">
 <TabItem label="C#">
@@ -238,17 +238,17 @@ Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
 </TabItem>
 </Tabs>
 
-The command returns an `AuthorRegistered` event and Chronicle appends it. The projection declared by `[FromEvent<AuthorRegistered>]` writes the `Author` document to MongoDB. `collection.Observe()` sees that document change through a MongoDB change stream, and Arc pushes the new result to every subscribed client.
+The command returns an `AuthorRegistered` event and Chronicle appends it. The projection declared by `[FromEvent<AuthorRegistered>]` writes the `Author` document to MongoDB. In .NET, `collection.Observe()` sees that document change through a MongoDB change stream, and Arc pushes the new result to every subscribed client.
 
 ![A diagram titled The live hop, seven numbered cards in two rows joined by arrows. 1 Command, Arc. 2 Event appended, Chronicle. 3 Projection, declared by you and run by Chronicle, writes to MongoDB. The arrow from 3 turns down to the second row and is labeled eventually consistent. 4 Change stream, Arc Observe. 5 SSE hub at slash dot cratis slash queries slash sse. 6 The use hook. 7 Screen. A band at the bottom reads: You write steps 1 and 6 and the query's ISubject return type. Arc and Chronicle run steps 2 to 5.](./the-live-hop.png)
 
 *The Chronicle path to the screen. The UI observes the document, not the event log.*
 
-`Observe()` is database observation. It watches the MongoDB collection the projection writes to, and it isn't a Chronicle projection or a Chronicle API. Change streams need a MongoDB replica set or a supported sharded deployment. If the MongoDB watcher fails, Arc logs the failure and completes the stream instead of raising an error, so a stream that completed doesn't prove the data is current.
+In .NET, `Observe()` is database observation. It watches the MongoDB collection the projection writes to, and it isn't a Chronicle projection or a Chronicle API. Change streams need a MongoDB replica set or a supported sharded deployment. If the MongoDB watcher fails, Arc logs the failure and completes the stream instead of raising an error, so a stream that completed doesn't prove the data is current. Arc for Kotlin and Java observe the collection with `MongoObservableQuery`, which resumes its MongoDB change stream after transient failures, and Arc for TypeScript's experimental Chronicle integration watches the read model through Chronicle.
 
 The read model catches up after the append, asynchronously. A command that returns success has recorded the event. The projection may not have written the document yet, and the screen may not have changed yet either. There's nothing to refresh by hand, and also nothing that promises the list has updated by the time the command's promise resolves.
 
-For EF Core, an observed `DbSet` gets in-process notifications from Arc's `SaveChanges` interceptor. SQLite relies on that path only. SQL Server and PostgreSQL can pick up writes from other processes once their database notification setup is in place. If that setup fails, EF observation can fall back to in-process only. Without a notification source, an observable query can stay connected and never send fresh data.
+For EF Core in .NET, an observed `DbSet` gets in-process notifications from Arc's `SaveChanges` interceptor. SQLite relies on that path only. SQL Server and PostgreSQL can pick up writes from other processes once their database notification setup is in place. If that setup fails, EF observation can fall back to in-process only. Without a notification source, an observable query can stay connected and never send fresh data.
 
 ## How the result travels
 

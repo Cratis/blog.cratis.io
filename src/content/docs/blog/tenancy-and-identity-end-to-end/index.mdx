@@ -65,7 +65,7 @@ Identity and tenant arrive by the same route, as headers the proxy sets. Arc tru
 
 ## The header hop into Arc
 
-Arc reads the tenant from a header too, but its default header name is `x-cratis-tenant-id`, so point it at the proxy's header. The [tenant resolver docs](https://cratis.io/arc/backend/csharp/tenancy/resolvers/) show the setting with a custom name, and the extension method lives in `Cratis.Arc.Tenancy`:
+Arc reads the tenant from a header too, but its default header name is `x-cratis-tenant-id`, so point it at the proxy's header. The [tenant resolver docs](https://cratis.io/arc/backend/csharp/tenancy/resolvers/) show the setting with a custom name, and in .NET the extension method lives in `Cratis.Arc.Tenancy`:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
@@ -119,13 +119,13 @@ Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
 </TabItem>
 </Tabs>
 
-With the default resolvers, a missing header doesn't reject the request. It selects the unset tenant and then Chronicle's default namespace, so decide deliberately whether that's allowed.
+In .NET, with the default resolvers, a missing header doesn't reject the request. It selects the unset tenant and then Chronicle's default namespace, so decide deliberately whether that's allowed.
 
 Nothing sets the name for you, and putting AuthProxy in front of Arc doesn't change which header Arc reads. That's the mismatch in [Cratis/AuthProxy#157](https://github.com/Cratis/AuthProxy/issues/157), and the one line above is the workaround.
 
 Setting the name closes a second gap as well. AuthProxy removes the inbound headers it owns, and `x-cratis-tenant-id` isn't one of them. An Arc left on its default reads a tenant from a header the proxy doesn't remove. Configure `Tenant-ID`, and strip `x-cratis-tenant-id` at any ingress that could pass it through, the same treatment Arc recommends for the client-supplied fallback header of its subdomain resolver.
 
-When the header Arc reads is missing, the resolver returns an empty string and the [tenant context](https://cratis.io/arc/backend/csharp/tenancy/tenant-context/) becomes `TenantId.NotSet`. The tenant is resolved once per async execution flow and cached, so every service in a request sees the same value. An explicit tenant scope wins over the resolver, which matters for background work further down.
+In .NET, when the header Arc reads is missing, the resolver returns an empty string and the [tenant context](https://cratis.io/arc/backend/csharp/tenancy/tenant-context/) becomes `TenantId.NotSet`. The tenant is resolved once per async execution flow and cached, so every service in a request sees the same value. An explicit tenant scope wins over the resolver, which matters for background work further down.
 
 Non-ASCII tenant IDs have a seam of their own. AuthProxy sends a tenant ID that isn't plain ASCII in RFC 8187 encoded form, and Arc's header resolver passes the value through as it arrives. Tenant IDs that are plain lowercase labels, such as `acme`, never meet it, and the next hop gives a second reason to keep them that way.
 
@@ -273,7 +273,7 @@ Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
 </TabItem>
 </Tabs>
 
-`Begin` refuses an empty tenant, and the explicit scope wins over the configured resolver, even during an HTTP request. Dependency injection is where it goes wrong. A tenant-scoped service, such as Chronicle's event store or a `DbContext`, that was already resolved in an existing DI scope stays bound to that scope's original tenant after the current tenant changes. Create the DI scope inside the tenant scope. The `Execute` call above takes no scope of its own and creates one for you.
+In .NET, `Begin` refuses an empty tenant, and the explicit scope wins over the configured resolver, even during an HTTP request. Dependency injection is where it goes wrong. A tenant-scoped service, such as Chronicle's event store or a `DbContext`, that was already resolved in an existing DI scope stays bound to that scope's original tenant after the current tenant changes. Create the DI scope inside the tenant scope. The `Execute` call above takes no scope of its own and creates one for you. Arc for Kotlin and Java take the tenant in `CommandExecutionOptions`, and Arc for TypeScript in the execution context passed to `executeCommand`.
 
 ## The tools you look through
 

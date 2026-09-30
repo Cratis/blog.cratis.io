@@ -138,7 +138,7 @@ end
 </TabItem>
 </Tabs>
 
-The older record has no id of its own, and that's deliberate. Its event type id is resolved from the current type. A previous generation that simply leaves the id out would fall back to its CLR name and quietly become a different event type, which is the trap this shape closes. The older style, with the same explicit id string on every generation and a different `generation:` value, still works. Give long-lived events an explicit ID. Otherwise event types take their identity from the type name, and renaming the class changes the identity.
+In the .NET client, the older record has no id of its own, and that's deliberate. Its event type id is resolved from the current type. A previous generation that simply leaves the id out would fall back to its CLR name and quietly become a different event type, which is the trap this shape closes. The older style, with the same explicit id string on every generation and a different `generation:` value, still works, and it's the style the other clients use. Give long-lived events an explicit ID. Otherwise event types take their identity from the type name, and renaming the class changes the identity.
 
 You [declare a migration](https://cratis.io/chronicle/migrations/) between adjacent generations. `Upcast` describes how the old shape becomes the new one, and `Downcast` describes the way back:
 
@@ -269,7 +269,7 @@ end
 
 The builder has a small vocabulary. `Split` and `Combine` handle the name, `RenamedFrom` covers a renamed property and `DefaultValue` fills a new one. `MapValues` translates values, applies the map forward and inverts it on the way back. Values the map doesn't mention pass through. If two old values collapse onto one new value, the way back takes the first pair you declared, so a map like that forces you to choose what the reverse means. `MapValues` exists in the C# client only.
 
-The property expressions are typed, and they resolve to the JSON names Chronicle stores, `[JsonPropertyName]` first and then the client's naming policy. An expression that points at nothing is rejected at registration with `InvalidMigrationPropertyForEventType`. Adding or removing an optional property still needs a migration class, with no operations inside, so that the chain from generation 1 to the current one has no holes.
+In the .NET client, the property expressions are typed, and they resolve to the JSON names Chronicle stores, `[JsonPropertyName]` first and then the client's naming policy. An expression that points at nothing is rejected at registration with `InvalidMigrationPropertyForEventType`. The other clients don't check the names at registration. Adding or removing an optional property still needs a migration class, with no operations inside, so that the chain from generation 1 to the current one has no holes.
 
 The base class refuses a migration whose two generations don't share an event type ID, or that skips a generation. It's a check in the constructor:
 

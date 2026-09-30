@@ -102,13 +102,13 @@ Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
 </TabItem>
 </Tabs>
 
-It's written with [Cratis Specifications](https://cratis.io/specifications/), where `Because()` is the "when" and each `[Fact]` is a "then". It needs no container and no fake.
+The C# spec is written with [Cratis Specifications](https://cratis.io/specifications/), where `Because()` is the "when" and each `[Fact]` is a "then". It needs no container and no fake.
 
 An event is a record, so expecting one is an equality check on a value. The event doesn't even repeat its own event source ID, because Chronicle keeps that in the event context, so the value `Handle()` returns is all there is to compare. The [event-sourced commands lesson](https://cratis.io/arc/backend/csharp/testing/event-sourced-commands/) puts every branch of a decision in direct specs like this one.
 
 Arc also splits getting data from deciding with it. `Provide()` fetches what a command needs, and `Handle()` decides with what it was given, so `Handle` can be a pure function of its arguments. The [command decisions lesson](https://cratis.io/arc/backend/csharp/testing/command-decisions/) tests one command both ways, once directly and once through the pipeline. A `Handle()` that calls a service or reads the clock is still testable, but it isn't a pure function just because it lives on a command.
 
-Reducers work the same way. A reducer takes the event, the current state and the event context, and returns the next state. The [Processing sample](https://github.com/Cratis/Samples/tree/3c1ee46a4b8e86bac9623fcf9faace208a9551d9/Chronicle/Processing) tests its progress reducer by folding four events by hand, trimmed here to the action:
+Reducers work the same way. A reducer takes the event, the current state and the event context, and returns the next state. In .NET, the [Processing sample](https://github.com/Cratis/Samples/tree/3c1ee46a4b8e86bac9623fcf9faace208a9551d9/Chronicle/Processing) tests its progress reducer by folding four events by hand, trimmed here to the action:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
@@ -286,9 +286,9 @@ Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
 </TabItem>
 </Tabs>
 
-It runs Arc's [command pipeline](https://cratis.io/arc/backend/csharp/commands/command-pipeline/) and an in-memory Chronicle event log in one process, without a Chronicle server, and checks the decision and the recorded fact. HTTP routing, the auth middleware, a real read-model store and redelivery need a different kind of test. [Specifications](https://cratis.io/specifications/) supplies the given/when/then base on xUnit or NUnit. Synopsis can turn recognized specification shapes into navigable HTML documentation, though it doesn't run them.
+It runs Arc's [command pipeline](https://cratis.io/arc/backend/csharp/commands/command-pipeline/) and an in-memory Chronicle event log in one process, without a Chronicle server, and checks the decision and the recorded fact. HTTP routing, the auth middleware, a real read-model store and redelivery need a different kind of test. In .NET, [Specifications](https://cratis.io/specifications/) supplies the given/when/then base on xUnit or NUnit. Synopsis can turn recognized specification shapes into navigable HTML documentation, though it doesn't run them.
 
-[`CommandScenario<TCommand>`](https://cratis.io/arc/backend/csharp/testing/command-scenario/) runs the validators, authorization, `Provide()` and `Handle()`, and builds the command result, which is the path a request takes once routing has found the command. [`QueryScenario<TReadModel>`](https://cratis.io/arc/backend/csharp/testing/query-scenario/) does the same for a static query on a read model. With `Cratis.Arc.Chronicle.Testing` referenced, a command scenario gains `Given`, `EventLog` and `AppendedEvents`, and that's where `ShouldHaveAppendedEvent` comes from.
+In .NET, [`CommandScenario<TCommand>`](https://cratis.io/arc/backend/csharp/testing/command-scenario/) runs the validators, authorization, `Provide()` and `Handle()`, and builds the command result, which is the path a request takes once routing has found the command. [`QueryScenario<TReadModel>`](https://cratis.io/arc/backend/csharp/testing/query-scenario/) does the same for a static query on a read model. With `Cratis.Arc.Chronicle.Testing` referenced, a command scenario gains `Given`, `EventLog` and `AppendedEvents`, and that's where `ShouldHaveAppendedEvent` comes from. Arc for Kotlin and Java have a `CommandScenario` and a `QueryScenario` in `io.cratis:arc-testing`, and the source preview of Arc for TypeScript has a `CommandScenario`.
 
 A direct spec and a scenario spec answer different questions about the same command. The direct one says the decision is right for the inputs you chose. The scenario says the command still reaches that decision when validation, authorization and `Provide()` run in front of it, and that the event it returned was appended.
 
@@ -302,7 +302,7 @@ In .NET, Chronicle's [testing package](https://cratis.io/chronicle/testing/), `C
 | `ReadModelScenario<T>` | A projection or reducer building state from events | Sink writes, MongoDB queries, change streams |
 | `ReactorScenario<T>` | Dispatch, dependency injection, read-model materialization, routing of side effects | Observer registration, kernel dispatch, redelivery |
 
-The `Author` read model from the hub declares its projection with `[FromEvent<AuthorRegistered>]`, and a [`ReadModelScenario`](https://cratis.io/chronicle/testing/read-models/scenario/) picks up that model-bound form on its own, as it does a fluent projection or a reducer:
+In .NET, the `Author` read model from the hub declares its projection with `[FromEvent<AuthorRegistered>]`, and a [`ReadModelScenario`](https://cratis.io/chronicle/testing/read-models/scenario/) picks up that model-bound form on its own, as it does a fluent projection or a reducer:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
@@ -392,9 +392,9 @@ Not available in the Elixir client yet.
 </TabItem>
 </Tabs>
 
-This is the uniqueness rule's natural home too. An `EventScenario` appends to its in-memory event log, so a first registration seeded through its `Given` is in the log the constraint is checked against, and a second append with the same name is rejected there. Assert the violation by the constraint's name with `ShouldHaveConstraintViolationFor`. The same helper exists on a `CommandResult` and on an append result.
+This is the uniqueness rule's natural home too. In .NET, an `EventScenario` appends to its in-memory event log, so a first registration seeded through its `Given` is in the log the constraint is checked against, and a second append with the same name is rejected there. Assert the violation by the constraint's name with `ShouldHaveConstraintViolationFor`. The same helper exists on a `CommandResult` and on an append result.
 
-`ReactorScenario` delivers each event once. To check that a reactor is idempotent, deliver the same event twice yourself and look at what happened the second time.
+In .NET, `ReactorScenario` delivers each event once. To check that a reactor is idempotent, deliver the same event twice yourself and look at what happened the second time.
 
 Outside .NET the scenarios are fewer. The Kotlin client has `EventScenario` and a `ReadModelScenario` for reducers. TypeScript has all three, with `ReadModelScenario` covering reducers and the projections it supports. Java tests appends and calls reducers directly, and Elixir has no scenarios. [*Beyond .NET*](/beyond-dotnet/) covers the clients themselves.
 

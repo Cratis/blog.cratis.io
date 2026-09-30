@@ -98,9 +98,9 @@ The TypeScript tab is Arc for TypeScript, an early source preview whose packages
 
 That's the whole command. [Arc](https://cratis.io/arc/) gives it an HTTP route and runs validation and [declared authorization](https://cratis.io/arc/backend/csharp/authorizing-commands-and-queries/) on it (`[Authorize]`, roles and policies). The handler returns an `AuthorRegistered` event, and the command can [append the event it returns](https://cratis.io/arc/backend/csharp/chronicle/commands/events/). You write no controller, no DTO and no registration list, and the name travels as a typed value instead of a bare string. The service code, the authorization policy and the storage stay yours.
 
-Arc discovers a command when the type has `[Command]` and a public instance `Handle()`. The route comes from the configured prefix, `api` by default, then the namespace in kebab-case with its leading segments skipped, then the type name. An explicit path is kept exactly as written. Nothing about this needs an event store.
+In .NET, Arc discovers a command when the type has `[Command]` and a public instance `Handle()`. The route comes from the configured prefix, `api` by default, then the namespace in kebab-case with its leading segments skipped, then the type name. An explicit path is kept exactly as written. Nothing about this needs an event store.
 
-`AuthorName` is a `ConceptAs<string>`. On the wire it's just the string, and the proxy generator maps it to a TypeScript value type, so the C# model gets a named type without the HTTP contract getting a wrapper object.
+`AuthorName` is a `ConceptAs<string>`. On the wire it's just the string, and in .NET the proxy generator maps it to a TypeScript value type, so the C# model gets a named type without the HTTP contract getting a wrapper object. Arc for Kotlin and Java erase it to the underlying type in the generated TypeScript.
 
 Dependencies go on `Handle()` as parameters, resolved from the command's service scope. A `CancellationToken` parameter gets the request-aborted token over HTTP. A version of the command with a first and last name, where the command also produces the new author's id, shows the other half of the model:
 
@@ -193,7 +193,7 @@ Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
 
 `Provide()` runs after the request has passed authorization and validation, and whatever it returns is handed to `Handle()`. It's where a command fetches or creates what it needs. It can also stop the command with a validation result.
 
-What `Handle()` returns decides the response. `void` and `Task` give no response. A plain `T` or `Task<T>` becomes the response, unless a response handler claims it. A `Result<TSuccess, TError>` from `Cratis.Monads` is processed for whichever alternative is active. A tuple is split. Arc processes the values it has handlers for and allows at most one unhandled value, which becomes the response. In the command above, the Chronicle integration appends the event under the new `AuthorId`, and the id goes back to the caller as the response. Two unhandled values fail with `MultipleUnhandledTupleValues`. An arbitrary error record doesn't mark a command as failed on its own, and a returned `ValidationResult` does.
+In .NET, what `Handle()` returns decides the response. `void` and `Task` give no response. A plain `T` or `Task<T>` becomes the response, unless a response handler claims it. A `Result<TSuccess, TError>` from `Cratis.Monads` is processed for whichever alternative is active. A tuple is split. Arc processes the values it has handlers for and allows at most one unhandled value, which becomes the response. In the command above, the Chronicle integration appends the event under the new `AuthorId`, and the id goes back to the caller as the response. Two unhandled values fail with `MultipleUnhandledTupleValues`. An arbitrary error record doesn't mark a command as failed on its own, and a returned `ValidationResult` does.
 
 ## The order is part of the contract
 
@@ -370,7 +370,7 @@ Arc doesn't authenticate anyone either. The host establishes the principal, thro
 
 Two more endpoints are open by default. `/.cratis/commands` and `/.cratis/queries` list every command and query with its route and schema, and on .NET they're anonymous unless you configure them otherwise.
 
-Arc reads the tenant from a header too, but its default header name is `x-cratis-tenant-id`, so point it at the proxy's header. The [tenant resolver docs](https://cratis.io/arc/backend/csharp/tenancy/resolvers/) show the setting with a custom name, and the extension method lives in `Cratis.Arc.Tenancy`:
+Arc reads the tenant from a header too, but its default header name is `x-cratis-tenant-id`, so point it at the proxy's header. The [tenant resolver docs](https://cratis.io/arc/backend/csharp/tenancy/resolvers/) show the setting with a custom name, and in .NET the extension method lives in `Cratis.Arc.Tenancy`:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
@@ -424,7 +424,7 @@ Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
 </TabItem>
 </Tabs>
 
-With the default resolvers, a missing header doesn't reject the request. It selects the unset tenant and then Chronicle's default namespace, so decide deliberately whether that's allowed.
+In .NET, with the default resolvers, a missing header doesn't reject the request. It selects the unset tenant and then Chronicle's default namespace, so decide deliberately whether that's allowed.
 
 A resolver, whether it reads a header, a query string, a claim or a subdomain, selects a tenant. It doesn't check that the caller belongs to it, and a header the caller controls isn't evidence of membership. [*Tenancy and identity end to end*](/tenancy-and-identity-end-to-end/) follows the tenant from the edge to the event store.
 
@@ -444,7 +444,7 @@ Returning `ISubject<T>` instead of a list makes it an observable query, and a br
 
 At build time, Arc's [proxy generator](https://cratis.io/arc/backend/csharp/proxy-generation/) loads the compiled assembly and writes a TypeScript file for each command and query into the folder you configure. A command becomes a class that extends `Command<ICommandName>` and carries its route. Its interface has the C# XML documentation as comments. The class has typed property accessors, property descriptors and a validator, plus the roles from the C# attributes. A static `use()` hook for React returns the command with functions to set and clear its values.
 
-Validation rules are extracted from the compiled model and projected into the generated validator. The Ideas board sample in the Cratis Samples repository has a title concept with a rule on it:
+In .NET, validation rules are extracted from the compiled model and projected into the generated validator. The Ideas board sample in the Cratis Samples repository has a title concept with a rule on it:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
@@ -567,7 +567,7 @@ static use(initialValues?: ICaptureIdea): [CaptureIdea, SetCommandValues<ICaptur
 }
 ```
 
-Nobody wrote `maxLength(72)` in TypeScript. It came from the concept. When several sources contribute rules for one member, an explicit FluentValidation validator takes precedence, direct concept-validator rules add to it, and DataAnnotations fill in only where nothing else contributed.
+In .NET, nobody wrote `maxLength(72)` in TypeScript. It came from the concept. When several sources contribute rules for one member, an explicit FluentValidation validator takes precedence, direct concept-validator rules add to it, and DataAnnotations fill in only where nothing else contributed.
 
 Only a [supported subset](https://cratis.io/arc/backend/csharp/proxy-generation/validation/) of rules makes the trip: not-empty, not-null, email address, length rules, `Matches` and numeric comparisons against constants. Cross-property comparisons and comparisons against non-numeric constants stay on the server, and so do rules that call services or run custom logic. The generated rules give the user early feedback. The server stays authoritative, and a field the browser accepts can still fail on `POST`.
 
