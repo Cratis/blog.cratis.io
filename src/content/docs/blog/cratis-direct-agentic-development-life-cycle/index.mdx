@@ -85,13 +85,21 @@ With the ceiling at the plan, the journey stops once the plan has passed its gat
 
 Each Cratis Direct journey moves an issue through investigation, plan, implementation and release, and each stage ends at a gate that evaluates versioned rules against recorded evidence. Unknown is never a pass: an inconclusive result goes to a person.
 
+![The journey panel in Cratis Direct for the issue Show correct error message when service unavailable, in the repository Cratis/AuthProxy. A stage bar lists Intake, Investigation, Plan, Implementation, Release and Complete, each with a status line: Gate passed for the first three, Held at gate for Implementation, Upcoming for Release and Beyond ceiling for Complete. A panel headed Implementation quality says different work is already running for this issue. The Journey activity tab lists Journey started at Implementation and Existing work adopted.](./direct-01-journey-stages.png)
+
+*The stage view of a journey, from one of our own issues rather than the author feature. This journey started at the implementation stage and is held at that gate.*
+
 ![A ladder titled Five outcomes of a gate, from least to most restrictive: Allow; Requires human review; Requires explanation; Requires remediation; Block. A separate chip, Unknown, by default, points to Requires human review, with the label never Allow.](./cratis-direct-gate-outcomes.png)
 
 *The most restrictive outcome wins.*
 
 A gate collects the rules bound to it and evaluates each against recorded evidence. The evaluators range from deterministic checks and Roslyn analysis to a decision engine, external checks and an LLM's judgment, and the gate takes the most restrictive of five outcomes: allow, requires human review, requires explanation, requires remediation, or block. A low-confidence result counts as unknown. An unknown result can't map to allow, and by default it goes to human review.
 
-For the duplicate-names fix, the implementation gate's evidence includes the build, the specs, static analysis and an LLM check that the tests weren't weakened. That last one is judgment, not proof, and a low-confidence answer from it counts as unknown. A failing rule sends the work back for remediation, and after two attempts a person decides.
+For the duplicate-names fix, the implementation gate's evidence includes the build, the specs, static analysis and an LLM check that the tests weren't weakened. That last one is judgment, not proof, and a low-confidence answer from it counts as unknown. A failing build, test coverage or static analysis rule sends the work back for remediation, and after two attempts a person decides. A failing check that the tests weren't weakened goes to human review instead.
+
+![The Cratis Direct journey designer with five stages from Intake to Release, each followed by a gate. Gate G04, Implementation quality, is selected. Its rule Tests not weakened, an LLM check at version 1, maps a pass to Allow, a failure to Requires human review and an unknown result to Requires human review, with the note: an unknown result never allows, and evaluator errors fail closed.](./direct-02-gate-rule-when-unknown.png)
+
+*The rule that checks the tests weren't weakened: a failure and an unknown result both go to human review.*
 
 The rules are versioned. A new version is drafted, validated, simulated, reviewed and approved, only a person activates it, and a journey keeps the version it started with.
 

@@ -55,7 +55,11 @@ Everyone sees who else is on the board and where their cursor is while they work
 
 ### On the canvas
 
-On the event-modeling canvas, the author feature becomes a module, a feature and a slice on a timeline with swimlanes, with the `RegisterAuthor` command, the `AuthorRegistered` event and the `Authors` read model as color-coded cards. Assign the slice to a teammate or to an AI agent, and follow it on the project's progress board.
+On the event-modeling canvas, the author feature becomes a module, a feature and a slice on a timeline with swimlanes, with the `RegisterAuthor` command, the `AuthorRegistered` event and a read model as color-coded cards. Assign the slice to a teammate or to an AI agent, and follow it on the project's progress board.
+
+![Cratis Studio's event-modeling canvas under a beta banner. A module named Authors contains a feature named Registration with two slices side by side. The Register author slice has a blue command card, RegisterAuthor, above an orange event card, AuthorRegistered. The Author list slice has a green read-model card, Author, above the same AuthorRegistered event.](./studio-01-event-model-canvas.png)
+
+*The author feature on the canvas: two slices, with a command, an event and a read model.*
 
 The answer to the yellow note belongs to this slice. Registering a name that's already taken in the organization is rejected, and that's the behavior the specification on the slice writes down.
 
@@ -65,9 +69,13 @@ The answer to the yellow note belongs to this slice. Registering a name that's a
 
 ### A specification on the slice
 
-Add a given/when/then specification to the slice, such as "registering the same name twice is rejected", and run it from Studio. Like the Stage specification runner in [*Stage and Scene*](/stage-and-scene-after-a-model-compiles/), it checks the example against the model, and not against a running system.
+Add a given/when/then specification to the slice, such as "registering the same name twice is rejected". It's an example against the model, and not against a running system, like the ones the Stage specification runner in [*Stage and Scene*](/stage-and-scene-after-a-model-compiles/) checks.
 
 This is where the question from the board ends up, as an example with a given, a when and a then that a domain expert can read as easily as a developer.
+
+![Two specifications under the Register author slice in Cratis Studio. Registering a new name: given nothing, when RegisterAuthor, then AuthorRegistered. Registering a taken name is rejected: given AuthorRegistered, when RegisterAuthor, then the red error AuthorNameAlreadyTaken.](./studio-02-slice-specifications.png)
+
+*Two specifications on the Register author slice. The second is the duplicate-name rule, written as an example.*
 
 ### AI agents on the same model
 
@@ -80,6 +88,14 @@ Studio doesn't ship a language model. Every AI feature runs on a provider your o
 ### Play
 
 Press Play, and Studio starts a disposable Stage session for the model, so you can try the application it describes before anyone has written it. The session is for exploring the model. Don't host the application there.
+
+![Cratis Studio running the model with Play. A generated page titled Registerauthor shows a form with an authorName field containing Ola Nordmann and a button, Execute Register Author.](./studio-03-play-register-author.png)
+
+*A Play session: the register form generated from the model.*
+
+![Animated sequence from Cratis Studio. The canvas shows the Register author and Author list slices. The view scrolls to the two specifications under Register author and back, then to the Play button. Studio starts a Play session that opens an API view and a generated frontend with a Registerauthor page. The name Kari Holm is entered and executed, and the Authorlist page then lists that one author.](./studio-gif-01-canvas-specs-play.gif)
+
+*From the canvas to a Play session. The wait for the session to start is shortened.*
 
 ### Screenplay out, and back in
 

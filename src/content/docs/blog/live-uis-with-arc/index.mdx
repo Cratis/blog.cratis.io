@@ -151,6 +151,10 @@ For `ObserveIdeas`, the proxy generator writes an `ObservableQueryFor<Idea[]>` c
 
 Arc's [real-time tutorial](https://cratis.io/arc/tutorial/real-time/) includes a two-tab test. Open the app in two browser tabs connected to the same backend process, add a book in one, and the other updates without a reload. That test covers the tutorial's own path. A write from a second backend process is a separate case, and it depends on where the data lives.
 
+![Screen recording of two windows showing the same name list. In the left window a name is typed into the Register dialog. As soon as it is submitted, the new row appears in the right window too, without a reload. A second name follows the same way.](./app-40-observable-query-live.gif)
+
+*The same check on the Cratis web template's name list, with two windows side by side.*
+
 ## From a write to the screen
 
 The samples show two paths, and they differ in what sits between the command and the subject the query returns.

@@ -45,6 +45,10 @@ Creating the project runs post-creation actions that add the Cratis NuGet packag
 
 The backend listens on `http://localhost:5000`, with Swagger at `/swagger`. Vite serves the frontend on `http://localhost:9000` and forwards `/api`, `/.cratis` and `/swagger` to the backend. Port 5000 has to be free because the Vite proxy is fixed to it, and so does 27017, because the Chronicle image advertises its MongoDB replica-set member as `localhost:27017`. Register a name on the Demo page and three things happen. The backend logs `Registered: <name>` from the sample reactor, the name appears in the list, and the event shows up in the [Chronicle Workbench](https://cratis.io/chronicle/workbench/) at `https://localhost:35000`, once you've accepted the self-signed development certificate and signed in with the development account.
 
+![Screen recording of the Chronicle Workbench event log of the MyStore store with four Registered events. One event is opened and its content shows the name Corwin Ashdown that was typed into the dialog.](./app-41-event-in-workbench.gif)
+
+*A registered name, opened as an event in the Workbench.*
+
 ![A diagram titled The first hour, six numbered steps. 1 Install: dotnet new install Cratis.Templates. 2 Scaffold: dotnet new cratis -n MyStore. 3 Start: docker compose up -d. 4 Run: dotnet run and yarn dev. 5 Register: a name on the Demo page. 6 Inspect: the event in the Workbench. Below, a folder labeled What you get: SomeModule/SomeFeature/, with Registration holding a command, an event, a reactor and a dialog, and Listing holding a read model, an observable query and a list page. A footer reads: Needs the .NET 10 SDK, Docker Compose and Node. Development only.](./first-hour.png)
 
 *From an empty folder to an event you can open.*

@@ -46,6 +46,14 @@ With Arc's Chronicle integration, each tenant maps to its own [namespace](https:
 
 The Sequences page is a query editor over an [event sequence](https://cratis.io/chronicle/concepts/event-sequence/), with filters, saved queries and a detail view for each event. For the author feature, filter on `AuthorRegistered` and look for the author's ID.
 
+![The Sequences page for the acme namespace of the Authors event store, showing six AuthorRegistered events with sequence numbers 0 to 5, their event source ids and times.](./workbench-02-event-log.png)
+
+*The event log of one namespace.*
+
+![The same Sequences page with the event at sequence number 3 selected. Its Context tab lists the event type AuthorRegistered, the event source id, sequence number 3, the time it occurred and its causation.](./workbench-03-event-context.png)
+
+*One event's context, with a Content tab beside it.*
+
 If the event isn't in the log, the problem sits on the write side, and the command result or the append result carries the reason. If it is there, the next question is who should have handled it.
 
 Event types is one store-level list. Selecting a type opens a side panel with its schema and an Observers tab that lists the observers reading it, in every namespace. For `AuthorRegistered`, that list should include the projection behind the `Author` read model. An event type that no observer reads is recorded and then ignored, which is sometimes the intent and sometimes the bug.
@@ -53,6 +61,10 @@ Event types is one store-level list. Selecting a type opens a side panel with it
 ## Who should have handled it
 
 The Observers page lists every [observer](https://cratis.io/chronicle/concepts/observers/) in the namespace, projections, reducers and reactors alike. Each row has the observer's ID, type, owner and state, the next sequence number it will look at and how many events it has handled.
+
+![The Observers page for the acme namespace, filtered to Authors. It lists a projection, Authors.Author, and a reactor, Authors.AuthorWelcomeMail, with their sequence, owner, next event sequence number, handled events and state. Both are Active with next sequence number 6. The projection has handled 6 events and the reactor 5.](./workbench-06-observers-list.png)
+
+*Both rows read Active. The reactor has a failed partition, and the list doesn't show it.*
 
 An observer's position doesn't say whether it's healthy, because one that has stopped consuming looks exactly like one with nothing to do. The Failed partitions page answers that.
 
@@ -62,7 +74,7 @@ The observer's detail view has a connected clients section in its Summary tab, w
 
 When a [partition](https://cratis.io/chronicle/concepts/observers/) fails, Chronicle stops that partition and retries it with backoff, and the observer's other partitions carry on. A partition is the events of one event source, so for the author feature it's one author, and the failed partition is labelled with the author's ID. You can go straight from "this author is missing" to the partition that holds the reason.
 
-The Failed partitions page lists each one with its status, the partition, the number of attempts and the last attempt, and it has a detail page per partition. Status says whether the partition has been quarantined. When the status value is missing, the page shows **Unknown**, and that's a gap in what the page knows about the partition. It doesn't mean the partition is fine.
+The Failed partitions page lists each one with its status, the partition, the number of attempts and the last attempt, and it has a detail panel per partition. Status says whether the partition has been quarantined. When the status value is missing, the page shows **Unknown**, and that's a gap in what the page knows about the partition. It doesn't mean the partition is fine.
 
 Every recorded attempt carries a kind, and the kind is what separates a bug from a busy system:
 
@@ -73,7 +85,11 @@ Every recorded attempt carries a kind, and the kind is what separates a bug from
 | `Disconnected` | The subscriber was gone by the time the events reached it. |
 | `Unknown` | Nothing classified the failure. Attempts recorded before failures carried a kind read back as this. |
 
-The detail page lists each attempt's time, sequence number, messages and stack trace. In Chronicle 19.22.1 it doesn't show the kind.
+The detail panel lists each attempt's time, sequence number, messages and stack trace. In Chronicle 19.22.1 it doesn't show the kind.
+
+![The Failed partitions page for the acme namespace with one failed partition selected. The detail panel shows the observer Authors.AuthorWelcomeMail, the status Failed and 6 attempts. Each attempt lists its time, sequence number 3, its messages, including Welcome mail could not be sent: smtp.authors.local: connection refused, and a stack trace.](./workbench-09-failed-partition-detail.png)
+
+*A failed partition's detail: one entry per attempt, with its messages and stack trace.*
 
 ![A diagram titled What a failed attempt says, four cards in a two-by-two grid. Handling: the handler threw; something is wrong in the code. Timeout: no answer in time; the system was congested; doesn't count toward quarantine thresholds. Disconnected: the subscriber was gone when the events arrived. Unknown: nothing classified the failure. A band underneath reads: One failed partition per event source, such as one author, while the other partitions keep going.](./failed-attempt-kinds.png)
 
@@ -85,11 +101,27 @@ By default a failing partition is retried up to 10 times, with a backoff that st
 
 The page itself has one action, Retry, which asks for one more attempt at that partition. Fixing the cause comes first, because a retry against the same bug fails the same way.
 
+![Screen recording of the Workbench Failed partitions page. A failed partition with its attempt messages is selected, Retry is pressed after the cause has been fixed off screen, and the list becomes empty. The Observers page then shows both Authors observers Active with six handled events.](./workbench-31-failed-partition-recovers.gif)
+
+*Fix the cause, press Retry, and the partition leaves the list.*
+
 ## What the view actually holds
 
 The Read models page lists the read-model definitions in the namespace, their occurrences by generation, and a paged list of the instances in each. For the missing author, look for the author's ID among the `Author` instances. When an instance exists but holds old content, the time machine shows the snapshots of that one instance, so you can see how its state got to where it is.
 
+![The Read Models page for the acme namespace with the Authors read model selected, listing six instances with their ids and names.](./workbench-10-read-model-instances.png)
+
+*The instances of a read model in one namespace.*
+
+![Screen recording of the Chronicle Workbench. The event log of the acme namespace lists six AuthorRegistered events. One is opened to show its context and its content, the name Corwin Ashdown. The Read Models page then lists the Author instance with the same id and name.](./workbench-30-event-to-read-model.gif)
+
+*From one event to the read-model instance built from it.*
+
 [Projection](https://cratis.io/chronicle/projections/) definitions live at store level, on the projections page, with an editor and a preview. The preview shows how a projection will behave for the features it supports, so a change to the `Author` projection can be tried there first, within what the preview covers. What happens when a changed definition is deployed, and why Chronicle sometimes replays and sometimes only recommends it, is in [*Jobs, scale and performance*](/chronicle-jobs-scale-and-performance/).
+
+![The Projections page with Authors.Author selected. The editor shows its declaration: projection Authors.Author to Author, from AuthorRegistered.](./workbench-15-projection.png)
+
+*A projection's declaration in the editor.*
 
 ## Around the edges
 
