@@ -57,6 +57,10 @@ We built the CLI so you can ask the running system instead of comparing sequence
   ✗ Issues detected — review items above
 ```
 
+![Terminal output of cratis chronicle diagnose against the Authors event store. Connection, server version 19.23.1, event stores and observers pass. The failed partitions row reports 1 needing attention and names the command cratis chronicle failed-partitions list. The exit code printed below is 3.](./cli-10-diagnose.png)
+
+*The same summary from a current server, with the author feature's store. The exit code is 3 while a partition has failed.*
+
 The failing row names the next command, and `diagnose` exits nonzero when failed partitions exist, so it works as a check in a script too. [`failed-partitions show`](https://cratis.io/cli/chronicle/failed-partitions/) then gives the exception and a short stack trace for each attempt, shown here trimmed:
 
 ```text
@@ -90,6 +94,10 @@ Retry the partition before you replay anything. `observers replay` is the bigger
 
 *Inspect, fix the cause, retry one partition, inspect again.*
 
+![Terminal recording: diagnose reports one failed partition, the failed-partitions list names it, the partition is retried, and a second diagnose reports the system is healthy.](./cli-20-failed-partition-loop.gif)
+
+*The same loop in a terminal. The fix itself isn't shown; a comment stands in for it.*
+
 The rest of the debugging kit depends on where you are:
 
 - **In a terminal on a server.** `cratis chronicle workbench` opens a full-screen terminal dashboard over the same connection. `Ctrl+P` searches observers, event types, projections, read models and failed partitions at once, which helps because "author" isn't a name in one list. It's a thread through five of them. Actions such as replaying an observer or retrying a partition sit in place, behind a confirmation dialog. Tab completion asks the live server for observer and read-model names.
@@ -112,6 +120,10 @@ Bookshop.OverdueNotices  Reactor     Active  False        23     22            F
 ```
 
 Two of its columns are easy to misread. `Next#` is the next sequence number the observer will look at, and `LastHandled#` is the last event it actually processed. The tail here is 22, so every observer with `Next#` 23 has read everything there is. `Members` last handled sequence 2 because nobody has registered as a member since, and nothing between 3 and 22 was addressed to it. `Next#` is how far an observer has read. `LastHandled#` is the last thing it cared about.
+
+![Terminal recording: events tail prints sequence number 3 and observers list shows Next# 4 and LastHandled# 3. After one more name is registered, events tail prints 4 and the same observers show Next# 5 and LastHandled# 4.](./cli-31-events-tail-and-observer.gif)
+
+*One more event moves the tail, `Next#` and `LastHandled#` by one. The register line stands in for registering a name in the app.*
 
 `State` is one of `Active`, `Replaying`, `Suspended`, `Disconnected`, `Quarantined` or `Unknown`. `Disconnected` means no client is attached, which usually means the application isn't running. For a store whose application is stopped, that's the normal state.
 
@@ -159,9 +171,21 @@ The replay runs as a job, and `jobs list` and `jobs get` follow it. When it's do
 
 It has fifteen views: Overview on its own, then Observation (Observers, Failures, Jobs, Recommendations), Events (Event Sequences, Event Types), Projections (Projections, Read Models) and Server (Event Stores, Namespaces, Applications, Users, Identities, Subscriptions). The views refresh on an interval, and it reopens on the view you left.
 
+![Terminal recording of the terminal workbench. The Overview shows a connected server and one failed partition. The view switches to Observers, Event Sequences and Read Models, and then the command palette, searched for author, lists the observers, the AuthorRegistered event type, the projection, the read model and the failed partition.](./cli-30-terminal-workbench-tour.gif)
+
+*The terminal workbench, from Overview to the palette.*
+
 The actions sit on keys in the view where they apply. `R` replays the selected observer, `T` retries and `P` replays a failed partition, `S` and `U` stop and resume a job, and `A` and `I` apply or ignore a recommendation. `F` filters the current view, and `Ctrl+E` and `Ctrl+N` switch event store and namespace.
 
+![The Failures view of the terminal workbench listing the failed partition of the welcome-mail reactor with its attempt count and last error. The toolbar offers Retry partition (T) and Replay partition (P).](./tui-03-failures.png)
+
+*The Failures view, with the retry and replay keys on its toolbar.*
+
 For the author feature, typing "author" into the `Ctrl+P` palette would bring up the projection's observer, the `AuthorRegistered` event type, the projection declaration and the `Author` read model in one list, and picking one jumps to its view with the filter already applied.
+
+![The command palette in the terminal workbench with the search author. It lists two observers, the AuthorRegistered event type, the projection, the read model and the failed partition.](./tui-07-command-palette.png)
+
+*`Ctrl+P` with "author": five kinds of result in one list.*
 
 Each action opens a confirmation dialog that shows only its target. The event store and namespace are in the status bar, so read them and the target before confirming, because the dialog confirms whatever is selected. The terminal workbench covers observation and jobs. It has no screens for appending, revising or redacting events, and no projection editor.
 
