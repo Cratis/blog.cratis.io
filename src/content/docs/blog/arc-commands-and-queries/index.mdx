@@ -246,15 +246,17 @@ using MongoDB.Driver;
 
 namespace Banking.Accounts;
 
+public enum AccountRole { AccountReader, Admin, Auditor }
+
 [ReadModel]
-[Roles("AccountReader")]
+[Roles(nameof(AccountRole.AccountReader))]
 public record DebitAccount(AccountId Id, AccountName Name, decimal Balance)
 {
     [Path("/api/accounts")]
     public static IEnumerable<DebitAccount> AllAccounts(IMongoCollection<DebitAccount> collection) =>
         collection.Find(_ => true).ToList();
 
-    [Roles("Admin", "Auditor")]
+    [Roles(nameof(AccountRole.Admin), nameof(AccountRole.Auditor))]
     [Path("/api/accounts/overdrawn")]
     public static IEnumerable<DebitAccount> OverdrawnAccounts(IMongoCollection<DebitAccount> collection) =>
         collection.Find(account => account.Balance < 0).ToList();
