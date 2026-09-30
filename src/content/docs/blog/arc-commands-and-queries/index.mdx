@@ -597,7 +597,7 @@ Chronicle is optional. With the Chronicle integration package, the events a comm
 
 The event source id comes from a convention. A command that implements `ICanProvideEventSourceId` supplies it. Otherwise Arc takes the first property that's an `EventSourceId`, a descendant of `EventSourceId<T>` or marked `[Key]`, and if there's none, it creates a new `EventSourceId`.
 
-The command also leaves a trace. Its name and property values are recorded in the causation of every event it appends, and `[PII]` and `[NotAudited]` keep top-level values out of that record. The subject, the identity personal data is keyed to, can be returned from `Handle()` as well. [*Personal data in an event log*](/personal-data-in-an-event-log/) explains why both matter.
+The command also leaves a trace. In .NET and TypeScript, its name and property values are recorded in the causation of every event it appends, and `[PII]` and `[NotAudited]` keep top-level values out of that record. The subject, the identity personal data is keyed to, can be returned from `Handle()` as well. [*Personal data in an event log*](/personal-data-in-an-event-log/) explains why both matter.
 
 A Chronicle [read model can be a parameter](https://cratis.io/arc/backend/csharp/chronicle/read-models/) of a command's validator, `Provide()` or `Handle()`, looked up by the key the command already carries. It has to be backed by a projection or a reducer. If the instance doesn't exist, a nullable parameter gets null, and a non-nullable one fails the command with `ReadModelDoesNotExistForCommand` before your code runs. `[ReadModel]` on its own doesn't make a type injectable. [*Rules that hold when you write*](/rules-that-hold-when-you-write/) covers decision reads and aggregates, which build on this.
 
