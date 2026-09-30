@@ -1,5 +1,5 @@
 ---
-title: "Arc: commands and queries without the plumbing"
+title: "Part 08: Arc: commands and queries without the plumbing"
 date: 2026-09-30
 authors: sindre
 excerpt: "A command is a record with a Handle method and a query is a static method on the read model it returns. What Arc builds from those two shapes, in which order it checks a request, what reaches the generated TypeScript, and what stays the application's job."
@@ -10,6 +10,8 @@ tags:
   - typescript
   - validation
 ---
+
+*[From the edge to the event log](/from-the-edge-to-the-event-log/) · Part 08 of 23*
 
 A C# record marked `[Command]` with a public `Handle()` method is enough for Arc to expose it as a `POST` endpoint, check its authorization, validate it and, with the proxy build package configured, write a TypeScript class the frontend compiles against. There's no controller, no DTO and no list of registrations anywhere in the application. Arc finds the record, reads what's declared on it and builds the rest.
 
@@ -233,7 +235,5 @@ Arc for Kotlin and Java on Spring Boot and Arc for TypeScript share the HTTP con
 
 ---
 
-Part 8 of 23 in the Cratis series. The series starts at [From the edge to the event log](/from-the-edge-to-the-event-log/).
-
-- Previous: [Year two](/four-changes-in-year-two/)
-- Next: [Live UIs](/live-uis-with-arc/)
+- Previous: [Part 07 — Year two](/four-changes-in-year-two/)
+- Next: [Part 09 — Live UIs](/live-uis-with-arc/)

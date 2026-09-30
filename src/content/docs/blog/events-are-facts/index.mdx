@@ -1,5 +1,5 @@
 ---
-title: "Events are facts"
+title: "Part 01: Events are facts"
 date: 2026-09-30
 authors: sindre
 excerpt: "An event records something that happened, and no event is taken out of the log afterwards. How to name and shape events that still read in five years, and what Chronicle stores with each one: a sequence number, its source, the operation it belonged to, who caused it and why."
@@ -9,6 +9,8 @@ tags:
   - event-modeling
   - arc
 ---
+
+*[From the edge to the event log](/from-the-edge-to-the-event-log/) · Part 01 of 23*
 
 A table row holds the last thing that happened to it. Change an author's name in a row and the old name is gone, along with the request that changed it, the person who sent it and the reason. In an event-sourced system the change is a new fact at the end of a log. It gets a sequence number that never changes. The request, the identity behind it and the chain of causes are stored with it, and nothing recorded before it moves.
 
@@ -222,7 +224,5 @@ Of all the design decisions in an event-sourced system, the events are the most 
 
 ---
 
-Part 1 of 23 in the Cratis series. The series starts at [From the edge to the event log](/from-the-edge-to-the-event-log/).
-
-- Previous: [From the edge to the event log](/from-the-edge-to-the-event-log/)
-- Next: [Inside Chronicle](/inside-chronicle/)
+- Previous: [From the edge to the event log](/from-the-edge-to-the-event-log/), the start of the series
+- Next: [Part 02 — Inside Chronicle](/inside-chronicle/)

@@ -1,5 +1,5 @@
 ---
-title: "AI across the Cratis stack"
+title: "Part 21: AI across the Cratis stack"
 date: 2026-09-30
 authors: sindre
 excerpt: "Where an assistant meets Cratis: the AI corpus and its hooks, the CLI's effect labels, Chronicle MCP, Screenplay MCP and the docs assistant. What each one lets an assistant read, propose or change, and the checks that run whether it listened or not."
@@ -10,6 +10,8 @@ tags:
   - chronicle
   - screenplay
 ---
+
+*[From the edge to the event log](/from-the-edge-to-the-event-log/) · Part 21 of 23*
 
 Every command in the Cratis CLI declares what it can do to your system. [`cratis llm-context`](https://cratis.io/cli/reference/llm-context/) prints the command catalog as JSON, and each command carries an `effect` of `read-only`, `local`, `mutating` or `destructive`, and says whether it requires confirmation. An assistant reading the catalog can tell `observers list` from `observers replay` without keeping a list of its own.
 
@@ -201,7 +203,5 @@ To start, run `cratis ai install` in your repository for the corpus and its hook
 
 ---
 
-Part 21 of 23 in the Cratis series. The series starts at [From the edge to the event log](/from-the-edge-to-the-event-log/).
-
-- Previous: [Cratis Direct and our agentic development life cycle](/cratis-direct-agentic-development-life-cycle/)
-- Next: [Arc gotchas: where a convention decides for you](/arc-gotchas/)
+- Previous: [Part 20 — Cratis Direct and our agentic development life cycle](/cratis-direct-agentic-development-life-cycle/)
+- Next: [Part 22 — Arc gotchas: where a convention decides for you](/arc-gotchas/)

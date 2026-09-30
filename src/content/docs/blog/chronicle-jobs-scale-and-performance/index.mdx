@@ -1,5 +1,5 @@
 ---
-title: "Chronicle jobs, scale and performance"
+title: "Part 15: Chronicle jobs, scale and performance"
 date: 2026-09-30
 authors: sindre
 excerpt: "Replays you can stop and resume, what a crash in the middle of one delivers twice, how events reach observers without making appends wait, and what running Chronicle on more than one node does and doesn't promise."
@@ -10,6 +10,8 @@ tags:
   - clustering
   - event-sourcing
 ---
+
+*[From the edge to the event log](/from-the-edge-to-the-event-log/) · Part 15 of 23*
 
 Replaying a projection in Chronicle runs as a job, and a job can be stopped halfway and resumed later from where it stopped, as long as the application that owns the observer is connected. If the server crashes instead, the replay picks up from its last checkpoint, and the batches it processed since that checkpoint are delivered a second time.
 
@@ -174,7 +176,5 @@ For the author feature, the operational picture is small. A change to the `Autho
 
 ---
 
-Part 15 of 23 in the Cratis series. The series starts at [From the edge to the event log](/from-the-edge-to-the-event-log/).
-
-- Previous: [The Cratis CLI, from diagnose to llm-context](/the-cratis-cli/)
-- Next: [Screenplay: an event model you can compile](/screenplay-an-event-model-you-can-compile/)
+- Previous: [Part 14 — The Cratis CLI, from diagnose to llm-context](/the-cratis-cli/)
+- Next: [Part 16 — Screenplay: an event model you can compile](/screenplay-an-event-model-you-can-compile/)

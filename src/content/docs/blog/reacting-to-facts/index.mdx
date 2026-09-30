@@ -1,5 +1,5 @@
 ---
-title: "Reacting to facts"
+title: "Part 04: Reacting to facts"
 date: 2026-09-30
 authors: sindre
 excerpt: "Reactors, webhooks and outbox-to-inbox subscriptions carry what happened to whoever cares. A failing handler stops one partition, a reactor can return its follow-up facts, and a stable delivery id is what lets a side effect survive running twice."
@@ -10,6 +10,8 @@ tags:
   - subscriptions
   - event-sourcing
 ---
+
+*[From the edge to the event log](/from-the-edge-to-the-event-log/) · Part 04 of 23*
 
 A reactor that charges a card and then crashes before it records the charge will charge the card again on the retry. Chronicle delivers events to reactors at least once, and it never sees your payment provider, so it has no way of knowing whether the charge went through. What it can do is tell your handler, every time the same event arrives, that this is the same delivery.
 
@@ -212,7 +214,5 @@ For the author feature, that means a welcome mail keyed on `delivery.Id`, a Cata
 
 ---
 
-Part 4 of 23 in the Cratis series. The series starts at [From the edge to the event log](/from-the-edge-to-the-event-log/).
-
-- Previous: [From event to read model](/from-event-to-read-model/)
-- Next: [Rules that hold when you write](/rules-that-hold-when-you-write/)
+- Previous: [Part 03 — From event to read model](/from-event-to-read-model/)
+- Next: [Part 05 — Rules that hold when you write](/rules-that-hold-when-you-write/)
