@@ -1,0 +1,154 @@
+---
+title: "Cratis Studio: one event model for the whole team"
+date: 2026-09-30
+authors: sindre
+excerpt: "A shared board and canvas where people and AI agents work on the same event model, Screenplay text you can diff, and opt-in code for one slice in your own repository. What Cratis Studio does at each step, and where each step stops."
+tags:
+  - cratis-studio
+  - event-modeling
+  - screenplay
+  - stage
+  - ai
+---
+
+An event-modeling workshop usually ends as a photo of sticky notes. In Cratis Studio it ends as a model the whole team edited, with the AI agents working on the same one.
+
+[Cratis Studio](https://cratis.studio) is a collaborative workspace where people and AI agents design, visualize and edit the same event model. It runs in the browser, and it's built on Chronicle and Arc. Cratis Studio is live and in beta. Open signup is coming soon at cratis.studio, with a 14-day free trial.
+
+In Cratis Studio, a slice a team sketched together can be assigned to an AI agent, rendered into C# for Arc and Chronicle and committed to your connected Git repository, with the event model beside it as Screenplay text. Code generation is opt-in for each application. It works on one slice at a time, and it only goes from the model to the code.
+
+Here that's the author feature from [From the edge to the event log](/from-the-edge-to-the-event-log/): a signed-in user registers an author, and author names are unique within the organization. In Studio, that feature starts as a handful of sticky notes and can end as a commit.
+
+## The wall ends up as a photo
+
+[Event modeling](https://cratis.io/event-modeling/) happens in a room, or on a call, with a product owner, someone who knows the domain and a couple of developers arguing about what actually happens in the business. Someone photographs the wall of sticky notes that comes out of it and retypes part of it into a tool, and by the time the first slice is built, the model, the conversation and the code have started to drift apart.
+
+The author feature shows where it goes wrong. Someone at the wall asks whether two organizations can each have an author with the same name. The answer, that names are unique within an organization, is the rule the whole feature turns on, and on the wall it's a yellow note with a question mark. It's hard to read in the photo and easy to lose in the retyping, and it tends to come back later as a bug report.
+
+Coding agents widen the gap. An assistant can write the `RegisterAuthor` command, its projection and its spec in a few minutes, and the reviewer then compares that code with what they remember of a workshop.
+
+Studio moves the conversation onto the model itself, where people and AI agents edit the same thing, and what the team agrees on can be exported as text you commit.
+
+## Who it's for
+
+Studio is for the people who have to agree on what a system should do: developers, domain experts and product owners, in one room or in a remote workshop. We also build it for whoever runs the workshop, and for whoever has to turn the result into a system afterwards.
+
+Each of them uses a different part of it. A domain expert starts on the board and names what happens in the business in its own words, such as `AuthorRegistered` and `AuthorRenamed`. A product owner can follow the model after the workshop ends, because every slice can be assigned to a teammate or an AI agent, and the project's progress board shows where each one is. A developer gets the model as Screenplay to review as a diff and, where the application has code generation switched on, a slice's code in the repository. Someone who joins the team half a year later can ask Studio to explain a feature at the level they need.
+
+In a remote workshop everyone's cursor is on the same board, so the facilitator isn't the only person who can point at a note.
+
+## Why we built it
+
+We think the model and the code belong together. A model nothing is generated from goes stale, and code nobody can trace back to a model is hard to review, whether a person or an agent wrote it. Studio keeps the two coupled. The team works on one model, the model is text you can diff, and the code for a slice is generated from it into your repository.
+
+The commands, events and read models on the canvas are the concepts [Arc](https://cratis.io/arc/) and [Chronicle](https://cratis.io/chronicle/) run. The text form is [Screenplay](https://cratis.io/screenplay/), the event-modeling language covered in [*Screenplay*](/screenplay-an-event-model-you-can-compile/), and Play and code generation go through [Stage](https://github.com/Cratis/Stage), which [*Stage and Scene*](/stage-and-scene-after-a-model-compiles/) takes apart. Studio is where those pieces meet for a whole team.
+
+## The author feature, from board to commit
+
+### On a shared board
+
+Open a brainstorming board, and everyone adds events and sticky notes at once: `AuthorRegistered`, `AuthorRenamed`, and a note asking "same name in two organizations?". Group them by theme, and transfer the events that hold up into the event model.
+
+Everyone sees who else is on the board and where their cursor is while they work, so a remote session doesn't depend on one person's shared screen. The events are what you transfer. The yellow note stays on the board as the question the slice will have to answer.
+
+### On the canvas
+
+On the event-modeling canvas, the author feature becomes a module, a feature and a slice on a timeline with swimlanes, with the `RegisterAuthor` command, the `AuthorRegistered` event and the `Authors` read model as color-coded cards. Assign the slice to a teammate or to an AI agent, and follow it on the project's progress board.
+
+The answer to the yellow note belongs to this slice. Registering a name that's already taken in the organization is rejected, and that's the behavior the specification on the slice writes down.
+
+![A diagram titled The author feature in Cratis Studio, in two sections. Top, Brainstorming board: event notes AuthorRenamed and AuthorRegistered, a sticky note reading Same name in two organizations?, and two cursor labels, Domain expert and Developer. An arrow labeled Transfer the events leads from the AuthorRegistered note down to the event model. Bottom, Event model: Authors, Registration: a blue command card RegisterAuthor, an orange event card AuthorRegistered and a green read-model card Authors, joined left to right. Below them, a card Specification on the slice reads Given AuthorRegistered. When RegisterAuthor with the same name. Then rejected. Beside it, a card reads Assigned to an AI agent.](./studio-author-board-and-canvas.png)
+
+*The same feature on the board and on the canvas. Events transfer; the question stays on the board.*
+
+### A specification on the slice
+
+Add a given/when/then specification to the slice, such as "registering the same name twice is rejected", and run it from Studio. Like the Stage specification runner in [*Stage and Scene*](/stage-and-scene-after-a-model-compiles/), it checks the example against the model, and not against a running system.
+
+This is where the question from the board ends up, as an example with a given, a when and a then that a domain expert can read as easily as a developer.
+
+### AI agents on the same model
+
+Cratis Studio's AI agents can generate modules, features and slices from a prompt, explain a domain, feature or module, and answer in chat on the model. They run on a model provider your organization configures, and AI stays off until one is set up.
+
+For the author feature, ask Studio to generate the missing slices of a feature from a prompt, such as renaming an author, and they appear on the canvas as cards the team reviews like any other change to the model. Ask it to explain the feature to someone new, at the level they need, and read aloud if they want. Dictate instead of typing, let predictive modeling suggest the next cards, or mention an agent in a slice's chat and let it answer there.
+
+Studio doesn't ship a language model. Every AI feature runs on a provider your organization configures, such as OpenAI, Azure OpenAI or Anthropic, and until one is configured the AI features stay switched off and say why. The choice of provider, and the terms that come with it, stay yours.
+
+### Play
+
+Press Play, and Studio starts a disposable Stage session for the model, so you can try the application it describes before anyone has written it. The session is for exploring the model. Don't host the application there.
+
+### Screenplay out, and back in
+
+Export the model as Screenplay, as one `.play` document or a folder of them, or as Mermaid or JSON. Commit the Screenplay next to the code and review it as a diff. Importing it back shows a preview of what will change and warns about anything it can't bring in.
+
+Screenplay text looks like this. It's the lending example from the [Screenplay docs](https://cratis.io/screenplay/getting-started/), where a member borrows a book, written by hand and not exported from Studio:
+
+```text
+    slice StateChange BorrowBook
+      command BorrowBook
+        bookId     BookId
+        borrowedBy MemberId
+        authorize  IsMember
+        validate
+          bookId not empty  message "A book is required"
+        produces BookBorrowed
+          bookId       = bookId
+          borrowedBy   = borrowedBy
+          borrowedAt   = $context.occurred
+
+      event BookBorrowed
+        bookId     BookId
+        borrowedBy MemberId
+        borrowedAt DateTime
+```
+
+The author slice has the same shape, with `RegisterAuthor` where `BorrowBook` is and `AuthorRegistered` where `BookBorrowed` is. The command, its rules and the event it produces sit in one diff.
+
+That makes a change to the author feature reviewable in a pull request before anyone writes code for it. A new rule on the slice shows up as a few changed lines of Screenplay, and the reviewer reads the intent there.
+
+### Code for one slice
+
+When a slice is assigned to an AI agent, Cratis Studio can render it through Stage into C# for Arc and Chronicle in a connected Git repository, commit the result, and optionally let the agent refine it. Code generation is opt-in for each application.
+
+In practice, generation starts when the author slice, assigned to an AI agent, is marked ready for implementation. Studio renders it through Stage's Cratis renderer into a working copy of your connected Git repository, commits the code and the `.play` files separately, lets the agent refine the result if the application is set up for that, and pushes. What arrives is a change in your repository, and it goes through the same review as any other.
+
+![A diagram titled Three code-generation settings, in three rows. No code generation: the slice stays in the model and in Screenplay, and nothing is written to the repository. Screenplay only: Render through Stage, then an arrow to Your repository, code and .play files, committed separately. Screenplay with an agent on top: Render through Stage, then Agent pass, then Your repository. Every arrow points toward the repository. A band along the bottom reads Nothing reads the code back into the model.](./studio-code-generation-settings.png)
+
+*Code generation is a setting on each application, and every path runs from the model to the repository.*
+
+## Everyone on the same model
+
+Collaboration is live. You see who else is on the board and where their cursor is, and a change one person makes shows up on everyone's screen. Comments and chat sit on features and slices, and agents take part in them as well as people.
+
+A project holds several applications, so each bounded context keeps its own model, and each organization has its own projects. For the author feature, that means the registration context can have its own model without sharing a canvas with, say, billing.
+
+## Where code generation stops
+
+Code generation is opt-in for each application, with three settings: no code generation, Screenplay only, or Screenplay with an agent on top. It goes through Stage's Cratis renderer, but through its older direct-write path, and not the planned render that `cratis render` uses in [*Stage and Scene*](/stage-and-scene-after-a-model-compiles/). The output is C# on Arc and Chronicle, and not every construct becomes rendered code. What the renderer can't express is marked with a TODO and a diagnostic instead of being refused, and the refusal and `Customizations/` guarantees of `cratis render` don't apply here. What the renderer leaves out is for the agent pass, or a person, to write.
+
+Coupled doesn't mean synchronized. Generation goes one way, one slice at a time. Nothing reads the code back into the model, and Studio doesn't detect when code and model have drifted apart. What the coupling gives you is code that starts from the model, in the model's own vocabulary, with the model sitting in the repository as Screenplay beside it. Review what comes out like any other change.
+
+The Screenplay round trip has the same kind of limit. It's tested for the constructs Studio models, and the import warns where it can't carry something, so it isn't lossless in every case. It's the rule from [*Screenplay*](/screenplay-an-event-model-you-can-compile/): expose what you can't represent instead of dropping it.
+
+## Assistants outside Studio
+
+Cratis Studio has an MCP server that lets external AI agents read and change an organization's event models and brainstorming boards. That's the route for an assistant in your editor or terminal to work on the author feature's model without anyone copying it out of Studio first.
+
+Scope it like any tool that can write. [*AI across the stack*](/ai-across-the-cratis-stack/) puts it next to the other places an assistant meets Cratis.
+
+## How it fits with the rest of Cratis
+
+Studio isn't in a request's path. It works on the model and generates code into your repository. It uses the pieces the rest of this series describes. Its text form is Screenplay, Play and code generation run through Stage, and the generated code runs on Arc and Chronicle. You don't need Studio to use any of them, and modeling in Studio doesn't require adopting the rest of the stack. Screenplay and Stage are experimental, and some features inside Studio are labeled preview or experimental.
+
+[Prologue](https://cratis.io/prologue/), which drafts a model from a running system, has a place in Studio too for systems that already exist, and it's experimental there as well. [*Prologue*](/prologue-a-first-model-of-an-existing-system/) covers what it does and what it can't know.
+
+Cratis Studio is live and in beta. Open signup is coming soon at [cratis.studio](https://cratis.studio), with a 14-day free trial. When it opens, the author feature makes a good first board: brainstorm it with the people who know the domain, transfer the events that hold up into the event model, add the example about duplicate names, and export it as Screenplay.
+
+---
+
+Part 19 of 23 in the Cratis series. The series starts at [From the edge to the event log](/from-the-edge-to-the-event-log/).
+
+- Previous: [Prologue: a first model of the system you already have](/prologue-a-first-model-of-an-existing-system/)
+- Next: [Cratis Direct and our agentic development life cycle](/cratis-direct-agentic-development-life-cycle/)

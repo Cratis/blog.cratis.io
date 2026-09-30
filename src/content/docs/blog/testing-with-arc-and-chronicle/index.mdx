@@ -1,0 +1,190 @@
+---
+title: "Testing with Arc and Chronicle"
+date: 2026-09-30
+authors: sindre
+excerpt: "Most specs in a Cratis application can call a method and compare the event it returns. What the in-process scenarios add on top, the ways a green spec proves nothing, and the few tests that still need a real Chronicle and a running host."
+tags:
+  - testing
+  - arc
+  - chronicle
+  - specifications
+  - event-sourcing
+---
+
+A spec for "a second author with the same name is rejected" can pass without the first author ever reaching the event log. On an Arc `CommandScenario`, `Given` seeds an in-memory read model, and nothing it seeds is appended to the log that Chronicle checks a `[Unique]` constraint against. The spec sits in the right folder and carries the right name, and the constraint it's named after is never exercised.
+
+That's one of a handful of ways a spec in an event-sourced application can go green and prove nothing, and they all come from losing track of what a given kind of test actually runs. Cratis offers several kinds, from calling a method to running a real Chronicle in Docker, and for most rules the cheapest one is enough.
+
+The feature is the one from [From the edge to the event log](/from-the-edge-to-the-event-log/): a signed-in user registers an author, and author names are unique within the organization.
+
+## Start with the function
+
+The decision in `RegisterAuthor` is a method. Call `Handle()`, compare the event it returns, and the rule is tested without starting a server or faking an event log. [Arc's testing guide](https://cratis.io/arc/backend/csharp/testing/) makes that direct call the first choice for a deterministic decision:
+
+```csharp
+public class when_deciding_to_register_an_author : Specification
+{
+    readonly AuthorName _name = "Jane Austen";
+    AuthorRegistered _event = null!;
+
+    void Because() => _event = new RegisterAuthor(AuthorId.New(), _name).Handle();
+
+    [Fact] void should_record_the_name() => _event.Name.ShouldEqual(_name);
+}
+```
+
+It's written with [Cratis Specifications](https://cratis.io/specifications/), where `Because()` is the "when" and each `[Fact]` is a "then". It needs no container and no fake.
+
+An event is a record, so expecting one is an equality check on a value. The event doesn't even repeat its own event source ID, because Chronicle keeps that in the event context, so the value `Handle()` returns is all there is to compare. The [event-sourced commands lesson](https://cratis.io/arc/backend/csharp/testing/event-sourced-commands/) puts every branch of a decision in direct specs like this one.
+
+Arc also splits getting data from deciding with it. `Provide()` fetches what a command needs, and `Handle()` decides with what it was given, so `Handle` can be a pure function of its arguments. The [command decisions lesson](https://cratis.io/arc/backend/csharp/testing/command-decisions/) tests one command both ways, once directly and once through the pipeline. A `Handle()` that calls a service or reads the clock is still testable, but it isn't a pure function just because it lives on a command.
+
+Reducers work the same way. A reducer takes the event, the current state and the event context, and returns the next state. The [Processing sample](https://github.com/Cratis/Samples/tree/3c1ee46a4b8e86bac9623fcf9faace208a9551d9/Chronicle/Processing) tests its progress reducer by folding four events by hand, trimmed here to the action:
+
+```csharp
+var reducer = new WorkItemProgressReducer();
+_result = reducer.Opened(new WorkItemOpened("Prepare release", 10), null, ContextFor(0));
+_result = reducer.Recorded(new ProgressRecorded(4), _result, ContextFor(1));
+_result = reducer.Recorded(new ProgressRecorded(5), _result, ContextFor(2));
+_result = reducer.Recorded(new ProgressRecorded(3), _result, ContextFor(3));
+// then: _result.ShouldEqual(new WorkItemProgress(_workItemId, 10, 10, WorkPoints.NotSet, new EventSequenceNumber(3)));
+```
+
+The same sample calls its reactor directly. `new CompletionSummaryReactor().Completed(new WorkItemCompleted(8, 8))` returns a `CompletionSummarized` event, with no event log and no command pipeline injected into the reactor. Chronicle's [reactor testing guide](https://cratis.io/chronicle/testing/reactors/) makes that split the default: the logic goes into a function that returns its side effect as a value, and the framework contract gets its own scenario. The default holds for as long as your reactors return their side effects instead of performing them.
+
+Projections are the exception. A projection is attributes or a fluent definition, and there's no method to call. The cheapest honest test of a projection runs the real projection engine, in memory.
+
+## One process, the real pipeline
+
+A [spec](https://cratis.io/arc/backend/csharp/testing/chronicle/) for registering an author looks like this. Here `RegisterAuthor` takes an event source ID and a string:
+
+```csharp
+public class when_registering_author : Specification
+{
+    readonly EventSourceId _authorId = EventSourceId.New();
+    readonly CommandScenario<RegisterAuthor> _scenario = new();
+    CommandResult _result = default!;
+
+    async Task Because() =>
+        _result = await _scenario.Execute(new RegisterAuthor(_authorId, "Jane Austen"));
+
+    [Fact] void should_succeed() =>
+        _result.ShouldBeSuccessful();
+
+    [Fact] Task should_have_appended_registered_event() =>
+        _scenario.EventLog.ShouldHaveAppendedEvent<AuthorRegistered>(_authorId);
+}
+```
+
+It runs Arc's [command pipeline](https://cratis.io/arc/backend/csharp/commands/command-pipeline/) and an in-memory Chronicle event log in one process, without a Chronicle server, and checks the decision and the recorded fact. HTTP routing, the auth middleware, a real read-model store and redelivery need a different kind of test. [Specifications](https://cratis.io/specifications/) supplies the given/when/then base on xUnit or NUnit. Synopsis can turn recognized specification shapes into navigable HTML documentation, though it doesn't run them.
+
+[`CommandScenario<TCommand>`](https://cratis.io/arc/backend/csharp/testing/command-scenario/) runs the validators, authorization, `Provide()` and `Handle()`, and builds the command result, which is the path a request takes once routing has found the command. [`QueryScenario<TReadModel>`](https://cratis.io/arc/backend/csharp/testing/query-scenario/) does the same for a static query on a read model. With `Cratis.Arc.Chronicle.Testing` referenced, a command scenario gains `Given`, `EventLog` and `AppendedEvents`, and that's where `ShouldHaveAppendedEvent` comes from.
+
+A direct spec and a scenario spec answer different questions about the same command. The direct one says the decision is right for the inputs you chose. The scenario says the command still reaches that decision when validation, authorization and `Provide()` run in front of it, and that the event it returned was appended.
+
+## Chronicle's own scenarios
+
+In .NET, Chronicle's [testing package](https://cratis.io/chronicle/testing/), `Cratis.Chronicle.Testing`, runs the real projection and reducer engines, constraint evaluation and reactor dispatch over in-memory storage. Three scenarios divide the work:
+
+| Scenario | Runs | Doesn't reach |
+|---|---|---|
+| `EventScenario` | Appends, constraints and sequencing | Network serialization, the kernel connection, storage writes |
+| `ReadModelScenario<T>` | A projection or reducer building state from events | Sink writes, MongoDB queries, change streams |
+| `ReactorScenario<T>` | Dispatch, dependency injection, read-model materialization, routing of side effects | Observer registration, kernel dispatch, redelivery |
+
+The `Author` read model from the hub declares its projection with `[FromEvent<AuthorRegistered>]`, and a [`ReadModelScenario`](https://cratis.io/chronicle/testing/read-models/scenario/) picks up that model-bound form on its own, as it does a fluent projection or a reducer:
+
+```csharp
+public class when_an_author_is_registered : Specification
+{
+    readonly EventSourceId _authorId = EventSourceId.New();
+    readonly AuthorName _name = "Jane Austen";
+    readonly ReadModelScenario<Author> _scenario = new();
+
+    async Task Because() =>
+        await _scenario.Given.ForEventSource(_authorId).Events(new AuthorRegistered(_name));
+
+    [Fact] void should_have_the_name() => _scenario.Instance!.Name.ShouldEqual(_name);
+}
+```
+
+This is the uniqueness rule's natural home too. An `EventScenario` appends to its in-memory event log, so a first registration seeded through its `Given` is in the log the constraint is checked against, and a second append with the same name is rejected there. Assert the violation by the constraint's name with `ShouldHaveConstraintViolationFor`. The same helper exists on a `CommandResult` and on an append result.
+
+`ReactorScenario` delivers each event once. To check that a reactor is idempotent, deliver the same event twice yourself and look at what happened the second time.
+
+Outside .NET the scenarios are fewer. The Kotlin client has `EventScenario` and a `ReadModelScenario` for reducers. TypeScript has all three, with `ReadModelScenario` covering reducers and the projections it supports. Java tests appends and calls reducers directly, and Elixir has no scenarios. [*Beyond .NET*](/beyond-dotnet/) covers the clients themselves.
+
+## Green, and proving nothing
+
+In-process scenarios are fast, so they're trusted, and a few mistakes make them pass without testing anything. Three are easy to make with the author feature.
+
+The first is a discarded assertion. Chronicle's `ShouldHaveAppendedEvent` and `ShouldHaveTailSequenceNumber` on an event sequence are genuinely asynchronous. In a `void` fact that doesn't await them, a failure lands on a `Task` that nobody observes, and the spec passes whatever the code did. The compiler doesn't warn about it outside an `async` method. Make the fact `async Task` and await every `Should*` call that returns a task. Chronicle's analyzer, `CHR0039`, reports the ones you miss, for Chronicle's and Arc's testing packages alike.
+
+The second is a read model nobody seeded. When a validator, `Provide()` or `Handle()` asks for a read model that doesn't exist for the command's key, no rule runs at all, and the command is still rejected, with a single `DependencyUnavailable` validation result. `ShouldNotBeSuccessful()` passes, and it keeps passing after the rule the spec is named after has been deleted. `ShouldHaveValidationErrors()` refuses a result whose only errors carry that reason. An unhappy-path spec asserts both `ShouldNotBeSuccessful()` and `ShouldHaveValidationErrors()`, and a spec about authorization asserts `ShouldNotBeAuthorized()`.
+
+The third is the one from the opening. `Given` on a `CommandScenario` materializes read models. A precondition the constraint has to see goes through the scenario's `EventScenario.Given`, which appends it to the in-memory log before the command runs.
+
+Two more are worth knowing. `Validate(command)` runs the command filters, and authorization comes before validation, so a validate-only spec on an `[Authorize]` command with no identity registered is denied before its rule runs. And an expected value computed in the spec with the same expression as the code under test agrees with it by construction. Write the literal.
+
+![A diagram titled Green, and proving nothing, three rows, each with a green Passes chip beside a card. A discarded assertion: a void fact calls ShouldHaveAppendedEvent without await; fix, async Task and await, and CHR0039 reports it. A read model nobody seeded: DependencyUnavailable rejects the command, so ShouldNotBeSuccessful passes with the rule deleted; fix, also assert ShouldHaveValidationErrors. A precondition not in the log: CommandScenario Given seeds a read model, so the Unique constraint is never checked; fix, seed via EventScenario.Given. A band along the bottom reads: None reached the rule it's named after.](./green-proving-nothing.png)
+
+*Three green specs, and what each one never reached.*
+
+## Examples in the model
+
+A `.play` slice in [Screenplay](https://cratis.io/screenplay/specifications/) can carry given/when/then examples of its own, written against the model. Trimmed from the Screenplay docs' example:
+
+```screenplay
+specification RegisteringADraftInvoice
+  given CustomerRegistered
+    customerId = "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+  when RegisterInvoice
+    invoiceId  = "9c858901-8a57-4791-81fe-4c455b099bc9"
+  then InvoiceRegistered
+    invoiceId  = "9c858901-8a57-4791-81fe-4c455b099bc9"
+```
+
+A `then` can also name a read model, a query result, an error or a denial. The experimental [Stage](https://github.com/Cratis/Stage) specification runner, a container job, compiles the `.play` files, checks each specification against the model and writes the outcome to `results.json`. Nothing else starts: no Arc, no Chronicle, no database and no network. It shows that the example fits the model, and it says nothing about whether the C# behaves that way. Reactions aren't executed at the model level either. [*Screenplay*](/screenplay-an-event-model-you-can-compile/) and [*Stage and Scene*](/stage-and-scene-after-a-model-compiles/) go into the model side.
+
+## A real Chronicle and a running host
+
+Some behaviour only exists with a real host. Routing, authentication middleware, real storage writes, change streams, redelivery and tenant routing from AuthProxy's headers all sit outside one process with in-memory storage.
+
+For .NET, `Cratis.Chronicle.XUnit.Integration` has two fixtures. `ChronicleInProcessFixture` runs the kernel inside the test process with MongoDB in a container through Testcontainers, and `ChronicleOutOfProcessFixture` runs the kernel in a container of its own. Both need Docker. A real kernel processes asynchronously, so [`IEventAppendCollection`](https://cratis.io/chronicle/testing/event-append-collection/) collects appends as they happen, and `WaitForCount` waits for the number you expect.
+
+Arc has no packaged test host. A hosted spec is an HTTP client pointed at a running application, next to a Chronicle fixture that a project defines as an xUnit collection. The [Library sample](https://github.com/Cratis/Samples/tree/3c1ee46a4b8e86bac9623fcf9faace208a9551d9/Library) does this for the author feature. Its `and_there_already_exists_one_with_same_name` spec appends an existing author straight to the event log, posts a `RegisterAuthor` with the same name to `/api/authors/register`, and asserts that the command failed. It expects the application to be running on `localhost:8080`.
+
+That spec covers the whole uniqueness rule end to end, and it costs Docker, a kernel shared across tests and a slower run.
+
+## The frontend
+
+The generated proxies aren't something to test. They're output, and a change in the backend shows up in them on the next build. What's worth a spec on the frontend is the code you wrote around them.
+
+The convention Cratis recommends for application frontends mirrors the backend. Specs use Vitest, Sinon and Chai's `should`, and files follow `for_<Subject>/when_<context>/and_<extra>.ts`. View models are plain classes you can construct without React, pure helpers get tested first, and there are no snapshots.
+
+The one generated thing that does deserve attention is validation. The proxy generator carries a [supported subset](https://cratis.io/arc/backend/csharp/proxy-generation/validation/) of the backend's rules into the browser, and conditions don't come along, so a rule inside a condition can apply unconditionally on the client. Test the generated validation for the forms that depend on it. On the server side of TypeScript, Arc for TypeScript has a testing package, `@cratis/arc.testing`, and like the rest of Arc for TypeScript it's a source preview.
+
+## Specs that read as sentences
+
+Given, when and then map straight onto event sourcing. Given is the facts that already happened, or the read-model state that follows from them. When is the command, the append or the event under test. Then is the events that were appended, the command result, the read model or the side effect.
+
+Folder names carry the same structure. A spec at `for_RegisterAuthor/when_registering/and_the_name_is_taken.cs` reads as a sentence about the feature, and a folder of them reads as its behaviour. The word `when` appears only in `when_` folder names, and each `should_` fact finishes the sentence. One behaviour goes in each spec. Logging, trivial getters and plain delegation don't get specs of their own.
+
+Specifications gives that shape to .NET on xUnit or NUnit, in the style of Machine.Specifications: `Establish()` is the given, `Because()` the when, the facts the then, and `Destroy()` cleans up. The methods are optional, can return `void` or `Task`, and run across the inheritance chain. None of it is required. Chronicle's scenarios work with any test framework, and a plain xUnit test can call `Handle()` just as well.
+
+## How much of each
+
+![A diagram titled The testing ladder. Three rising steps from left to right, with cost along the bottom and confidence in the wiring up the side. Step 1, Call the function: Handle, a reducer, a reactor. Step 2, In-process scenario: CommandScenario, ReadModelScenario, EventScenario, ReactorScenario. Step 3, Integration fixture: a real Chronicle and a running host. A bracket over steps 1 and 2 reads: Most tests here. Beside the ladder at ground level, a separate card reads: Model specs, Screenplay given, when, then, run by Stage: the example fits the model.](./testing-ladder.png)
+
+*Cheapest first. Most specs belong on the first two steps.*
+
+For the author feature, the suite comes out like this. Direct specs cover each branch of the `RegisterAuthor` decision. One `CommandScenario` spec shows the command still decides that way with validation and authorization in front of it and appends what it returned. A `ReadModelScenario` covers the `Author` projection, and an `EventScenario` covers the `[Unique]` constraint with the first author actually in the log. One hosted spec sends the same name twice through a running application.
+
+All but the last run in one process with nothing to start. The hosted spec is the only one that needs Docker, a kernel and a running application.
+
+---
+
+Part 12 of 23 in the Cratis series. The series starts at [From the edge to the event log](/from-the-edge-to-the-event-log/).
+
+- Previous: [Tenancy and identity end to end](/tenancy-and-identity-end-to-end/)
+- Next: [Chronicle Workbench, screen by screen](/chronicle-workbench/)

@@ -1,0 +1,121 @@
+---
+title: "Inside Chronicle"
+date: 2026-09-30
+authors: sindre
+excerpt: "Chronicle's append returns without waiting for a single projection. What the kernel does inside that call, how observers and partitions pick the event up afterwards, and what happens when one of them fails."
+tags:
+  - chronicle
+  - event-sourcing
+  - orleans
+  - architecture
+---
+
+When `Append` returns in Chronicle, the event has been checked, numbered and written to storage, and nothing has waited for a projection. The read model that will show the event is updated afterwards, by a different part of the server, on its own schedule. A read straight after a write that misses the event, and a list that stays empty while the log has the event, both come from that gap.
+
+The author feature from [From the edge to the event log](/from-the-edge-to-the-event-log/) meets the gap directly. A signed-in user registers an author, the `[Unique]` rule on the name is checked, `AuthorRegistered` is appended, and a moment later the author appears in the list. Everything between the append and the sink write happens inside the kernel.
+
+## One process with the log and the bookkeeping
+
+Chronicle is a server process, the kernel, that owns the event log, the bookkeeping about who has processed what, and the processing itself. Your application is a client. It appends events, registers what it wants observed, and for some kinds of processing runs the handler code itself while the kernel drives it. The [kernel](https://cratis.io/chronicle/architecture/) is a .NET service built on Orleans, and clients reach it over gRPC and HTTP. One server holds several [event stores](https://cratis.io/chronicle/concepts/event-store/), each split into namespaces, and an event store is a natural boundary for one service's data. [Persistent subscriptions](https://cratis.io/chronicle/subscriptions/) carry events from one store's [outbox to another store's inbox](https://cratis.io/chronicle/subscriptions/outbox-inbox/), and that inbox is named after the source store.
+
+The split between kernel and client decides where code runs:
+
+| Piece | Runs in |
+|---|---|
+| Event log, schema validation, constraints, concurrency checks, sequence numbering | The kernel |
+| Observer bookkeeping: offsets, catch-up, replay, failed partitions, quarantine | The kernel |
+| Projections, from definition to read model | The kernel |
+| Reducers and reactors | Your application, called by the kernel over a stream |
+| Storage of the log, observer state and definitions | The configured storage provider |
+| Read models | A sink, written by the kernel |
+
+Projections are the odd one out. A projection is a definition, built in your application from attributes or a builder, or compiled from text on the server, and then stored and run by the kernel, so no application code executes when a projection processes an event. Reducers and reactors are code. For those the client opens a bidirectional gRPC stream, the kernel sends events down it and the client sends results back. A reducer's result is still stored by the kernel, so your code decides the next state and Chronicle writes it. [*From event to read model*](/from-event-to-read-model/) is about the projection side of that table.
+
+Chronicle listens on [three ports](https://cratis.io/chronicle/hosting/production/). One TLS port, 35000, carries gRPC over HTTP/2 together with REST, the Workbench, OAuth and health checks over HTTP/1.1. The Orleans silo listens on 11111 and the Orleans gateway on 30000. The [Workbench](https://cratis.io/chronicle/workbench/) is served by the kernel itself and is on by default.
+
+![A diagram titled Inside the kernel. Across the top, a bar labeled Your app, the client, gRPC on port 35000, sends two arrows down into a large frame: append, to an event sequence grain, and register definitions, to a projection. The frame is labeled Chronicle kernel, one process, with a Workbench chip at its top right. Inside it, from left to right: the event sequence grain, which checks schema, constraints and concurrency; an appended-events queue; and a column of three observers: a projection, which runs in the kernel; a reducer or reactor, where the kernel calls your app; and an observer with a failed partition, retrying. Along the bottom of the frame, a storage section labeled Storage: log, observer state, definitions holds MongoDB, PostgreSQL, SQL Server and SQLite.](./inside-the-kernel.png)
+
+*The kernel holds the log and the bookkeeping. Your code runs outside it, except for projections.*
+
+## Stores, namespaces and sequences
+
+An [event store](https://cratis.io/chronicle/concepts/event-store/) is a special-purpose database for events and for everything built on them: event types, observers and projections. It lives in the database you configure. Inside a store, a [namespace](https://cratis.io/chronicle/concepts/namespaces/) separates one body of data from another. There's always a `Default` one, and every namespace keeps its data in its own database in the underlying storage.
+
+Because each namespace is its own database, one tenant's events, observer state and read models sit apart from another's, with their own indexes. Arc's Chronicle integration maps each tenant in the author feature to a namespace, and a constraint is scoped to its sequence and namespace, which is how "unique within the organization" falls out without a per-tenant check. [*Tenancy and identity end to end*](/tenancy-and-identity-end-to-end/) follows the tenant from the edge.
+
+Within a namespace, events live in [event sequences](https://cratis.io/chronicle/concepts/event-sequence/). The event log is the one you append to almost every time. Outbox and inbox sequences exist for subscriptions between stores. In the kernel, each sequence is an Orleans grain, keyed by the sequence id, the event store and the namespace together, so every append to the author feature's event log in one tenant goes through the same grain.
+
+Each event also has a [subject](https://cratis.io/chronicle/concepts/subject/), the identity its personal data is keyed to, which is the event source unless the event or the append names another. Each event type can have several [generations](https://cratis.io/chronicle/migrations/), one per version of its shape, and the kernel stores the content of every generation.
+
+## The life of an append
+
+An [append](https://cratis.io/chronicle/events/appending/) arrives at that grain, and the grain does its work in a fixed order before it answers:
+
+1. It refreshes its constraints if their definitions changed since it last looked.
+2. It validates the content against the event type's registered JSON schema. A mismatch comes back as a constraint violation of type `Schema`.
+3. It applies the handling for personal data and checks [constraints](https://cratis.io/chronicle/constraints/), such as a unique property or a unique event type, against the unencrypted content.
+4. It runs the [concurrency check](https://cratis.io/chronicle/events/concurrency/) for the scope the client asked for, and the result reports whether a check was performed.
+5. It numbers the events from the sequence's current position, computes a content hash per generation and writes them to storage.
+6. It hands the appended events to a queue for the observers and updates the constraint indexes. The sequence's own state is saved as a periodic snapshot and rebuilt from the log's tail when the grain activates.
+7. It returns.
+
+Cross-cutting properties are added by the .NET client before the event is sent.
+
+Step 5 has a retry of its own. Storage can report that a sequence number is already taken, in which case the kernel re-numbers from the next free number and writes again. The sequence's own number advances only after the write is durable, so a failed write can't leave a gap in the numbering or a tail that points at an event that was never stored.
+
+In step 4, the first append into a concurrency scope isn't checked by default. When the scope has no events yet, there's nothing to compare against and the check is skipped. A client that needs the first append checked opts in, in .NET with `ExpectingNoMatchingEvent()`. The default concurrency check is also a .NET client behavior, and the other clients request none unless asked. [*Rules that hold when you write*](/rules-that-hold-when-you-write/) covers scopes and decision reads.
+
+For the author feature, step 3 is where the name rule lives. Two requests registering the same name arrive in the same second, both reach the same grain, and the second one is rejected by the `[Unique]` constraint before it gets a number. No read model was consulted, which is why the rule doesn't race.
+
+What comes back tells you what happened, up to a point. A reported schema, constraint or concurrency violation means the event wasn't appended. A reported error, a timeout or a dropped connection means the outcome is unknown, and appending again blindly can store the event twice. An expected sequence number or a constraint turns that retry into a safe one.
+
+If handing the events to the observers' queue fails in step 6, the kernel moves the affected observers into catch-up, so they read the events back from storage. Either way, the call returns without waiting for any observer.
+
+## Observers and partitions
+
+Everything that processes events is an [observer](https://cratis.io/chronicle/concepts/observers/): projections, reducers and reactors alike. An observer subscribes to a set of event types on a sequence and keeps an offset, the sequence number of the next event it hasn't handled. Each observer is its own grain in the kernel with its own state machine, whose states are routing, observing, catching up, replaying, disconnected and quarantined.
+
+On activation an observer starts in routing, compares its offset with the tail of the sequence and decides where to go. If it's current, it observes new events as they're appended. If it's behind, because it's new, was disconnected or had its queue spilled, it catches up by walking the sequence to the tail. For projections, catch-up is a single job step that walks the sequence in global order, started on the observer's own turn, so registering a projection doesn't block while history is read. A replay is different. It starts again from the beginning and rebuilds what the observer produces.
+
+Adding event types to an observer can trigger a rewind. When an observer starts consuming more event types and matching events already exist before its offset, it's rewound to the beginning and replayed, because those older events were never seen. Projections refine that rule by working out whether a change needs a full replay at all, which [*From event to read model*](/from-event-to-read-model/) covers.
+
+Events reach an observer per partition, and a partition is the events of one event source. For the author feature, each author is a partition. When a reducer or reactor runs in several instances of your application, the kernel [spreads partitions round-robin](https://cratis.io/chronicle/hosting/configuration/observers/) by partition key, so one author's events stay on one instance while it's connected, and arrive in order.
+
+Removing an observer deletes its bookkeeping and nothing else. Data it wrote to a sink stays where it is, and registering the same observer again starts a fresh replay. Removal is refused while any client is still subscribed to the observer.
+
+## When a handler fails
+
+An observer that has stopped looks exactly like one with nothing to do. For the author feature, that's an author who registered fine and never appears in the list. The command succeeded and the event is in the log, and yet the list is wrong. Lag on its own is ambiguous, while a failed partition is recorded and can be looked up.
+
+When handling a partition fails, the kernel records the partition as a failed partition and schedules a retry through an Orleans reminder, with exponential backoff. The other partitions keep flowing. One broken author doesn't hold up everyone else's, and the failure is addressable by your own key, the author's id, which is the key you'll be looking for when someone reports a missing author.
+
+The retry policy is configuration with documented defaults. A failed partition is retried up to 10 times, with a 1-second base delay that doubles with each attempt, capped at 600 seconds. After that the partition is quarantined, automatic retries stop, and it waits for someone to look. Separately, a whole observer can be quarantined once a set number or share of its partitions have failed. Both thresholds are off by default, and a partition whose last attempt timed out doesn't count toward them. The kernel waits 30 seconds for a subscriber by default, and when it gives up, the subscriber may still be working, so a handler has to cope with seeing the same event again. A watchdog runs every 60 seconds.
+
+![A diagram titled One partition fails. Three lanes, author-1, author-2 and author-3, run left to right above an axis labeled Sequence. Lanes author-1 and author-3 carry a full row of event boxes. On lane author-2, a box marked failed is followed by four retry markers, spaced further and further apart. Under them, a note reads Doubling from a 1 s base, capped at 600 s, and a card reads Quarantined: after 10 attempts, automatic retries stop.](./one-partition-fails.png)
+
+*One author's partition retries and then stops. The other authors keep flowing.*
+
+The error from each attempt is kept with the failed partition. Asking for one more attempt on one partition is much less work than replaying a whole observer, and in a runbook it belongs first. [*Workbench*](/chronicle-workbench/) and [*The Cratis CLI*](/the-cratis-cli/) show where you see and act on failed partitions.
+
+## What the ordering covers
+
+Under [Chronicle's consistency model](https://cratis.io/chronicle/projections/eventual-consistency/), events from the same event source are processed in order and at least once, with retries. Consistency between the event log and a read model is eventual, events in different partitions have no ordering relative to each other, and nothing is updated synchronously with the append.
+
+At-least-once means a handler can see an event twice, after a timeout or a retry, and a reactor that sends an email needs to make the second send harmless. Per-partition order means a projection for one author never sees `AuthorRegistered` after a later event for the same author. Nothing orders two authors against each other.
+
+## More than one server
+
+The kernel runs as a single node unless configured otherwise, because the default [clustering](https://cratis.io/chronicle/hosting/configuration/clustering/) is `Localhost`. A real cluster needs MongoDB clustering and the same `clusterId` and `serviceId` on every node. Two servers left on the default and pointed at the same database each form their own single-node cluster. The server logs a warning and still starts. Nodes can take the `eventSequences` and `observers` roles separately. Chronicle publishes no throughput or scale figures, and [*Jobs, scale and performance*](/chronicle-jobs-scale-and-performance/) covers running more than one.
+
+## Where the data sits
+
+The event log, observer state and projection definitions are stored through the configured [storage provider](https://cratis.io/chronicle/hosting/configuration/storage/): MongoDB by default, or PostgreSQL, SQL Server or SQLite, with an in-memory provider for tests. Read models go to a sink, which the kernel also writes. The sinks differ: the SQL sink, for one, doesn't create the indexes declared with `[Index]`.
+
+The append returns once the sequence grain is done, so a read straight after a write can miss the event. [*From event to read model*](/from-event-to-read-model/) covers passive read models and `WaitForCompletion()` for that case.
+
+---
+
+Part 2 of 23 in the Cratis series. The series starts at [From the edge to the event log](/from-the-edge-to-the-event-log/).
+
+- Previous: [Events are facts](/events-are-facts/)
+- Next: [From event to read model](/from-event-to-read-model/)

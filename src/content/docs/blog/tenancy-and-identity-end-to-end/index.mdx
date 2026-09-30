@@ -1,0 +1,198 @@
+---
+title: "Tenancy and identity end to end"
+date: 2026-09-30
+authors: sindre
+excerpt: "AuthProxy signs the user in, picks a tenant and forwards it as Tenant-ID. Arc reads a header called x-cratis-tenant-id until you tell it otherwise, and Chronicle turns the tenant into a namespace. Every hop from the edge to storage, what a missing tenant becomes at each one, and what stays yours to check."
+tags:
+  - tenancy
+  - identity
+  - authproxy
+  - arc
+  - chronicle
+---
+
+AuthProxy forwards the tenant it resolved in a header named `Tenant-ID`. Arc, left on its defaults, reads the tenant from a header named `x-cratis-tenant-id`. Put the two together without configuring either, and Arc ignores the tenant AuthProxy resolved. A request with no `x-cratis-tenant-id` header gets no tenant, and Arc's Chronicle integration sends it to Chronicle's `Default` namespace. Nothing fails, and every organization ends up in one event log. A request that carries `x-cratis-tenant-id` gets whatever tenant the caller put there, because AuthProxy passes that header through.
+
+The workaround is one line, `options.UseHeaderTenancy("Tenant-ID")`. The fix on the proxy side is tracked in the public issue [Cratis/AuthProxy#157](https://github.com/Cratis/AuthProxy/issues/157).
+
+In [From the edge to the event log](/from-the-edge-to-the-event-log/), a signed-in user registers an author, and author names are unique within the user's organization. "Within the organization" rests on a tenant ID that travels from the edge to the database. Take a made-up week with the mismatch in place. Contoso tries to register Jane Austen and is told the name is taken, because Acme registered her on Monday and both organizations are writing to `Default`. On Friday, Acme's admin asks why their author list shows names they've never seen. Every step behind that week is a default, and each one is sensible on its own. Follow one tenant, `acme`, from sign-in to storage, and past the edge a missing tenant turns into `Default` at each hop, without an error.
+
+![A diagram titled Four hops of a tenant ID. Four boxes from top to bottom, each with an arrow to the next: AuthProxy resolves acme and forwards it as Tenant-ID; Arc's default header is x-cratis-tenant-id; Chronicle namespace acme, mapped from the tenant; MongoDB storage, with Ada+es+acme for events and Ada+acme for read models. From each of the first three boxes an arrow goes to a Default namespace box on the right, holding Ada+es+Default and Ada, labeled with what sends a request there: no strategies, no header, and NotSet or Default. From storage, an arrow points to an Ada+Default box, which does not exist and reads empty.](./four-hops.png)
+
+*At every hop, find out what "no tenant" turns into.*
+
+## At the edge: sign-in, tenant and onboarding
+
+[AuthProxy](https://cratis.io/authproxy/) sits in front of the backend and the frontend. It handles [OIDC and OAuth2 sign-in, plus JWT bearer authentication](https://cratis.io/authproxy/configuration/authentication/), resolves a tenant for each request and forwards it downstream in a header named `Tenant-ID`. [Tenant resolution](https://cratis.io/authproxy/configuration/tenancy/) is a list of strategies under `TenantResolutions`, and resolving from a token claim is one entry in it:
+
+```json
+{
+  "Cratis": {
+    "AuthProxy": {
+      "TenantResolutions": [
+        { "Strategy": "Claim", "Options": { "ClaimType": "tid" } }
+      ]
+    }
+  }
+}
+```
+
+AuthProxy matches the claim's value against the source identifiers you configure for each tenant. It can also [require configured claims](https://cratis.io/authproxy/configuration/authorization/), such as a role or a group, before it forwards a request. Let the backend accept traffic from the proxy and nothing else, because a service reachable directly believes whatever headers a caller sends it.
+
+A user who has signed in but belongs to no tenant yet needs somewhere to go. [Ante](https://github.com/Cratis/Ante) is a separate invitation and onboarding lobby for that moment, where they can join an existing tenant, create one by invitation, or self-register. It records the acceptance and publishes it for your application to act on. Membership, provisioning and email stay yours.
+
+### How the edge picks a tenant
+
+The strategies run in order until one succeeds, so a list with `Host` first and `Claim` second tries the request host before the token. For `Host`, `Claim` and `Route`, a strategy finds a source identifier and looks it up in the `Tenants` registry, and what travels downstream is the registry key, `acme`, instead of the raw value of the `tid` claim. `SubHost` takes the subdomain as it is, with no lookup. For that strategy, AuthProxy's [tenant verification](https://cratis.io/authproxy/configuration/tenancy/) can ask your backend whether the tenant exists, and a tenant that exists still isn't proof that this caller belongs to it.
+
+Before any of that runs, AuthProxy's tenancy middleware removes inbound identity headers and any inbound `Tenant-ID`. A caller can't hand the backend a tenant of its own choosing under that name. The resolved value is then added to the proxied request.
+
+A request can also leave the edge with no tenant at all. If strategies are configured and none resolves, a signed-in user gets a 403 page explaining that they belong to no organization, an anonymous caller gets a 401, and with a lobby configured for it the user is redirected there instead. If `TenantResolutions` is empty, the request goes through with no tenant and no `Tenant-ID` header. Sign-in, invitation, registration and paths declared anonymous go through without a tenant as well.
+
+## Who the user is
+
+AuthProxy authenticates before a request reaches your code, and it forwards the signed-in identity downstream in the `x-ms-client-principal`, `x-ms-client-principal-id` and `x-ms-client-principal-name` headers, with the principal itself as base64-encoded JSON. It removes inbound copies of those headers first, so a caller can't pass a principal of its own through the proxy.
+
+Arc doesn't sign anyone in. The host establishes the principal, and Arc's [authorization attributes](https://cratis.io/arc/backend/csharp/authorizing-commands-and-queries/) check it on each command and query: `[Authorize]` for any authenticated user, `[Roles]` for any of the listed roles, a named policy, or `[AllowAnonymous]`. With no requirement declared, the built-in evaluator allows the call. A role isn't ownership either. "Only the librarian who registered an author may rename it" is a rule the application writes, by deriving the owner from the principal and constraining the query, and Arc has no universal mapping from a claim to an owner.
+
+For the frontend, an [identity details provider](https://cratis.io/arc/understanding-identity-and-access/) composes application-specific details from the authenticated principal, and Arc serves them at `/.cratis/me`. The endpoint exists only when a provider is registered. The `.cratis-identity` cookie that carries those details to the browser is unsigned presentation data the client controls, so nothing on the backend should ever authorize on it.
+
+Identity and tenant arrive by the same route, as headers the proxy sets. Arc trusts both, and the difference is in what Arc does with them. The principal goes through authorization. The tenant only selects where data goes.
+
+## The header hop into Arc
+
+Arc reads the tenant from a header too, but its default header name is `x-cratis-tenant-id`, so point it at the proxy's header. The [tenant resolver docs](https://cratis.io/arc/backend/csharp/tenancy/resolvers/) show the setting with a custom name, and the extension method lives in `Cratis.Arc.Tenancy`:
+
+```csharp
+using Cratis.Arc;
+using Cratis.Arc.Tenancy;
+
+builder.AddCratisArc(options =>
+{
+    options.UseHeaderTenancy("Tenant-ID");
+});
+```
+
+With the default resolvers, a missing header doesn't reject the request. It selects the unset tenant and then Chronicle's default namespace, so decide deliberately whether that's allowed.
+
+Nothing sets the name for you, and putting AuthProxy in front of Arc doesn't change which header Arc reads. That's the mismatch in [Cratis/AuthProxy#157](https://github.com/Cratis/AuthProxy/issues/157), and the one line above is the workaround.
+
+Setting the name closes a second gap as well. AuthProxy removes the inbound headers it owns, and `x-cratis-tenant-id` isn't one of them. An Arc left on its default reads a tenant from a header the proxy doesn't remove. Configure `Tenant-ID`, and strip `x-cratis-tenant-id` at any ingress that could pass it through, the same treatment Arc recommends for the client-supplied fallback header of its subdomain resolver.
+
+When the header Arc reads is missing, the resolver returns an empty string and the [tenant context](https://cratis.io/arc/backend/csharp/tenancy/tenant-context/) becomes `TenantId.NotSet`. The tenant is resolved once per async execution flow and cached, so every service in a request sees the same value. An explicit tenant scope wins over the resolver, which matters for background work further down.
+
+Non-ASCII tenant IDs have a seam of their own. AuthProxy sends a tenant ID that isn't plain ASCII in RFC 8187 encoded form, and Arc's header resolver passes the value through as it arrives. Tenant IDs that are plain lowercase labels, such as `acme`, never meet it, and the next hop gives a second reason to keep them that way.
+
+## The tenant becomes a namespace
+
+A Chronicle [namespace](https://cratis.io/chronicle/concepts/namespaces/) is a logical partition within one event store. Events, projections, reducers and read models are processed per namespace, and when no namespace is given, Chronicle uses `Default`.
+
+Arc's Chronicle integration is optional, and Arc runs without it. Once you add it, with `WithChronicle` or the all-in-one `AddCratis`, it registers `TenantNamespaceResolver` as Chronicle's namespace resolver, and your own options callback runs afterwards, so you can replace it. The resolver is short:
+
+```csharp
+public EventStoreNamespaceName Resolve()
+{
+    var tenantId = tenantIdAccessor.Current;
+    return tenantId.IsDefault
+        ? EventStoreNamespaceName.Default
+        : new EventStoreNamespaceName(tenantId.Value);
+}
+```
+
+`IsDefault` is true for two values, `TenantId.NotSet` and a tenant actually named `Default`. Both land in Chronicle's `Default` namespace, so a tenant called "Default" and a request with no tenant read and write the same data. Any other tenant ID becomes the namespace name exactly as it is.
+
+That cuts both ways. A wrong but accepted tenant ID sends the write to that tenant's namespace, faithfully. [Isolation follows the tenant resolver](https://cratis.io/arc/backend/csharp/chronicle/tenancy/), and the mapping selects a namespace without authorizing anything.
+
+On MongoDB the namespace also becomes part of a database name, so it has to be a legal one. MongoDB rejects `/ \ . " $ * < > : | ?`, the space and the null character, and caps a database name at 63 bytes. A display-style tenant ID such as `Acme Books Ltd.` won't fit. Chronicle checks the composed name and throws `InvalidDatabaseName`, naming the event store, the namespace and the offending character, before the driver fails somewhere later. Arc's subdomain resolver already insists on a letter-digit-hyphen label of up to 63 characters. AuthProxy registry keys in the same shape keep all three products in agreement about what a tenant ID can look like.
+
+This hop is where the sticky note's rule becomes per organization. A [constraint](https://cratis.io/chronicle/constraints/) is scoped to its event sequence and namespace, so with a namespace per tenant, Acme and Contoso can each register Jane Austen. In the made-up week, they were sharing one namespace.
+
+## Three tenant boundaries
+
+AuthProxy resolves the tenant at the edge, Arc reads it from a header and checks declared authorization on each command and query, and Arc's Chronicle integration maps each tenant to a Chronicle [namespace](https://cratis.io/chronicle/concepts/namespaces/). Events, observers and read models are processed per namespace.
+
+Selecting a tenant isn't authorizing it. Caller-controlled headers, query strings and hosts don't prove membership, and a wrong but accepted tenant ID selects another namespace. So check membership before any tenant-scoped work, and test the no-tenant case. Arc's `/.cratis/me` endpoint [tells the frontend who the user is](https://cratis.io/arc/understanding-identity-and-access/), but it doesn't authorize commands or queries. The [auth and compliance](https://cratis.io/auth-and-compliance/) page shows how AuthProxy and Arc divide that work.
+
+Where read models land depends on your storage. Arc's MongoDB integration can [name a database per tenant](https://cratis.io/arc/backend/csharp/mongodb/tenancy/), and with EF Core a tenant-specific connection is yours to set up. Work that runs outside a request, such as a scheduled job or something a reactor starts later, has no header to read and must set its tenant explicitly. [Arc tenancy with Chronicle](https://cratis.io/arc/backend/csharp/chronicle/tenancy/) covers both cases.
+
+![A diagram titled Three tenant boundaries, three columns from left to right. Edge, AuthProxy: selects the tenant and forwards it as Tenant-ID. App, Arc: reads a header, configured for Tenant-ID. Store, Chronicle: a namespace per tenant, mapped from Arc's tenant. Below, under Read-model storage: MongoDB, a database per tenant via Arc; EF Core, a connection you configure. A full-width card, Membership: your rule, reads: Check membership before tenant-scoped work. A header or tenant ID is not proof of membership.](./tenant-boundaries.png)
+
+*Selecting a tenant isn't authorizing it.*
+
+### Where the read models land
+
+Events and read models aren't stored under the same names, and the default namespace has one asymmetry. From Chronicle's [namespace naming](https://cratis.io/chronicle/concepts/namespaces/), for an event store named `Ada` on MongoDB:
+
+| Holds | Namespace `Default` | Namespace `acme` |
+| --- | --- | --- |
+| Event store wide state | `Ada+es` | `Ada+es` |
+| Event sequences | `Ada+es+Default` | `Ada+es+acme` |
+| Read models | `Ada` | `Ada+acme` |
+
+Read models of the default namespace go into the bare event store name, while event sequences carry a suffix for every namespace, `Default` included. Query read models from outside Chronicle with a database name you composed by hand, and `Ada+Default` is a database nothing writes to. Reads from it come back empty instead of failing.
+
+![A table-style diagram titled Default is stored differently, for the event store Ada on MongoDB, with columns for namespace Default and namespace acme. Store-wide state is Ada+es for both. Event sequences are Ada+es+Default and Ada+es+acme. Read models are Ada, highlighted, for Default and Ada+acme for acme. An arrow from Ada points to a note: Not Ada+Default. Composed by hand, that name reads empty. A strip below says Arc's MongoDB resolver uses base for NotSet and Default and base+tenant otherwise, and that base must be aligned with Chronicle's sink.](./default-namespace-storage.png)
+
+*Read models of the default namespace use the bare store name.*
+
+Arc's MongoDB integration uses the same shape, the configured base database for a default tenant and `base+tenant` for any other, and both `NotSet` and `Default` resolve to the base name. For Arc's direct MongoDB queries to find what Chronicle materialized, the base database and Chronicle's read-model sink have to line up, and checking that alignment is your job. With EF Core, Arc uses the connection string you configured, pooled contexts included, and appends no tenant. Separate databases, schemas or enforced filters are yours to build and test.
+
+### Work that has no request
+
+A scheduled job, or a reactor that starts work later, has no header to read, so it names its tenant. Arc's [command pipeline](https://cratis.io/arc/backend/csharp/commands/command-pipeline/) shows the pattern with a cart:
+
+```csharp
+public class TenantCartJob(ITenantScope tenants, ICommandPipeline pipeline)
+{
+    public async Task<CommandResult<CartLineId>> Add(TenantId tenant, Sku sku, Quantity quantity, CancellationToken stoppingToken)
+    {
+        using (tenants.Begin(tenant))
+        {
+            return await pipeline.Execute<CartLineId>(new AddItemToCart(sku, quantity), stoppingToken);
+        }
+    }
+}
+```
+
+`Begin` refuses an empty tenant, and the explicit scope wins over the configured resolver, even during an HTTP request. Dependency injection is where it goes wrong. A tenant-scoped service, such as Chronicle's event store or a `DbContext`, that was already resolved in an existing DI scope stays bound to that scope's original tenant after the current tenant changes. Create the DI scope inside the tenant scope. The `Execute` call above takes no scope of its own and creates one for you.
+
+## The tools you look through
+
+Every `cratis chronicle` command that works on a namespace takes `-n` or `--namespace`. Leave it out, and the [CLI](https://cratis.io/cli/chronicle/namespaces/) uses the active context's namespace, or `Default` when the context doesn't set one.
+
+So when Acme reports that a view stopped updating, `cratis chronicle failed-partitions list` lists the [failed partitions](https://cratis.io/cli/chronicle/failed-partitions/) in `Default`, and an empty list tells you nothing about Acme. Ask for the namespace you mean:
+
+```bash
+cratis chronicle failed-partitions list -n acme
+```
+
+Add [`--debug`](https://cratis.io/cli/reference/global-options/) to any command and the CLI prints the event store and namespace it resolved, each with where the value came from: the option, the context or the built-in default. A context with a namespace saves typing, and it also means the same command answers for a different tenant depending on which context is active. State-changing commands such as `observers replay` and `observers retry-partition` take the same `-n` with the same fallback. They ask for confirmation first, and the target namespace is worth reading before you answer.
+
+[Workbench](https://cratis.io/chronicle/workbench/) asks you to select the event store and a namespace you're authorized to inspect, and to confirm both before reading anything into what it shows. Being able to open a namespace in a tool isn't permission to change anything in it.
+
+## Why not a deployment per tenant?
+
+The strongest case against all of this is to share nothing. Give each tenant its own deployment and its own database, and no header mismatch can mix their data. For a handful of large tenants with contractual separation, that's a reasonable choice, and Arc supports it: `UseFixedTenancy` resolves every request to one tenant ID, decided once for the whole deployment.
+
+The cost is that every tenant becomes another deployment to upgrade, migrate, back up and watch. Namespaces put many tenants on one Chronicle kernel and one event store, each with its own data. In exchange, the selection path has to be right at every hop, which is why it deserves tests.
+
+A second objection is that the defaults should reject a missing tenant. Arc does fail early in one place. Configure the subdomain resolver without a usable base domain and the application refuses to start, because otherwise every request would take its tenant from a header any client can set. For a missing tenant, though, the resolvers select `Default` on purpose, so single-tenant applications work with no tenant configuration at all. Arc has no switch that rejects a request without a tenant. That check is yours, as middleware or an authorization rule, next to the membership check.
+
+## Seven tests before the second tenant signs up
+
+1. Send a request with no tenant header. Decide whether default-namespace access is allowed, then assert either that the request is rejected or that it lands in `Default` by design.
+2. Make sure nothing in your tenant registry can resolve to a tenant named `Default`, or that you're content with it sharing data with requests that carry no tenant.
+3. Through the proxy, as an Acme user, send `Tenant-ID: contoso` and `x-cratis-tenant-id: contoso`, and assert that the write lands in `acme`.
+4. Register the same author name in `acme` and in `contoso`. Both should succeed, and if the second is rejected, your namespaces aren't per tenant.
+5. Run a background job under `ITenantScope.Begin`, with the DI scope created inside the tenant scope, and check which namespace its events land in.
+6. Query read models directly for the default tenant and for `acme`, and assert that both return data. That one catches `Ada+Default`.
+7. Run your usual diagnostic command with `--debug`, and check that the namespace it reports is the one you meant.
+
+None of these proves that a caller belongs to a tenant. Membership is a separate rule, checked against your own data, and its spec belongs in the same suite as these seven.
+
+---
+
+Part 11 of 23 in the Cratis series. The series starts at [From the edge to the event log](/from-the-edge-to-the-event-log/).
+
+- Previous: [Beyond .NET](/beyond-dotnet/)
+- Next: [Testing with Arc and Chronicle](/testing-with-arc-and-chronicle/)
