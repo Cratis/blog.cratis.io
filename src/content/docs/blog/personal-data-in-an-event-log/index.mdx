@@ -1,6 +1,6 @@
 ---
-title: "Personal data in an event log"
-date: 2026-09-30
+title: "Part 06: Personal data in an event log"
+date: 2026-09-30T09:18:00Z
 authors: sindre
 excerpt: "Chronicle erases a person by destroying their key. The events stay, their marked values read as empty, and the fence stops the key from coming back."
 tags:
@@ -10,6 +10,8 @@ tags:
   - privacy
   - event-sourcing
 ---
+
+*[From the edge to the event log](/from-the-edge-to-the-event-log/) · Part 06 of 23*
 
 Erasing a person in Chronicle is one call that deletes their key. Every event they appear in stays in the log at the same sequence number, and the values marked as personal data come back as empty strings. If something then tries to append new personal data for that person, the append fails on purpose instead of quietly starting a fresh key.
 
@@ -261,7 +263,5 @@ For the author feature, erasing an author is `DeleteEncryptionKeyFor` with the a
 
 ---
 
-Part 6 of 23 in the Cratis series. The series starts at [From the edge to the event log](/from-the-edge-to-the-event-log/).
-
-- Previous: [Rules that hold when you write](/rules-that-hold-when-you-write/)
-- Next: [Year two](/four-changes-in-year-two/)
+- Previous: [Part 05 — Rules that hold when you write](/rules-that-hold-when-you-write/)
+- Next: [Part 07 — Year two](/four-changes-in-year-two/)

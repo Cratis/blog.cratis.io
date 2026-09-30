@@ -1,6 +1,6 @@
 ---
-title: "Arc gotchas: where a convention decides for you"
-date: 2026-09-30
+title: "Part 22: Arc gotchas: where a convention decides for you"
+date: 2026-09-30T09:02:00Z
 authors: sindre
 excerpt: "Three places Arc's conventions make a decision you might not see: a validator that runs in the browser and on the server but not identically, a proxy folder the generator owns, and routes, event identities and mappings chosen by a name. What each one does, and the fix."
 tags:
@@ -10,6 +10,8 @@ tags:
   - chronicle
   - typescript
 ---
+
+*[From the edge to the event log](/from-the-edge-to-the-event-log/) · Part 22 of 23*
 
 A validation rule that applies only sometimes on the server can apply every time in the browser. Arc's proxy generator copies the rules it recognizes from a C# validator into the generated TypeScript, and it doesn't copy `When` or `Unless` conditions. A rule that sat inside a condition can arrive on the client [without it](https://cratis.io/arc/backend/csharp/proxy-generation/validation/), and a form will then refuse input the server would have accepted.
 
@@ -169,7 +171,5 @@ The last part, [*Getting started with Cratis, and the tools around it*](/getting
 
 ---
 
-Part 22 of 23 in the Cratis series. The series starts at [From the edge to the event log](/from-the-edge-to-the-event-log/).
-
-- Previous: [AI across the Cratis stack](/ai-across-the-cratis-stack/)
-- Next: [Getting started with Cratis, and the tools around it](/getting-started-with-cratis/)
+- Previous: [Part 21 — AI across the Cratis stack](/ai-across-the-cratis-stack/)
+- Next: [Part 23 — Getting started with Cratis, and the tools around it](/getting-started-with-cratis/)

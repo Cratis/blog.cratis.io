@@ -1,6 +1,6 @@
 ---
-title: "Inside Chronicle"
-date: 2026-09-30
+title: "Part 02: Inside Chronicle"
+date: 2026-09-30T09:22:00Z
 authors: sindre
 excerpt: "Chronicle's append returns without waiting for a single projection. What the kernel does inside that call, how observers and partitions pick the event up afterwards, and what happens when one of them fails."
 tags:
@@ -9,6 +9,8 @@ tags:
   - orleans
   - architecture
 ---
+
+*[From the edge to the event log](/from-the-edge-to-the-event-log/) · Part 02 of 23*
 
 When `Append` returns in Chronicle, the event has been checked, numbered and written to storage, and nothing has waited for a projection. The read model that will show the event is updated afterwards, by a different part of the server, on its own schedule. A read straight after a write that misses the event, and a list that stays empty while the log has the event, both come from that gap.
 
@@ -115,7 +117,5 @@ The append returns once the sequence grain is done, so a read straight after a w
 
 ---
 
-Part 2 of 23 in the Cratis series. The series starts at [From the edge to the event log](/from-the-edge-to-the-event-log/).
-
-- Previous: [Events are facts](/events-are-facts/)
-- Next: [From event to read model](/from-event-to-read-model/)
+- Previous: [Part 01 — Events are facts](/events-are-facts/)
+- Next: [Part 03 — From event to read model](/from-event-to-read-model/)

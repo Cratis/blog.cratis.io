@@ -1,6 +1,6 @@
 ---
-title: "From event to read model"
-date: 2026-09-30
+title: "Part 03: From event to read model"
+date: 2026-09-30T09:21:00Z
 authors: sindre
 excerpt: "One attribute turns AuthorRegistered into a list on a screen. Model-bound, fluent and PDL projections, reducers for when attributes can't say it, where read models are stored, how a live list learns about changes, and what Chronicle does when a projection changes or has to be rebuilt."
 tags:
@@ -10,6 +10,8 @@ tags:
   - read-models
   - event-sourcing
 ---
+
+*[From the edge to the event log](/from-the-edge-to-the-event-log/) · Part 03 of 23*
 
 `[FromEvent<AuthorRegistered>]` on a record is a complete projection. Chronicle maps the event's `Name` onto the read model's `Name` because the names match, keys each instance by the author, runs the projection in its kernel and writes the result to a database that a query can read. There's no handler and no mapping code to write.
 
@@ -193,7 +195,5 @@ A projection that got a detail wrong last month can be corrected today and rebui
 
 ---
 
-Part 3 of 23 in the Cratis series. The series starts at [From the edge to the event log](/from-the-edge-to-the-event-log/).
-
-- Previous: [Inside Chronicle](/inside-chronicle/)
-- Next: [Reacting to facts](/reacting-to-facts/)
+- Previous: [Part 02 — Inside Chronicle](/inside-chronicle/)
+- Next: [Part 04 — Reacting to facts](/reacting-to-facts/)

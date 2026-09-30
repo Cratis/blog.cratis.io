@@ -1,6 +1,6 @@
 ---
-title: "Rules that hold when you write"
-date: 2026-09-30
+title: "Part 05: Rules that hold when you write"
+date: 2026-09-30T09:19:00Z
 authors: sindre
 excerpt: "Checking a read model before you append enforces nothing. Constraints, concurrency scopes, decision reads and Arc aggregates check at write time, and each reaches a different set of appends."
 tags:
@@ -10,6 +10,8 @@ tags:
   - concurrency
   - event-sourcing
 ---
+
+*[From the edge to the event log](/from-the-edge-to-the-event-log/) · Part 05 of 23*
 
 An event-sourced system has no table to put a `UNIQUE` index on. A rule that has to hold at write time has to be checked where the event is committed.
 
@@ -228,7 +230,5 @@ For the author name, all of this comes down to one attribute. `[Unique]` on the 
 
 ---
 
-Part 5 of 23 in the Cratis series. The series starts at [From the edge to the event log](/from-the-edge-to-the-event-log/).
-
-- Previous: [Reacting to facts](/reacting-to-facts/)
-- Next: [Personal data in an event log](/personal-data-in-an-event-log/)
+- Previous: [Part 04 — Reacting to facts](/reacting-to-facts/)
+- Next: [Part 06 — Personal data in an event log](/personal-data-in-an-event-log/)
