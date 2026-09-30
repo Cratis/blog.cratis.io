@@ -99,7 +99,7 @@ end
 
 Projection-backed read models track the protected value's subject through their mappings. Reducer read models need [their own PII marking](https://cratis.io/chronicle/compliance/read-models/), because the kernel can't infer arbitrary transformations.
 
-Then there's the audit trail. With Arc's Chronicle integration, a command's property values are recorded in the causation of every event it appends, so an unmarked password or token lands in the log in clear text and stays there. Arc leaves `[PII]` values out of that record, and [`[NotAudited]`](https://cratis.io/arc/backend/csharp/attributes/) does the same for secrets without encrypting them. For an operational secret you must store, Chronicle has [`[Encrypted]`](https://cratis.io/chronicle/security/encrypted-values/). It uses a separate key. Erasing a subject's `[PII]` key leaves an `[Encrypted]` value readable, and Chronicle's subject-erasure operation refuses to delete its key.
+Then there's the audit trail. With Arc's Chronicle integration in .NET and TypeScript, a command's property values are recorded in the causation of every event it appends, so an unmarked password or token lands in the log in clear text and stays there. Arc leaves `[PII]` values out of that record, and [`[NotAudited]`](https://cratis.io/arc/backend/csharp/attributes/) does the same for secrets without encrypting them. For an operational secret you must store, Chronicle has [`[Encrypted]`](https://cratis.io/chronicle/security/encrypted-values/). It uses a separate key. Erasing a subject's `[PII]` key leaves an `[Encrypted]` value readable, and Chronicle's subject-erasure operation refuses to delete its key.
 
 Pick the attribute by what the value is. Personal data you may have to erase gets `[PII]`. A value that should never reach the causation record gets `[NotAudited]`, and an operational secret you have to keep gets `[Encrypted]`.
 
@@ -353,7 +353,7 @@ Queries through `IReadModels` release values automatically. An instance that arr
 
 ## What a command leaves behind
 
-With Arc's Chronicle integration, the [causation](https://cratis.io/arc/backend/csharp/chronicle/commands/causation/) of every event a command appends records the command's name and its property values. Keys are camelCased, concepts render as their inner value, and nested objects become compact JSON, truncated at 1,024 characters with a marker. `[PII]` keeps a top-level value off that chain, whether it sits on the property, the command, the positional parameter or the concept. Arc's own `[NotAudited]` does the same for secrets that aren't personal data:
+With Arc's Chronicle integration in .NET and TypeScript, the [causation](https://cratis.io/arc/backend/csharp/chronicle/commands/causation/) of every event a command appends records the command's name and its property values. Keys are camelCased, concepts render as their inner value, and nested objects become compact JSON, truncated at 1,024 characters with a marker. `[PII]` keeps a top-level value off that chain, whether it sits on the property, the command, the positional parameter or the concept. Arc's own `[NotAudited]` does the same for secrets that aren't personal data:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
