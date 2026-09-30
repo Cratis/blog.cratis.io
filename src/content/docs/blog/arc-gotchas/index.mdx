@@ -40,12 +40,43 @@ public class IdeaTitleValidator : ConceptValidator<IdeaTitle>
 </TabItem>
 <TabItem label="Kotlin">
 
-Kotlin concept validators run on the server only. Arc doesn't copy them into the generated TypeScript.
+These rules run on the server only, and Arc for Kotlin doesn't copy them into the generated TypeScript.
+
+```kotlin
+@Component
+class IdeaTitleValidator : ConceptValidator<IdeaTitle> {
+    override val conceptType: Class<IdeaTitle> = IdeaTitle::class.java
+
+    override fun validate(concept: IdeaTitle): List<ValidationResult> =
+        if (concept.value().isBlank() || concept.value().length > 72) {
+            listOf(ValidationResult.error("A title needs 1 to 72 characters."))
+        } else {
+            emptyList()
+        }
+}
+```
 
 </TabItem>
 <TabItem label="Java">
 
-Java concept validators run on the server only. Arc doesn't copy them into the generated TypeScript.
+These rules run on the server only, and Arc for Kotlin doesn't copy them into the generated TypeScript.
+
+```java
+@Component
+public final class IdeaTitleValidator implements ConceptValidator<IdeaTitle> {
+    @Override
+    public Class<IdeaTitle> getConceptType() {
+        return IdeaTitle.class;
+    }
+
+    @Override
+    public List<ValidationResult> validate(IdeaTitle concept) {
+        return concept.value().isBlank() || concept.value().length() > 72
+            ? List.of(ValidationResult.error("A title needs 1 to 72 characters."))
+            : List.of();
+    }
+}
+```
 
 </TabItem>
 <TabItem label="TypeScript">
@@ -319,6 +350,8 @@ return context.Headers.TryGetValue(headerName, out var tenantId) ? tenantId : st
 </TabItem>
 <TabItem label="Kotlin">
 
+In Kotlin a missing or blank header gives no tenant (`null`), not an empty string.
+
 ```kotlin
 context.header(options.headerName).toTenantIdOrNull()
 ```
@@ -326,10 +359,12 @@ context.header(options.headerName).toTenantIdOrNull()
 </TabItem>
 <TabItem label="Java">
 
-Java uses the Kotlin implementation, `HeaderTenantIdResolver`.
+Java uses the Kotlin implementation, `HeaderTenantIdResolver`, which gives no tenant (`null`) for a missing or blank header.
 
 </TabItem>
 <TabItem label="TypeScript">
+
+In TypeScript a missing header gives `undefined`, not an empty string.
 
 ```typescript
 if (source === TenantResolverType.Header) selected = request.headers.get(header) ?? undefined;

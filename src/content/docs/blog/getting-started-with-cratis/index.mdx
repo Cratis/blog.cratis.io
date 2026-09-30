@@ -74,8 +74,11 @@ public record Register(SomeName Name)
 
 ```kotlin
 @Command
-data class Register(@CommandKey val id: SomeId, val name: SomeName) {
-    fun handle(): Pair<SomeId, Registered> = id to Registered(name)
+data class Register(val name: SomeName) {
+    fun handle(): Pair<SomeId, EventForEventSourceId> {
+        val someId = SomeId.new()
+        return someId to EventForEventSourceId(someId.value().toString(), Registered(name))
+    }
 }
 ```
 
@@ -84,8 +87,11 @@ data class Register(@CommandKey val id: SomeId, val name: SomeName) {
 
 ```java
 @Command
-public record Register(@CommandKey SomeId id, SomeName name) {
-    public Pair<SomeId, Registered> handle() { return new Pair<>(id, new Registered(name)); }
+public record Register(SomeName name) {
+    public Pair<SomeId, EventForEventSourceId> handle() {
+        var someId = SomeId.newId();
+        return new Pair<>(someId, new EventForEventSourceId(someId.value().toString(), new Registered(name)));
+    }
 }
 ```
 
