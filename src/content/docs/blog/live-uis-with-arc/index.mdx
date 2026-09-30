@@ -52,6 +52,8 @@ public sealed class IdeaStore : IDisposable
 </TabItem>
 <TabItem label="Kotlin">
 
+Arc for Kotlin returns a `Flow` from the query, and a `MutableStateFlow` holds the current value for snapshot reads.
+
 ```kotlin
 @ReadModel
 @AllowAnonymous
@@ -76,6 +78,8 @@ class IdeaStore {
 
 </TabItem>
 <TabItem label="Java">
+
+Arc for Java returns a JDK `Flow.Publisher` from the query, and `ObservableState` holds the current value for snapshot reads.
 
 ```java
 @ReadModel
@@ -105,6 +109,8 @@ public final class IdeaStore {
 
 </TabItem>
 <TabItem label="TypeScript">
+
+Arc for TypeScript returns an RxJS `Observable` from a `@query({ observable: true })` method, and a `BehaviorSubject` holds the current value.
 
 ```typescript
 export class IdeaStore {
@@ -169,6 +175,8 @@ public record Author(AuthorId Id, string Name)
 </TabItem>
 <TabItem label="Kotlin">
 
+Arc for Kotlin and Java observe the collection with `MongoObservableQuery`, which resumes its MongoDB change stream after transient failures.
+
 ```kotlin
 @ReadModel
 @io.cratis.chronicle.readModels.ReadModel
@@ -184,6 +192,8 @@ data class Author(@FromEventSourceId val id: String = "", val name: String = "")
 
 </TabItem>
 <TabItem label="Java">
+
+Arc for Kotlin and Java observe the collection with `MongoObservableQuery`, which resumes its MongoDB change stream after transient failures.
 
 ```java
 @ReadModel
@@ -203,6 +213,8 @@ public class Author {
 
 </TabItem>
 <TabItem label="TypeScript">
+
+In Arc for TypeScript `ChronicleReadModels` watches the read model through Chronicle; `mongoCollection(...).observe()` is the MongoDB change-stream form.
 
 ```typescript
 @readModel()

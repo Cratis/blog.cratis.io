@@ -388,6 +388,8 @@ builder.AddCratisArc(options =>
 </TabItem>
 <TabItem label="Kotlin">
 
+In Arc for Kotlin and Java this is a Spring property; a request without the header has no tenant (`null`) unless `cratis.arc.tenancy.required` is set, which rejects it with a 400, and the Chronicle integration uses the default event store for a null tenant.
+
 ```properties
 cratis.arc.tenancy.header-name=Tenant-ID
 ```
@@ -395,12 +397,16 @@ cratis.arc.tenancy.header-name=Tenant-ID
 </TabItem>
 <TabItem label="Java">
 
+In Arc for Kotlin and Java this is a Spring property; a request without the header has no tenant (`null`) unless `cratis.arc.tenancy.required` is set, which rejects it with a 400, and the Chronicle integration uses the default event store for a null tenant.
+
 ```properties
 cratis.arc.tenancy.header-name=Tenant-ID
 ```
 
 </TabItem>
 <TabItem label="TypeScript">
+
+In Arc for TypeScript this is the `tenancy.httpHeader` option; a request without the header has no `tenantId` (`undefined`) unless `tenancy.required` is set, which answers 400, and the Chronicle integration then appends in the `Default` namespace.
 
 ```typescript
 import { ArcApplication } from '@cratis/arc.core';
@@ -459,6 +465,8 @@ public class IdeaTitleValidator : ConceptValidator<IdeaTitle>
 </TabItem>
 <TabItem label="Kotlin">
 
+Arc for Kotlin and Java runs `ConceptValidator` rules on the server only; the generated TypeScript gets its client rules from Jakarta constraint annotations and shared `FluentModelValidator` rules.
+
 ```kotlin
 data class IdeaTitle(private val title: String) :
     io.cratis.arc.concepts.ConceptAs<String>,
@@ -475,7 +483,6 @@ data class IdeaTitle(private val title: String) :
 class IdeaTitleValidator : ConceptValidator<IdeaTitle> {
     override val conceptType: Class<IdeaTitle> = IdeaTitle::class.java
 
-    // Server-side only: this rule is not carried into the generated TypeScript.
     override fun validate(concept: IdeaTitle): List<ValidationResult> = buildList {
         if (concept.value().isEmpty()) add(ValidationResult.error("A title is required."))
         if (concept.value().length > 72) add(ValidationResult.error("A title can be at most 72 characters."))
@@ -485,6 +492,8 @@ class IdeaTitleValidator : ConceptValidator<IdeaTitle> {
 
 </TabItem>
 <TabItem label="Java">
+
+Arc for Kotlin and Java runs `ConceptValidator` rules on the server only; the generated TypeScript gets its client rules from Jakarta constraint annotations and shared `FluentModelValidator` rules.
 
 ```java
 public record IdeaTitle(String value)
@@ -504,7 +513,6 @@ public final class IdeaTitleValidator implements ConceptValidator<IdeaTitle> {
         return IdeaTitle.class;
     }
 
-    // Server-side only: this rule is not carried into the generated TypeScript.
     @Override
     public List<ValidationResult> validate(IdeaTitle concept) {
         var results = new ArrayList<ValidationResult>();

@@ -52,6 +52,8 @@ public record AuthorRegisteredV1(string Name);
 </TabItem>
 <TabItem label="Kotlin">
 
+These clients repeat the explicit id on every generation.
+
 ```kotlin
 import io.cratis.chronicle.events.EventType
 
@@ -67,6 +69,8 @@ data class AuthorRegisteredV1(val name: String)
 </TabItem>
 <TabItem label="Java">
 
+These clients repeat the explicit id on every generation.
+
 ```java
 import io.cratis.chronicle.events.EventType;
 
@@ -81,6 +85,8 @@ record AuthorRegisteredV1(String name) {}
 
 </TabItem>
 <TabItem label="TypeScript">
+
+These clients repeat the explicit id on every generation.
 
 ```typescript
 import { eventType } from '@cratis/chronicle';
@@ -113,17 +119,19 @@ class AuthorRegisteredV1 {
 </TabItem>
 <TabItem label="Elixir">
 
+These clients repeat the explicit id on every generation.
+
 ```elixir
-defmodule MyApp.Events.AuthorRegisteredV1 do
-  use Chronicle.Events.EventType, id: "author-registered", generation: 1
-
-  defstruct [:name]
-end
-
 defmodule MyApp.Events.AuthorRegistered do
   use Chronicle.Events.EventType, id: "author-registered", generation: 2
 
   defstruct [:first_name, :last_name]
+end
+
+defmodule MyApp.Events.AuthorRegisteredV1 do
+  use Chronicle.Events.EventType, id: "author-registered", generation: 1
+
+  defstruct [:name]
 end
 ```
 
@@ -154,6 +162,8 @@ public class AuthorRegisteredMigration : EventTypeMigration<AuthorRegistered, Au
 </TabItem>
 <TabItem label="Kotlin">
 
+The Kotlin client takes property references and records their names as written.
+
 ```kotlin
 class AuthorRegisteredMigration :
     EventTypeMigration<AuthorRegistered, AuthorRegisteredV1>(
@@ -179,6 +189,8 @@ class AuthorRegisteredMigration :
 
 </TabItem>
 <TabItem label="Java">
+
+The Java client takes property names as strings and records them as written.
 
 ```java
 class AuthorRegisteredMigration
@@ -207,6 +219,8 @@ class AuthorRegisteredMigration
 </TabItem>
 <TabItem label="TypeScript">
 
+The TypeScript client takes property names as strings, typed as keys of the event class.
+
 ```typescript
 @eventTypeMigration(AuthorRegistered, AuthorRegisteredV1)
 class AuthorRegisteredMigration implements IEventTypeMigration<AuthorRegistered, AuthorRegisteredV1> {
@@ -225,6 +239,8 @@ class AuthorRegisteredMigration implements IEventTypeMigration<AuthorRegistered,
 
 </TabItem>
 <TabItem label="Elixir">
+
+The Elixir client takes property names as atoms or strings and writes a snake_case name in camelCase.
 
 ```elixir
 defmodule MyApp.Migrations.AuthorRegisteredMigration do

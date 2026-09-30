@@ -83,6 +83,8 @@ builder.AddCratisArc(options =>
 </TabItem>
 <TabItem label="Kotlin">
 
+In Arc for Kotlin and Java this is a Spring property; a request without the header has no tenant (`null`) unless `cratis.arc.tenancy.required` is set, which rejects it with a 400, and the Chronicle integration uses the default event store for a null tenant.
+
 ```properties
 cratis.arc.tenancy.header-name=Tenant-ID
 ```
@@ -90,12 +92,16 @@ cratis.arc.tenancy.header-name=Tenant-ID
 </TabItem>
 <TabItem label="Java">
 
+In Arc for Kotlin and Java this is a Spring property; a request without the header has no tenant (`null`) unless `cratis.arc.tenancy.required` is set, which rejects it with a 400, and the Chronicle integration uses the default event store for a null tenant.
+
 ```properties
 cratis.arc.tenancy.header-name=Tenant-ID
 ```
 
 </TabItem>
 <TabItem label="TypeScript">
+
+In Arc for TypeScript this is the `tenancy.httpHeader` option; a request without the header has no `tenantId` (`undefined`) unless `tenancy.required` is set, which answers 400, and the Chronicle integration then appends in the `Default` namespace.
 
 ```typescript
 import { ArcApplication } from '@cratis/arc.core';
@@ -200,6 +206,8 @@ public class TenantCartJob(ITenantScope tenants, ICommandPipeline pipeline)
 </TabItem>
 <TabItem label="Kotlin">
 
+In Arc for Kotlin and Java the tenant travels in the `CommandExecutionOptions` passed to the pipeline.
+
 ```kotlin
 class TenantCartJob(
     private val pipeline: CommandPipeline,
@@ -215,6 +223,8 @@ class TenantCartJob(
 
 </TabItem>
 <TabItem label="Java">
+
+In Arc for Kotlin and Java the tenant travels in the `CommandExecutionOptions` passed to the pipeline.
 
 ```java
 public class TenantCartJob {
@@ -236,6 +246,8 @@ public class TenantCartJob {
 
 </TabItem>
 <TabItem label="TypeScript">
+
+In Arc for TypeScript the tenant is the `tenantId` of the execution context passed to `executeCommand`, and no tenant is resolved for a direct call.
 
 ```typescript
 export class TenantCartJob {

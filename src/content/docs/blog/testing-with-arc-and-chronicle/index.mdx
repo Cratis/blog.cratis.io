@@ -43,6 +43,8 @@ public class when_deciding_to_register_an_author : Specification
 </TabItem>
 <TabItem label="Kotlin">
 
+This spec uses JUnit; Cratis Specifications is a .NET library.
+
 ```kotlin
 class WhenDecidingToRegisterAnAuthor {
     private val name = AuthorName("Jane Austen")
@@ -59,6 +61,8 @@ class WhenDecidingToRegisterAnAuthor {
 </TabItem>
 <TabItem label="Java">
 
+This spec uses JUnit; Cratis Specifications is a .NET library.
+
 ```java
 class WhenDecidingToRegisterAnAuthor {
     private final AuthorName name = new AuthorName("Jane Austen");
@@ -74,6 +78,8 @@ class WhenDecidingToRegisterAnAuthor {
 
 </TabItem>
 <TabItem label="TypeScript">
+
+This spec uses Vitest.
 
 ```typescript
 describe('when deciding to register an author', () => {
@@ -119,6 +125,8 @@ _result = reducer.Recorded(new ProgressRecorded(3), _result, ContextFor(3));
 </TabItem>
 <TabItem label="Kotlin">
 
+The same fold against a Kotlin reducer, which takes the event, the current state and the event context.
+
 ```kotlin
 val reducer = WorkItemProgressReducer()
 result = reducer.opened(WorkItemOpened("Prepare release", 10), null, contextFor(0))
@@ -130,6 +138,8 @@ result = reducer.recorded(ProgressRecorded(3), result, contextFor(3))
 
 </TabItem>
 <TabItem label="Java">
+
+The same fold against a Java reducer class.
 
 ```java
 var reducer = new WorkItemProgressReducer();
@@ -143,6 +153,8 @@ result = reducer.recorded(new ProgressRecorded(3), result, contextFor(3));
 </TabItem>
 <TabItem label="TypeScript">
 
+The same fold against a TypeScript reducer, whose method is named for its event class in camelCase.
+
 ```typescript
 const reducer = new WorkItemProgressReducer();
 result = reducer.workItemOpened(new WorkItemOpened('Prepare release', 10), undefined, contextFor(0));
@@ -154,6 +166,8 @@ result = reducer.progressRecorded(new ProgressRecorded(3), result, contextFor(3)
 
 </TabItem>
 <TabItem label="Elixir">
+
+The same fold through the `reduce/3` callback of an Elixir reducer.
 
 ```elixir
 result = WorkItemProgressReducer.reduce(%WorkItemOpened{title: "Prepare release", points: 10}, nil, context_for(0))
@@ -198,6 +212,8 @@ public class when_registering_author : Specification
 </TabItem>
 <TabItem label="Kotlin">
 
+In Arc for Kotlin and Java, `CommandScenario` from `io.cratis:arc-testing` runs the real command pipeline, and the Chronicle integration gives it an in-memory event log.
+
 ```kotlin
 class WhenRegisteringAuthor {
     private val authorId = UUID.randomUUID().toString()
@@ -216,6 +232,8 @@ class WhenRegisteringAuthor {
 
 </TabItem>
 <TabItem label="Java">
+
+In Arc for Kotlin and Java, `CommandScenario` from `io.cratis:arc-testing` runs the real command pipeline, and the Chronicle integration gives it an in-memory event log.
 
 ```java
 class WhenRegisteringAuthor {
@@ -237,6 +255,8 @@ class WhenRegisteringAuthor {
 
 </TabItem>
 <TabItem label="TypeScript">
+
+In Arc for TypeScript, `ChronicleCommandScenario` from `@cratis/arc.chronicle/testing` runs the real command pipeline over an in-memory event log.
 
 ```typescript
 describe('when registering author', () => {
@@ -304,6 +324,8 @@ public class when_an_author_is_registered : Specification
 </TabItem>
 <TabItem label="Kotlin">
 
+The Kotlin client's `ReadModelScenario` folds a reducer.
+
 ```kotlin
 class WhenAnAuthorIsRegistered {
     private val authorId = "author-1"
@@ -323,6 +345,8 @@ class WhenAnAuthorIsRegistered {
 </TabItem>
 <TabItem label="Java">
 
+The Java client calls the reducer method directly.
+
 ```java
 class WhenAnAuthorIsRegistered {
     private final String name = "Jane Austen";
@@ -340,6 +364,8 @@ class WhenAnAuthorIsRegistered {
 
 </TabItem>
 <TabItem label="TypeScript">
+
+The TypeScript client's `ReadModelScenario` evaluates a `@fromEvent` model-bound projection.
 
 ```typescript
 describe('when an author is registered', () => {

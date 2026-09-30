@@ -28,6 +28,8 @@ On the JVM, [Arc for Kotlin](https://cratis.io/arc/backend/kotlin/) is a Spring 
 <Tabs syncKey="language">
 <TabItem label="C#">
 
+The same command in C#, where `[Key]` names the event source.
+
 ```csharp
 using Cratis.Arc.Authorization;
 using Cratis.Arc.Commands.ModelBound;
@@ -156,6 +158,8 @@ A query stays live by returning something that emits. In Kotlin that's a `Flow` 
 
 <Tabs syncKey="language">
 <TabItem label="C#">
+
+The same query in C#, with a `BehaviorSubject` as the `ISubject`.
 
 ```csharp
 [ReadModel]
