@@ -378,7 +378,7 @@ Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
 </TabItem>
 </Tabs>
 
-AuthProxy forwards the tenant it resolved as `Tenant-ID`, so Arc has to be told that name with `options.UseHeaderTenancy(...)`, or the tenant never arrives. A [resolver](https://cratis.io/arc/backend/csharp/tenancy/resolvers/) selects a tenant and doesn't check that the user belongs to it. [*Tenancy and identity end to end*](/tenancy-and-identity-end-to-end/) follows the header from AuthProxy to a Chronicle namespace.
+AuthProxy forwards the tenant it resolved as `Tenant-ID`, so Arc has to be told that name, with `options.UseHeaderTenancy(...)` in .NET, or the tenant never arrives. A [resolver](https://cratis.io/arc/backend/csharp/tenancy/resolvers/) selects a tenant and doesn't check that the user belongs to it. [*Tenancy and identity end to end*](/tenancy-and-identity-end-to-end/) follows the header from AuthProxy to a Chronicle namespace.
 
 ## Spotting them early
 
