@@ -1,0 +1,234 @@
+---
+title: "Rules that hold when you write"
+date: 2026-09-30
+authors: sindre
+excerpt: "Checking a read model before you append enforces nothing. Constraints, concurrency scopes, decision reads and Arc aggregates check at write time, and each reaches a different set of appends."
+tags:
+  - chronicle
+  - arc
+  - constraints
+  - concurrency
+  - event-sourcing
+---
+
+An event-sourced system has no table to put a `UNIQUE` index on. A rule that has to hold at write time has to be checked where the event is committed.
+
+The sticky-note feature from [From the edge to the event log](/from-the-edge-to-the-event-log/) has exactly such a rule. A signed-in user registers an author, and author names are unique within the user's organization. Chronicle and Arc have four tools for rules like that, and they differ in what they check, where the check runs and which clients have them.
+
+A read-model race approves "Withdraw 200" twice against a lagging balance in Arc's [bank-account example](https://cratis.io/arc/backend/csharp/chronicle/aggregates/). Neither check was wrong. Both were answered from state that hadn't caught up yet.
+
+![A diagram titled Two requests, one name. Two RegisterAuthor cards for Jane Austen, each noting that a check against a lagging read model passes. Both arrows lead into a frame labeled Chronicle kernel, to one constraint card: unique name, UniqueAuthorName, checked at append, per namespace. From the constraint, the first append goes to a green card, admitted, AuthorRegistered, and the second to a red card, constraint violation, nothing appended.](./two-requests-one-name.png)
+
+*Both checks pass. The kernel admits one append.*
+
+## The rule that holds when it's written
+
+A uniqueness check against a read model races. Two requests in the same second both look, both see no "Jane Austen", and both write.
+
+Chronicle checks [constraints](https://cratis.io/chronicle/constraints/), such as uniqueness, in the kernel when an event is appended, and rejects the append that would break one. In the model-bound form, `[Unique]` goes on the event property. Here it is on a project event:
+
+```csharp
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.Events.Constraints;
+
+[EventType]
+public record ConstraintsModelBoundUniqueProjectCreated([property: Unique] string Name, string Description);
+```
+
+A constraint is scoped to its event sequence and namespace, and Arc's [Chronicle integration](https://cratis.io/arc/backend/csharp/chronicle/tenancy/) maps each tenant to its own Chronicle namespace. So the name is unique within each tenant, which is the rule the sticky note asked for. Nobody wrote a per-tenant uniqueness check. It falls out of the namespace mapping and the constraint scope, both of which were already there.
+
+## What a constraint covers
+
+Chronicle has two kinds of [constraint](https://cratis.io/chronicle/understanding-constraints/), and both are about uniqueness. A unique property keeps a value unique across events of one or more types. A unique event type allows one event of that type per event source, until an event declared with `[RemoveConstraint]` releases it. A rule that isn't about uniqueness can't be written as a constraint.
+
+The kernel checks constraints before it commits, so they apply to every client and every entry point, and no constraint code runs in your application. In .NET they're discovered when the client starts, without a registration call.
+
+The model-bound form is the one to reach for first. Naming the constraint lets another event release the value, so an email can be used again once its user is removed:
+
+```csharp
+[EventType]
+public record UserRegistered([property: Unique(name: "UniqueEmail")] string Email, string DisplayName);
+
+public record UserId(Guid Value) : ConceptAs<Guid>(Value);
+
+[EventType]
+[RemoveConstraint("UniqueEmail")]
+public record UserRemoved(UserId UserId);
+```
+
+Giving several events the same constraint name makes one rule follow the value across them, so a registered email and a changed email share one index. When a lifecycle can end in more than one way, each of those ending events gets its own `[RemoveConstraint]`. For rules that outgrow attributes there's the declarative `IConstraint` class. Its builder names the constraint, covers event types whose property names differ, can ignore casing, supplies messages and declares removal. Both forms compile to the same constraint in the kernel.
+
+The kernel doesn't keep the values themselves. It hashes each constraint value with SHA-256, after joining multi-property values and lowercasing when casing is ignored, and stores only the hash in its index. The hash isn't salted, so anyone who can read the index can confirm a guessed value, and erasing a subject's key leaves the entry in place ([*Personal data in an event log*](/personal-data-in-an-event-log/)).
+
+A violation comes back as a failed append. The result names the constraint and carries the message you declared, and the command turns that into "that name's taken" for the user. The [unique value recipe](https://cratis.io/chronicle/scenarios/enforce-a-unique-value/) goes from the event to that message. Schema errors come back the same way, as violations of type `Schema`.
+
+The scope is one event sequence in one namespace. A constraint doesn't reach across namespaces or across event sequences, which is why the same author name can exist once in each tenant.
+
+## When one event isn't enough
+
+Uniqueness is the easy invariant. "A member can have at most three books on loan" spans many events, and there you have choices. Chronicle [supports decisions scoped this way](https://cratis.io/chronicle/dynamic-consistency-boundary/), what the community calls a [dynamic consistency boundary](https://dcb.events/), through constraints, concurrency scopes and, in the .NET client, decision reads.
+
+**Concurrency scopes** make an append fail if matching events were appended since you read. By default, the first append into a scope isn't checked unless you opt in, per append with `ExpectingNoMatchingEvent()` in .NET (the JVM client has an equivalent), or with the `CheckFirstAppendIntoAScope` setting. The TypeScript and Elixir clients can't ask for it. The [concurrency docs](https://cratis.io/chronicle/events/concurrency/) have the details.
+
+**[Decision reads](https://cratis.io/chronicle/read-models/decision-reads/)** fold the read model you decided from and guard the append with it. In .NET, with an order as the example:
+
+```csharp
+using Cratis.Chronicle.EventSequences;
+using Cratis.Chronicle.ReadModels;
+
+var read = await eventStore.GetDecisionReads().GetDetached<OrderEligibility>(orderId);
+if (!read.Exists)
+{
+    // Decide whether creation is allowed, including the absent case.
+}
+
+var result = await eventStore.EventLog.AppendMany(
+    [new EventForEventSourceId(orderId, new OrderPlaced())],
+    guardedBy: [read]);
+var conflicts = result.GetDecisionConflicts([read]);
+if (conflicts.Any())
+{
+    // The decision must be read again and resubmitted; no sequence numbers are exposed.
+}
+// Check result.IsSuccess separately for constraint violations and other append failures.
+```
+
+It's an optimistic guard, so it doesn't lock and it doesn't retry. The read model has to be a Chronicle projection keyed directly by the event source, with no joins or children, and the cost grows with that key's history.
+
+**Aggregates**, if you want them, come from Arc and not from Chronicle. An Arc command that uses one:
+
+```csharp
+[Command]
+public record WithdrawFunds([Key] Guid AccountId, decimal Amount)
+{
+    public async Task<AggregateRootCommitResult> Handle(Account account)
+    {
+        await account.Withdraw(Amount);
+        return await account.Commit();
+    }
+}
+```
+
+Arc discovers the aggregate, loads its history for the command's key before `Handle` runs, and commits its events in the command's transaction. Loading the history isn't, on its own, a concurrency guarantee, and aggregates are C# only today.
+
+![A diagram titled Three ways to guard a rule, three columns side by side. Chronicle, unique constraint: checked in the kernel at append, per event sequence and namespace. Chronicle, decision read: the append is guarded by the read it decided from. Arc, aggregate: loads one key's history and commits in the command. A band underneath reads: All three append to the same event log.](./consistency-choices.png)
+
+*Three ways to guard a rule, from narrowest to most familiar.*
+
+We'd reach for a constraint first, a decision read when the rule really spans events, and an aggregate when your team thinks in aggregates and the boundary is genuinely fixed. Arc's own framing helps here. A read model answers "what does this look like now?" and an aggregate answers "is this change allowed?". They compose well. Validate against the read model for a fast, friendly message, and let the write side enforce the invariant.
+
+## Concurrency scopes up close
+
+A [`ConcurrencyScope`](https://cratis.io/chronicle/events/concurrency/) states what an append expects about the history it was decided on. It's built from formalized, indexed metadata tags: the event source id, event source type, event stream type, event stream id and event types. These are separate from the tags you add yourself. A narrower scope produces fewer false conflicts, since an append with a different event type on the same account won't collide, and it means more scopes to manage.
+
+The expected position is a sequence number, or `EventSequenceNumber.BeforeFirst` when no matching event may exist yet. Opening an account is that case:
+
+```csharp
+[EventType]
+public record AccountOpened(string AccountName);
+
+public class AccountService(IEventLog eventLog)
+{
+    public async Task<bool> TryOpenAccount(EventSourceId accountId, string accountName)
+    {
+        var concurrencyScope = new ConcurrencyScope(
+            SequenceNumber: EventSequenceNumber.BeforeFirst, // expect no event for this account yet
+            EventSourceId: accountId);
+
+        var result = await eventLog.Append(
+            accountId,
+            new AccountOpened(accountName),
+            concurrencyScope: concurrencyScope);
+
+        if (result.HasConcurrencyViolations)
+        {
+            return false;
+        }
+
+        return result.IsSuccess && result.ConcurrencyCheckPerformed;
+    }
+}
+```
+
+A violation means nothing was appended. `HasConcurrencyViolations` reports it, and `ConcurrencyViolation` carries the expected and actual positions. `ConcurrencyCheckPerformed` says whether a comparison happened at all. A skipped check and a passing check both succeed, and that flag is how a test or a command tells them apart. Against an older kernel it always reads `false`, which under-reports but never over-reports.
+
+By default the .NET client appends through `OptimisticConcurrencyStrategy`. It reads the tail within the scope and sends that as the expected sequence number, so it catches an append that lands between its own tail read and its write. Anything your code read before that point is unprotected. A decision that depends on state you've already read needs an explicit scope. TypeScript, Kotlin/Java and Elixir send no concurrency check by default.
+
+With nothing matching a scope yet, there's no tail to read, so the strategy reports `Unavailable`, which means the same as having no expectation, and the kernel skips the check with a debug log. That covers the first event on a new event source, and the first event with a new source type, stream type or stream id. The `CheckFirstAppendIntoAScope` option turns the check on across the application. It's `false` today and planned to become `true` in the next major version. For one behavior, ask per append:
+
+```csharp
+public async Task<bool> TryOpenPartition(EventSourceId accountId, string name)
+{
+    var concurrencyScope = new ConcurrencyScopeBuilder()
+        .ExpectingNoMatchingEvent()
+        .WithEventSourceId(accountId)
+        .WithEventType<PartitionOpened>()
+        .Build();
+
+    var result = await eventLog.Append(
+        accountId,
+        new PartitionOpened(name),
+        concurrencyScope: concurrencyScope);
+
+    return result.IsSuccess;
+}
+```
+
+Opting in can reject appends that used to succeed, so be ready for violations you've never seen before. A client and kernel on mismatched versions fall back to skipping the check and say so in the log. `ExpectingNoMatchingEvent` exists in the .NET and JVM clients.
+
+`AppendMany` takes scopes per event source, so one decision that spans several sources gets a check for each of them in one atomic append.
+
+Pick a constraint for a rule every writer must obey forever, whatever the client asked for. Pick a scope when what matters is that the facts behind this particular decision haven't changed.
+
+![A diagram titled What checked means. A frame labeled Default, one scope: account-7 holds two numbered cards joined by an arrow. 1, first into the scope, in amber: no tail, check skipped, ConcurrencyCheckPerformed = false. 2, next append: compared with tail, ConcurrencyCheckPerformed = true. A second frame, labeled Opt in: ExpectingNoMatchingEvent(), holds card 1 again, first into the scope: expected BeforeFirst, ConcurrencyCheckPerformed = true, next to a chip reading .NET and JVM clients. A note at the bottom reads: CheckFirstAppendIntoAScope: false by default. Setting it to true turns the check on across the application.](./what-checked-means.png)
+
+*The first append into a scope is checked only when you ask.*
+
+## Decision reads up close
+
+A [decision read](https://cratis.io/chronicle/read-models/decision-reads/) folds an event-source-keyed projection in a fresh session, straight from the event log, and hands you the result together with an opaque guard. `GetDetached<T>(key)` returns the read with `Exists`, `AppendMany(..., guardedBy: [read])` carries the guard, and `GetDecisionConflicts` maps a conflict back to the model type and key without exposing sequence numbers. Inside a unit of work, `Get<T>(key)` enrolls the read in the ambient unit instead.
+
+If an event that could affect the read model is appended for the same event source after the read, the guarded append reports a concurrency violation and appends nothing. An absent model is guarded as well, so a concurrent creation conflicts. An unrelated event type, or another event source, leaves the read valid. On a conflict you read again and resubmit. Chronicle doesn't retry the command, and it takes no global lock.
+
+The admitted shape is narrower than "keyed by the event source". It has to be a single Chronicle projection on the event log, keyed directly by the event source id, with a nonempty, finite set of event types that includes its removal types. Joins, children, nested projections, event-property routing, subscriptions to all events, reducers and other sequences are refused with a typed `DecisionReadRefused`. `IDecisionReads.Admit<T>()` checks the shape without any I/O. GUID keys have to be written in lowercase canonical form by every writer. The other typed refusals are `FoldIncomplete`, `DefinitionMismatch` and `DecisionReadValidateOnlyNotSupported`.
+
+Each attempt costs two tail calls, a fresh projection session and a fold over the key's entire history, and a read can take up to three attempts. The first read per model type adds two calls that list definitions. The longer the history, the more a read costs.
+
+Decision reads need kernel 19.0.0 or newer and exist only in the .NET client. A strict unit-of-work lifecycle is opt-in through `UnitOfWorkLifecyclePolicy.Strict` and becomes the default in the next major release. In ASP.NET Core the middleware normally completes the unit after the response has been written, so a conflict is reported too late to change that response. An action can ask for an early commit through `IUnitOfWorkCompletionFeature`.
+
+The guard covers the event-log tail for that event source. Revisions, redactions, migration replacements, other sequences, external data and definition changes aren't guarded, and the guard assumes a single, ordered writer to the event log. In [dynamic consistency boundary](https://dcb.events/) terms, decision reads are the concrete .NET API for reading what you decide on and guarding the write with it, next to the constraints, scopes and metadata tags that [Chronicle's DCB support](https://cratis.io/chronicle/dynamic-consistency-boundary/) already rests on.
+
+## How an Arc command carries them
+
+Arc's [Chronicle integration](https://cratis.io/arc/backend/csharp/chronicle/commands/) turns these tools into declarations on a command. A `[Command]` returns events from `Handle()`, and Chronicle appends them in the command's pending transaction, committed on success and rolled back on failure. A `Result<TEvent, ValidationResult>` return drops the pending events when it carries a failure and unwraps the event when it succeeds.
+
+Scope can be declared on the command. `[EventStreamId("...", concurrency: true)]`, `[EventStreamType("Transactions", concurrency: true)]` and `[EventSourceType("Customer", concurrency: true)]` tag the events, and with `concurrency: true` each of them also contributes to the scope. Stream tags bound the check even without the flag, because the fallback strategy narrows by the tags an append carries ([command concurrency](https://cratis.io/arc/backend/csharp/chronicle/commands/concurrency/)).
+
+Returning `EventForEventSourceId`, one or many and mixed with plain events if you like, appends across event sources atomically. A constraint violation, a conflict or an append error rejects the whole batch. Order across sources isn't kept, so `A1, B1, A2` can commit as `A1, A2, B1`, and Arc builds one scope per target, each with that target's own expected tail.
+
+When global order or an exact revision matters, return `EventsWithConcurrencyScopes`. It carries the revision the decision actually read, under labels you choose, and a label can name an independent fact such as all events about active administrators. Events and scopes are committed together. `BeforeFirst` means no matching event may exist, while `Unavailable` protects nothing. A revision that governs authorization has to come from the server, never from request input.
+
+A [`CommandValidator<T>`](https://cratis.io/arc/backend/csharp/chronicle/validation/) can take the read model Chronicle projected for the command's key and reject the command before `Handle()` runs. How fresh that read model is depends on what backs it, and a snapshot alone, materialized or passive, doesn't hold an invariant under concurrent commands. That's a job for a constraint.
+
+## Aggregates up close
+
+An [aggregate root](https://cratis.io/arc/backend/csharp/chronicle/aggregates/defining-an-aggregate-root/) rehydrates from its entity's events, applies new events under its own rules and commits them as one unit. Arc discovers `IAggregateRoot` types, resolves one per command from the command's key (a `[Key]` property, an `EventSourceId` or `EventSourceId<T>` property, or `ICanProvideEventSourceId`) and commits it with the command's transaction.
+
+Inside the aggregate, `Apply` records a new fact. It's async, so always await it. Methods named `On...` rebuild state, both during rehydration and when a new event is applied, and must only change internal state. `Failed(message)` collects failures. `Commit()` returns an `AggregateRootCommitResult`, which Arc turns into the command's outcome, whether that's a validation failure, a constraint violation, a concurrency conflict or an append error.
+
+Automatic completion commits the unit of work directly and doesn't collect the aggregate's `Failed(...)` results, so return `Commit()` through the command result, as `WithdrawFunds` does. An explicit `Commit()` inside a command commits the shared unit of work early, and a later failure can't undo the events already committed. An aggregate's `Apply()` doesn't forward the command's compliance subject.
+
+Chronicle is designed around constraints and decision-scoped consistency, and it treats the classic aggregate as a fixed boundary. Aggregates are an optional Arc feature for .NET, and Arc itself runs without Chronicle.
+
+## What none of them cover
+
+When an append collides on a duplicate sequence number, the kernel retries it with a new number and doesn't revalidate the scopes. Duplicate grain activations, foreign writers, or an earlier storage outcome that was never resolved can therefore defeat a concurrency scope. Decision reads and aggregates don't replace constraints either. A constraint holds for every writer, and a guard holds only for the appends that declare it.
+
+For the author name, all of this comes down to one attribute. `[Unique]` on the name is checked by the kernel inside the tenant's namespace, and it holds whichever client or command appends the event. Scopes, decision reads and aggregates earn their place when a rule reaches past one value.
+
+---
+
+Part 5 of 23 in the Cratis series. The series starts at [From the edge to the event log](/from-the-edge-to-the-event-log/).
+
+- Previous: [Reacting to facts](/reacting-to-facts/)
+- Next: [Personal data in an event log](/personal-data-in-an-event-log/)

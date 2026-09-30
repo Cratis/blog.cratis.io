@@ -1,0 +1,267 @@
+---
+title: "Personal data in an event log"
+date: 2026-09-30
+authors: sindre
+excerpt: "Chronicle erases a person by destroying their key. The events stay, their marked values read as empty, and the fence stops the key from coming back."
+tags:
+  - chronicle
+  - arc
+  - pii
+  - privacy
+  - event-sourcing
+---
+
+Erasing a person in Chronicle is one call that deletes their key. Every event they appear in stays in the log at the same sequence number, and the values marked as personal data come back as empty strings. If something then tries to append new personal data for that person, the append fails on purpose instead of quietly starting a fresh key.
+
+In [From the edge to the event log](/from-the-edge-to-the-event-log/), a signed-in user registers an author, and names are unique within the organization. The name travels further than the event: into the command's audit trail, into read models, into other event stores and into backups.
+
+## Personal data, marked once
+
+The author's name is personal data. One attribute on its type makes Chronicle encrypt the value with the key of the event's subject, and with Arc's Chronicle integration the same attribute keeps it out of the [causation record](https://cratis.io/arc/backend/csharp/chronicle/commands/causation/). [The log remembers](https://blog.cratis.io/the-log-remembers-pii-crypto-shredding-in-chronicle/) shows the Chronicle side in five languages.
+
+The name's [`ConceptAs<T>` type is marked `[PII]`](https://cratis.io/chronicle/compliance/pii-with-concepts/), and every event property of that type is encrypted for the event's subject. A person-name type marked that way:
+
+```csharp
+using Cratis.Chronicle.Compliance.GDPR;
+
+[PII]
+public record PiiConceptsPersonName(string Value) : ConceptAs<string>(Value)
+{
+    public static readonly PiiConceptsPersonName NotSet = new(string.Empty);
+
+    public static implicit operator string(PiiConceptsPersonName name) => name.Value;
+    public static implicit operator PiiConceptsPersonName(string value) => new(value);
+}
+```
+
+Projection-backed read models track the protected value's subject through their mappings. Reducer read models need [their own PII marking](https://cratis.io/chronicle/compliance/read-models/), because the kernel can't infer arbitrary transformations.
+
+Then there's the audit trail. With Arc's Chronicle integration, a command's property values are recorded in the causation of every event it appends, so an unmarked password or token lands in the log in clear text and stays there. Arc leaves `[PII]` values out of that record, and [`[NotAudited]`](https://cratis.io/arc/backend/csharp/attributes/) does the same for secrets without encrypting them. For an operational secret you must store, Chronicle has [`[Encrypted]`](https://cratis.io/chronicle/security/encrypted-values/). It uses a separate key. Erasing a subject's `[PII]` key leaves an `[Encrypted]` value readable, and Chronicle's subject-erasure operation refuses to delete its key.
+
+Pick the attribute by what the value is. Personal data you may have to erase gets `[PII]`. A value that should never reach the causation record gets `[NotAudited]`, and an operational secret you have to keep gets `[Encrypted]`.
+
+[Erasure](https://cratis.io/chronicle/compliance/erasing-a-subject/) is one call:
+
+```csharp
+await eventStore.PII.DeleteEncryptionKeyFor("person-42");
+```
+
+Once the [key](https://cratis.io/chronicle/compliance/key-lifecycle/) has been destroyed, Chronicle can't decrypt anything encrypted with it. The event keeps its place in the log, so the log still shows that something happened.
+
+Erasure stops at these points:
+
+- The key belongs to a subject within a namespace. A person who exists in two tenants needs two erasures.
+- Values that were never marked stay readable, and so do causation values recorded in clear before anyone marked them.
+- A rebuild of a stored read model that covers an erased subject is refused for that subject's partition. Before such a rebuild, authorize a new key for anyone you intend to keep protecting.
+- Restoring a backup from before the erasure brings the key back.
+- Copies outside Chronicle, including exported keys, messages sent to another system and values already shown in a browser, need separate handling.
+
+By default Chronicle stores keys with the events. It can keep them in a dedicated store instead, such as HashiCorp Vault or Azure Key Vault. A restore then has to line up events, keys and certificates to the same point in time, or it can undo an erasure you already reported.
+
+![A diagram titled What deleting a key reaches. A panel labeled Inside Chronicle, namespace Acme holds two cards. Event log: the encrypted value is unreadable; the record remains. Managed read model: the protected field reads empty. A second panel, Deleting the key doesn't reach, holds three cards: backups taken before erasure, copies sent elsewhere, and values already shown. A bottom card, Another namespace, reads: The same person in another tenant needs their own erasure.](./erasure-boundary.png)
+
+*Deleting a person's key reaches the event log and managed read models, not copies.*
+
+An application that handles personal data still needs its own privacy review. Redaction and revision, which change an event instead of a key, come up again in [*Year two*](/four-changes-in-year-two/).
+
+## Where the marker lands
+
+The [`[PII]` marker](https://cratis.io/chronicle/compliance/pii/) is written into the event type's schema as compliance metadata. Chronicle looks for it in four places, in order: on the property, on the declaring type, on the property's own type, which is the concept case above, and on a matching constructor parameter. It lands on individual leaf values. A marked concept nested inside a value object is encrypted while its sibling stays readable, and the document keeps its shape. A marked collection is encrypted as one value, and geospatial values are never looked inside.
+
+Some shapes are refused outright. A polymorphic base type or a dictionary carrying `[PII]` makes the append fail, so the value is never stored unprotected. `[PII]` on an `EventSourceId` type throws `PIINotSupportedOnEventSourceId`. The fix is a surrogate id that says nothing about the person, with the personal value in a marked property. The author feature already has that shape, since `AuthorId` identifies the author and `AuthorName` carries the name.
+
+## Whose key: the subject
+
+Keys are held per [subject](https://cratis.io/chronicle/concepts/subject/). The subject defaults to the event source id, and it can be set on append, by an event property marked `[Subject]` (C# only), or from an Arc command. `ShippingAddressChanged` lives on the order's stream, but the address belongs to the customer, so the customer is the subject, and every event about that customer, from any stream, shares one key.
+
+An Arc command sets the subject by [returning it next to the event](https://cratis.io/arc/backend/csharp/chronicle/compliance/subject/):
+
+```csharp
+using Cratis.Arc.Chronicle.Commands;
+using Cratis.Arc.Commands.ModelBound;
+using Cratis.Chronicle;
+using Cratis.Chronicle.Events;
+
+[Command]
+public record PlaceOrder(EventSourceId OrderId, CustomerId CustomerId, decimal Amount)
+    : ICanProvideEventSourceId
+{
+    public EventSourceId GetEventSourceId() => OrderId;
+
+    public (OrderPlaced, Subject) Handle() =>
+        (new OrderPlaced(CustomerId, Amount), new Subject(CustomerId.Value.ToString()));
+}
+
+[EventType]
+public record OrderPlaced(CustomerId CustomerId, decimal Amount);
+```
+
+A command can also implement `ICanProvideSubject`. The `Subject` is append metadata and never becomes the command's response. Arc doesn't infer the subject from the signed-in user, and an aggregate's `Apply()` doesn't forward it.
+
+A key belongs to one event store and one namespace. The subject also travels on the event as `EventContext.Subject`, so an observer that forwards an event and passes `context.Subject` along keeps its compliance identity. An event store subscription copies the subject's key into the target store and never across namespaces.
+
+## On the way in and on the way out
+
+The cryptographic contract for one value fits in two methods of the kernel's `PIICompliancePropertyValueHandler`:
+
+```csharp
+public async Task<JsonNode> Apply(EventStoreName eventStore, EventStoreNamespaceName eventStoreNamespace, string identifier, JsonNode value)
+{
+    var key = await provisioner.EnsureKeyFor(eventStore, eventStoreNamespace, identifier);
+    return ProtectedValueCodec.Encrypt(encryption, key, value);
+}
+public async Task<JsonNode> Release(EventStoreName eventStore, EventStoreNamespaceName eventStoreNamespace, string identifier, JsonNode value)
+{
+    if (!ProtectedValueCodec.TryDecodeCipherText(encryption, value.ToString(), out var encrypted))
+    {
+        return value;
+    }
+    var key = await encryptionKeyStore.TryGetFor(eventStore, eventStoreNamespace, identifier);
+    if (key is null)
+    {
+        return JsonValue.Create(string.Empty);
+    }
+    return ProtectedValueCodec.Decrypt(encryption, key, encrypted);
+}
+```
+
+`Apply` makes sure the subject has a key, minting one on first use, and replaces the value with ciphertext. `Release` decodes only values in the shape of ciphertext it produced. A value that was never encrypted passes through, and an encrypted value whose key is gone comes back as an empty string. Nothing throws, so a query over an erased person keeps working. The asymmetry is deliberate. If protecting a value fails on the way in, the operation fails. A value that can't be read on the way out is blanked per property and never fails the whole read.
+
+Reactors, webhooks, reducers and projections all receive decrypted events, from a single decryption point in the observer.
+
+## What a read model holds
+
+Projection-backed [read models](https://cratis.io/chronicle/compliance/read-models/) get their PII lineage automatically. The kernel knows which read model properties map from PII event properties and encrypts them before the sink write, with no attribute on the read model. A reducer is opaque code, so its read model needs `[PII]` on its own properties.
+
+Every managed document stores a reserved `__subject`. When a projection joins personal values from different subjects, only the exceptions go into `__subjects`, as in `{"advisorName": "advisor-17"}`. That one value is released and erased under `advisor-17`, while the rest of the document follows its own subject, `employee-42`. Don't name your own properties `__subject` or `__subjects`.
+
+Decryption happens per property. A value encrypted under the document's subject is released, a value whose key was deleted reads as empty, and a value that was never encrypted passes through. A value encrypted under a different subject with no ownership metadata, from legacy data or data written outside the managed sinks, reads as empty, and the kernel logs an error naming the property and the subject.
+
+Queries through `IReadModels` release values automatically. An instance that arrived another way, from raw storage, a cache or `Watch`, which streams without releasing, needs an explicit `IReadModels.Release`. Arc calls `Release` on the query paths that use its read-model interception, before the response or the WebSocket or SSE emission. Observable HTTP snapshots currently bypass that interception, so each response path that exposes a read model has to be chosen and authorized deliberately. Release isn't authorization, and it can't bring back an erased key.
+
+## What a command leaves behind
+
+With Arc's Chronicle integration, the [causation](https://cratis.io/arc/backend/csharp/chronicle/commands/causation/) of every event a command appends records the command's name and its property values. Keys are camelCased, concepts render as their inner value, and nested objects become compact JSON, truncated at 1,024 characters with a marker. `[PII]` keeps a top-level value off that chain, whether it sits on the property, the command, the positional parameter or the concept. Arc's own `[NotAudited]` does the same for secrets that aren't personal data:
+
+```csharp
+[Command]
+public record ChangePassword(
+    UserId User,
+    [property: NotAudited] string OldPassword,
+    [property: NotAudited] string NewPassword)
+{
+    public PasswordChanged Handle(IPasswordHasher hasher) => new(hasher.Hash(NewPassword));
+}
+```
+
+The decision fails closed, so a property whose exclusion can't be decided is left out. Exclusion isn't recursive, and a marked member inside a nested object still ends up in that JSON. Arc's analyzer ARCCHR0009 warns when a command property's name reads like a secret and carries no marker.
+
+Causation values aren't encrypted under the subject's key, so deleting the key doesn't erase them. Setting [`events.causationPropertyRetention`](https://cratis.io/chronicle/hosting/configuration/events/) to `Omit` stops new appends, revisions and redactions from storing causation property values, while keeping their types and times. Chains already stored stay as they are.
+
+`[PII]` on an Arc command keeps a value out of causation and encrypts nothing. The event you build from the command needs its own marker, on the property or on the concept.
+
+`[Encrypted]` keys are scoped to the subject by default, or to the namespace or globally, and no operation deletes one. Combining `[Encrypted]` with `[PII]` on one property makes the schema pass throw, and analyzer CHR0053 catches the direct cases.
+
+## Four ways to change the record of an event
+
+A request to "delete it" can mean four different operations, and each answers a different question.
+
+A compensation is a new domain event. A cancelled registration is recorded as a cancellation, and nothing earlier changes. Redaction and revision aren't meant for undoing a business decision.
+
+A [revision](https://cratis.io/chronicle/events/revision/) corrects content. It has to keep the same event type id, or it fails with `InvalidRevisionEventType`. The corrected payload is stored beside the original with the requester's causation and identity, consumers see the latest revision from then on, and the original stays in the event's history. Chronicle then rewinds that event source's partition for replayable observers of the type. A revision removes nothing.
+
+A [redaction](https://cratis.io/chronicle/events/redaction/) removes content. Requesting one appends a system event, `EventRedactionRequested` for a single event or `EventsRedactedForEventSource` for a whole event source, optionally limited to some event types, and both take a `RedactionReason`. A built-in reactor then replaces the event in place. It keeps its sequence number and becomes an `EventRedacted` that holds the reason, the original event type and occurred time, the correlation id and caused-by chain, and the types and times of the original causation entries without their property values. The payload, the revision history and the content hashes are gone from sequence storage. The kernel rewinds the affected partition for observers of that type, and a repeated redaction skips the rewind.
+
+An observer hears about a redaction only if it subscribes to the original event type and also handles `EventRedacted`:
+
+```csharp
+[EventType]
+public record RedactionPersonRegistered(string Name);
+
+public class RedactionPersonReactor : IReactor
+{
+    public Task Registered(RedactionPersonRegistered @event, EventContext context) => Task.CompletedTask;
+
+    public Task Redacted(EventRedacted @event, EventContext context)
+    {
+        // Called only when a RedactionPersonRegistered event is redacted.
+        return Task.CompletedTask;
+    }
+}
+```
+
+That handler is where a read model gets cleaned up or a downstream system gets told. Redaction doesn't reach database oplogs, backups, or copies already forwarded to another event store through outbox and inbox, and it doesn't clean read models by itself.
+
+Erasing a key is the fourth operation. Every event stays intact, and only the marked values become unreadable.
+
+![A diagram titled Four questions, four operations, in two columns headed Changes and Stays, one row per operation. Compensate: a new event at N+k; event N untouched. Revise: a correction stored beside it, and the partition rewinds; the original is kept in history. Redact: a marker replaces the payload; type, time, correlation and causation types stay, and oplogs, backups and forwarded copies keep the original. Erase a key: marked values read empty; the event stays intact, and causation values, ids and backups remain.](./four-operations.png)
+
+*Four ways to change what an event shows, and what each one leaves.*
+
+## Erasure, step by step
+
+`DeleteEncryptionKeyFor` on `eventStore.PII` runs three phases in the kernel:
+
+```csharp
+public async Task DeleteEncryptionKeyFor(EncryptionKeyIdentifier identifier)
+{
+    ThrowIfEncryptedValueIdentifier(identifier);
+    var key = GetKey();
+    List<Exception> failures = [];
+    var eventStores = await EventStoresToReach(key, failures);
+
+    await ForEach(eventStores, failures, eventStore => keyStore.RecordErasureFor(eventStore, key.Namespace, identifier));
+    await ForEach(eventStores, failures, eventStore => keyStore.DeleteFor(eventStore, key.Namespace, identifier));
+    await ForEach(eventStores, failures, eventStore => cacheClient.Evict(eventStore, key.Namespace, identifier));
+
+    if (failures.Count > 0)
+    {
+        logger.SubjectErasureIncomplete(BindingFor(identifier), key.Namespace, failures.Count, eventStores.Count, Names(eventStores));
+        throw new EncryptionKeyErasureIncomplete(identifier, failures);
+    }
+
+    logger.ErasedSubject(BindingFor(identifier), key.Namespace, eventStores.Count, Names(eventStores));
+}
+```
+
+It refuses an identifier that belongs to an `[Encrypted]` value, with `EncryptionKeyIsNotErasable`. It lists every event store in the namespace, always including the store the caller named, even if the listing fails. It records an erasure fence in each store, and only after that destroys the key in each of them. Then it evicts the key from every silo's cache, whether or not the earlier phases succeeded. Every phase tries every store, and if any of them failed, the call throws `EncryptionKeyErasureIncomplete` listing all the failures.
+
+The order closes a window. Erasing store by store left an interval where one store still held the key and another didn't, and an event forwarded in that interval copied the surviving key into the store that had just been cleared.
+
+The fence is a record kept beside the keys, with three fields. `ErasedThrough` is the highest key revision it covers, `ErasedKeyFingerprints` holds SHA-256 fingerprints of the destroyed public keys, and `NewKeyAllowed` is false after every erasure. While a fence exists, the store refuses to provision a key for the subject, to save any revision at or below the floor, or to accept a key whose fingerprint matches a destroyed one at any revision. The fingerprint check is what stops a cross-store copy from bringing the old key back. Reads are untouched, which is why the erased values read as empty.
+
+- Appending a `[PII]` value for an erased subject fails with `EncryptionKeyErased`. It doesn't mint a key and doesn't blank the value.
+- `AllowNewEncryptionKeyFor(subject)` sets `NewKeyAllowed` in every store of the namespace and creates no key. The next protected append mints one at `ErasedThrough + 1`. That key decrypts nothing written before the erasure, and the destroyed material is still refused.
+- A forwarded event carrying `[PII]` for an erased subject fails to append in the target store, and that event source's partition fails while the rest of the subscription keeps flowing.
+- Replaying a projection or reducer into a stored read model applies protection again, so the replay is refused for the erased subject's partition. A rebuild doesn't remove ciphertext already in the read model store.
+
+Erasure doesn't touch the constraint index. A `[Unique]` constraint over a `[PII]` value keeps a SHA-256 hash of the plaintext, and `DeleteEncryptionKeyFor` removes keys and caches, not that entry. The erased author's name therefore stays taken in that namespace, and because the hash isn't salted, anyone who can read the index can still confirm a guessed name. The entry goes when an event marked `[RemoveConstraint]` with the constraint's name is appended for the same event source, so give the author feature a removal event that carries no personal data, such as `AuthorForgotten(AuthorId)`, and append it as part of the erasure. A constraint reindex, which runs when a constraint's definition changes, also drops entries whose value now reads as empty. A fix is tracked in [Chronicle issue #4389](https://github.com/Cratis/Chronicle/issues/4389).
+
+The completion is logged, as in "Erased the encryption key for the subject bound to 'a3f1…' in namespace 'Default', across all 3 event stores". The binding is a SHA-256 hex of the identifier, a pseudonym that can be brute-forced when the space of identifiers is small. The log records that an erasure completed and where. Who asked, and on what legal basis, isn't recorded. An incomplete run logs at error level.
+
+![A diagram titled The fence. A frame labeled Namespace Acme holds three event stores, Sales, Support and Billing, and three numbered steps across all of them: 1, record the fence in every store; 2, destroy the key in every store; 3, evict every cache. A row reads: Fence: ErasedThrough, key fingerprints, NewKeyAllowed = false. A red row reads: a forwarded PII append fails: EncryptionKeyErased. Below the frame, a separate row reads: Namespace Globex: untouched, needs its own erasure.](./the-fence.png)
+
+*Fence first, destroy second, evict always.*
+
+Erasures performed before the fence shipped aren't fenced and can be resurrected until they're run again. The call is idempotent, one per subject. Every silo has to run a version with the fence, and mixed versions aren't supported while an erasure is in force. A custom `IEncryptionKeyStorage` without the fence fails on the first erasure. In a composed store, an unreachable member is skipped on reads, so a fence held only there is invisible while that member is down, and a key provisioning already in flight when the fence lands can still persist its key. Erase again after forwarding and appends for the subject have stopped.
+
+## Where the keys live, and how they come back
+
+By default keys sit in the general storage backend. `compliance.encryption.storage` selects a [dedicated store](https://cratis.io/chronicle/hosting/configuration/compliance-storage/), either HashiCorp Vault (KV v2, with the token from `VAULT_TOKEN`) or Azure Key Vault, and both keep every key revision as its own secret. What those services do with a deleted secret follows their own retention and recovery policies.
+
+Switching to a dedicated store on a running system with keys already stored makes those keys unreachable, and their values read as empty strings with no error. `migrateFromDefaultStorage: true` composes both stores, moves each key on its first read, mirrors new keys back and erases from both. A key nobody has read since the switch still lives only in the default store, so turn the flag off only after confirming that the dedicated store holds every key.
+
+A backup has three parts: the encryption-certificate ring, the storage backend and the key store. The key store has to be restored to the same point in time as the storage. Restore it from earlier, and newer subjects' values read as empty, indistinguishable from an erasure. Restore it from later, and keys come back for subjects whose erasure the storage backup predates, so an erasure you've already reported as complete is silently undone. A backup from before an erasure brings the key back and removes the fence, and nothing inside Chronicle can see that it happened. A lost key store can't be rebuilt, because there's no escrow and no recovery key.
+
+## The same markers in other clients
+
+The C# client validates the most. The Kotlin/Java, TypeScript and Elixir clients accept the markers without the same checks. TypeScript takes a subject as an append option but doesn't read an `@subject` property, declarative `[Subject]` resolution is C# only, Elixir can't mark a whole multi-field struct `[PII]`, and the TypeScript decorator doesn't read constructor parameters. `[Encrypted]` exists in all four. Every client can delete a subject's key, and only .NET and TypeScript can authorize a new one afterward. [Where the clients differ](https://cratis.io/chronicle/clients/where-the-clients-differ/) has the full list.
+
+For the author feature, erasing an author is `DeleteEncryptionKeyFor` with the author's subject, once in each namespace the author appears in, and because the name is `[Unique]`, the erasure also appends a removal event so the name's hash leaves the constraint index. The name then reads as empty in the log and in the author list, `AuthorRegistered` keeps its sequence number, and whatever the application already sent elsewhere is still the application's to clean up.
+
+---
+
+Part 6 of 23 in the Cratis series. The series starts at [From the edge to the event log](/from-the-edge-to-the-event-log/).
+
+- Previous: [Rules that hold when you write](/rules-that-hold-when-you-write/)
+- Next: [Year two](/four-changes-in-year-two/)

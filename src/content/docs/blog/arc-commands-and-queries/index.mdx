@@ -1,0 +1,239 @@
+---
+title: "Arc: commands and queries without the plumbing"
+date: 2026-09-30
+authors: sindre
+excerpt: "A command is a record with a Handle method and a query is a static method on the read model it returns. What Arc builds from those two shapes, in which order it checks a request, what reaches the generated TypeScript, and what stays the application's job."
+tags:
+  - arc
+  - cqrs
+  - dotnet
+  - typescript
+  - validation
+---
+
+A C# record marked `[Command]` with a public `Handle()` method is enough for Arc to expose it as a `POST` endpoint, check its authorization, validate it and, with the proxy build package configured, write a TypeScript class the frontend compiles against. There's no controller, no DTO and no list of registrations anywhere in the application. Arc finds the record, reads what's declared on it and builds the rest.
+
+In [From the edge to the event log](/from-the-edge-to-the-event-log/), a signed-in user registers an author, and author names are unique within the organization. Arc owns the second step of that feature, between the edge that knows who the user is and the event store that records what happened.
+
+![A diagram titled One feature, layer by layer. A frame labeled Tenant: Acme holds six numbered cards in two columns, each naming its product. 1 AuthProxy: sign-in and tenant, Tenant-ID header. 2 Arc: command, generated TypeScript proxy. 3 Chronicle: namespace, one per tenant, via Arc. 4 Chronicle: append, unique name checked, AuthorRegistered. 5 Chronicle: view, the Author read model, by projection. 6 Components: screen, React, aligned with Arc.](./one-feature-by-layer.png)
+
+*The author feature, step by step, and the product that owns each step.*
+
+## The command
+
+In Arc, `RegisterAuthor` is a [command](https://cratis.io/arc/backend/csharp/commands/model-bound/), which means a record with a `Handle` method. `AuthorId` and `AuthorName` are the feature's own types:
+
+```csharp
+[Command]
+public record RegisterAuthor(AuthorId Id, AuthorName Name)
+{
+    public AuthorRegistered Handle() => new(Name);
+}
+```
+
+That's the whole command. [Arc](https://cratis.io/arc/) gives it an HTTP route and runs validation and [declared authorization](https://cratis.io/arc/backend/csharp/authorizing-commands-and-queries/) on it (`[Authorize]`, roles and policies). The handler returns an `AuthorRegistered` event, and the command can [append the event it returns](https://cratis.io/arc/backend/csharp/chronicle/commands/events/). You write no controller, no DTO and no registration list, and the name travels as a typed value instead of a bare string. The service code, the authorization policy and the storage stay yours.
+
+Arc discovers a command when the type has `[Command]` and a public instance `Handle()`. The route comes from the configured prefix, `api` by default, then the namespace in kebab-case with its leading segments skipped, then the type name. An explicit path is kept exactly as written. Nothing about this needs an event store.
+
+`AuthorName` is a `ConceptAs<string>`. On the wire it's just the string, and the proxy generator maps it to a TypeScript value type, so the C# model gets a named type without the HTTP contract getting a wrapper object.
+
+Dependencies go on `Handle()` as parameters, resolved from the command's service scope. A `CancellationToken` parameter gets the request-aborted token over HTTP. A version of the command with a first and last name, where the command also produces the new author's id, shows the other half of the model:
+
+```csharp
+[EventType]
+public record AuthorRegistered(AuthorName FirstName, AuthorName LastName);
+
+[Command]
+public record RegisterAuthor(AuthorName FirstName, AuthorName LastName)
+{
+    public AuthorId Provide() => AuthorId.New();
+
+    public (AuthorId, AuthorRegistered) Handle(AuthorId authorId) =>
+        (authorId, new AuthorRegistered(FirstName, LastName));
+}
+```
+
+`Provide()` runs after the request has passed authorization and validation, and whatever it returns is handed to `Handle()`. It's where a command fetches or creates what it needs. It can also stop the command with a validation result.
+
+What `Handle()` returns decides the response. `void` and `Task` give no response. A plain `T` or `Task<T>` becomes the response, unless a response handler claims it. A `Result<TSuccess, TError>` from `Cratis.Monads` is processed for whichever alternative is active. A tuple is split. Arc processes the values it has handlers for and allows at most one unhandled value, which becomes the response. In the command above, the Chronicle integration appends the event under the new `AuthorId`, and the id goes back to the caller as the response. Two unhandled values fail with `MultipleUnhandledTupleValues`. An arbitrary error record doesn't mark a command as failed on its own, and a returned `ValidationResult` does.
+
+## The order is part of the contract
+
+Arc runs every command through the same [pipeline](https://cratis.io/arc/backend/csharp/commands/command-pipeline/), and the order matters as much as the steps.
+
+![A diagram titled The command pipeline, in order. Arrows run from Request to Authorization, with roles, policies and filters, to Validation, with annotations, validators and concepts, to Provide, then down to a second row: Handle, response handlers and the result envelope. A red chip under Authorization reads 403, no validation detail. An amber chip under Validation reads 400, field messages. A band below reads: Status precedence: 200 success, 403 authorization, 400 validation or malformed body, 202 result pending, 500 exception. A note reads: A failed result never carries a response value.](./command-pipeline-in-order.png)
+
+*Authorization is decided before anything looks at the command's values.*
+
+Authorization comes first. The built-in authorization filter is ordered ahead of the ordinary [command filters](https://cratis.io/arc/backend/csharp/commands/command-filters/), so a caller who isn't allowed never reaches validation, `Provide()` or `Handle()`. The response is a 403, and it carries no validation detail. A forbidden caller who can see which fields failed has learned something about a command they weren't allowed to run, which is why the 403 carries nothing else.
+
+Arc pins that behavior with a spec. It registers the validation filter *first* on purpose, and then checks that authorization still wins:
+
+```csharp
+// The validation filter is registered first on purpose: authorization must still be decided first (by Order),
+// so a forbidden caller whose command is also invalid gets a clean 403 and the validation filter never runs.
+var filters = new List<ICommandFilter> { _validationFilter, authorizationFilter };
+// ...
+[Fact] void should_not_be_authorized() => _result.IsAuthorized.ShouldBeFalse();
+[Fact] void should_not_be_successful() => _result.IsSuccess.ShouldBeFalse();
+[Fact] void should_map_to_forbidden_not_bad_request() => EndpointRouteHelper.GetStatusCode(_result.IsSuccess, _result.IsAuthorized, _result.IsValid).ShouldEqual(HttpStatusCode.Forbidden);
+[Fact] void should_not_run_the_validation_filter() => _validationFilter.WasCalled.ShouldBeFalse();
+[Fact] void should_not_leak_any_validation_detail() => _result.ValidationResults.ShouldBeEmpty();
+```
+
+[Validation](https://cratis.io/arc/backend/csharp/commands/validation/) runs next, from three sources. DataAnnotations attributes work, and on a positional record they have to target the property, as in `[property: Required]`, because the filter doesn't read attributes on constructor parameters. A `CommandValidator<T>` is a FluentValidation validator that Arc discovers for the command. A `ConceptValidator<T>` holds rules for a value type and applies them wherever that type is used, so a rule on `AuthorName` covers every command that carries an author name. Validators can take constructor dependencies from the command's scope. Each result has a severity of error, warning or information, and the `X-Allowed-Severity` header decides which of them block the command.
+
+Then `Provide()`, then `Handle()`, then response handlers, command operations and the execution scope.
+
+The [HTTP contract](https://cratis.io/arc/http-contract/) fixes the status codes in the same order. Success is 200. An authorization failure is 403 (401 when authentication itself fails). A validation failure, a malformed body or a dependency Arc can't resolve is 400. A result that isn't ready yet is 202, and an exception is 500. A failed result never carries a response value. A malformed or wrongly typed body turns into a validation failure with the reason `malformedRequest`, and the parser's own message isn't echoed back. Outside the Development environment, exception messages and stack traces are replaced with a generic message, and the detail is logged on the server with the correlation id.
+
+Every command also gets a `POST <route>/validate` endpoint. It runs authorization and validation and stops before the handler, which is what the generated client calls for early feedback. A check that passes reserves nothing, so the real `POST` can still fail.
+
+Exceptions thrown by a handler, a filter, a response handler or the execution scope are caught into the `CommandResult`. If a handler wrote to a service directly and a later step failed, Arc catches the exception but doesn't roll that write back.
+
+## Authorization sits on the artifact
+
+Authorization is declared on the command or query it protects. `[Authorize]` requires an authenticated caller. `[Roles("A", "B")]` requires any one of the listed roles. `[Authorize(Policy = ...)]` names a policy, either a scoped `IAuthorizationPolicy` or an ASP.NET policy on an ASP.NET host, and `[AllowAnonymous]` opens the artifact up. With no requirement at all, the built-in check permits access. Putting `[AllowAnonymous]` together with `[Authorize]` or `[Roles]` on one target is ambiguous. The ARC0019 analyzer reports it at build time, and at run time Arc rejects the call. A rule that applies across many commands goes in an `IAuthorizationCommandFilter` that returns `CommandResult.Unauthorized`.
+
+[Queries are authorized](https://cratis.io/arc/backend/csharp/queries/model-bound/authorization/) the same way, and a method-level attribute replaces the type-level one:
+
+```csharp
+using System.Collections.Generic;
+using Cratis.Arc.Authorization;
+using Cratis.Arc.Queries.ModelBound;
+using MongoDB.Driver;
+
+namespace Banking.Accounts;
+
+[ReadModel]
+[Roles("AccountReader")]
+public record DebitAccount(AccountId Id, AccountName Name, decimal Balance)
+{
+    [Path("/api/accounts")]
+    public static IEnumerable<DebitAccount> AllAccounts(IMongoCollection<DebitAccount> collection) =>
+        collection.Find(_ => true).ToList();
+
+    [Roles("Admin", "Auditor")]
+    [Path("/api/accounts/overdrawn")]
+    public static IEnumerable<DebitAccount> OverdrawnAccounts(IMongoCollection<DebitAccount> collection) =>
+        collection.Find(account => account.Balance < 0).ToList();
+}
+```
+
+A role says what kind of caller someone is. It doesn't say which records are theirs. An account reader in that example can read every account. If each caller should only see their own, the query has to derive the owner from the authenticated principal and filter on it, and Arc has no universal mapping from a claim to an owner that could do it for you.
+
+Arc doesn't authenticate anyone either. The host establishes the principal, through ASP.NET authentication or an edge proxy such as AuthProxy, and Arc's attributes check it. Arc doesn't validate or modify the identity provider's token. An [identity details provider](https://cratis.io/arc/understanding-identity-and-access/) can compose application-specific details from the principal, and Arc registers `/.cratis/me` for the frontend only when such a provider exists. The `.cratis-identity` cookie that carries those details is unsigned and under the client's control. It's display data, and backend authorization must never rest on it.
+
+Two more endpoints are open by default. `/.cratis/commands` and `/.cratis/queries` list every command and query with its route and schema, and on .NET they're anonymous unless you configure them otherwise.
+
+Arc reads the tenant from a header too, but its default header name is `x-cratis-tenant-id`, so point it at the proxy's header. The [tenant resolver docs](https://cratis.io/arc/backend/csharp/tenancy/resolvers/) show the setting with a custom name, and the extension method lives in `Cratis.Arc.Tenancy`:
+
+```csharp
+using Cratis.Arc;
+using Cratis.Arc.Tenancy;
+
+builder.AddCratisArc(options =>
+{
+    options.UseHeaderTenancy("Tenant-ID");
+});
+```
+
+With the default resolvers, a missing header doesn't reject the request. It selects the unset tenant and then Chronicle's default namespace, so decide deliberately whether that's allowed.
+
+A resolver, whether it reads a header, a query string, a claim or a subdomain, selects a tenant. It doesn't check that the caller belongs to it, and a header the caller controls isn't evidence of membership. [*Tenancy and identity end to end*](/tenancy-and-identity-end-to-end/) follows the tenant from the edge to the event store.
+
+## A query is a static method on the read model
+
+A [model-bound query](https://cratis.io/arc/backend/csharp/queries/model-bound/) is a static method on the record it returns. Mark the record `[ReadModel]`, and any non-generic public or internal static method that returns that type, a collection of it or a supported wrapper becomes a `GET` endpoint. The supported wrappers include `Task<T>`, `ISubject<T>` for a query that keeps pushing results, and `IQueryable<T>` for paging and sorting. A `QUERY` method that takes its arguments as a JSON body is registered alongside by default, with `Cache-Control: no-store`. A method that returns some other type isn't discovered.
+
+Parameters work the way they do on a command. Arc resolves a parameter from the container when it can, as with the `IMongoCollection<DebitAccount>` above, and treats the rest as arguments from the caller. `[Path]` fixes the route.
+
+The response is an envelope with `data`, `isReady`, `isAuthorized` and `validationResults`, plus `paging` with a zero-based page, the page size, total items and total pages. A query that returns null has succeeded. Arc doesn't turn it into a 404.
+
+The read model doesn't have to come from Chronicle. It can come from MongoDB, EF Core, another service or memory. [Arc without event sourcing](https://cratis.io/arc/arc-without-event-sourcing/) is a supported way to use it, and Chronicle never depends on Arc.
+
+Returning `ISubject<T>` instead of a list makes it an observable query, and a browser that subscribes gets later results pushed to it. [*Live UIs*](/live-uis-with-arc/) is about that path.
+
+## The TypeScript the build writes
+
+At build time, Arc's [proxy generator](https://cratis.io/arc/backend/csharp/proxy-generation/) loads the compiled assembly and writes a TypeScript file for each command and query into the folder you configure. A command becomes a class that extends `Command<ICommandName>` and carries its route. Its interface has the C# XML documentation as comments. The class has typed property accessors, property descriptors and a validator, plus the roles from the C# attributes. A static `use()` hook for React returns the command with functions to set and clear its values.
+
+Validation rules are extracted from the compiled model and projected into the generated validator. The Ideas board sample in the Cratis Samples repository has a title concept with a rule on it:
+
+```csharp
+public record IdeaTitle(string Value) : ConceptAs<string>(Value)
+{
+    public static readonly IdeaTitle NotSet = new(string.Empty);
+    public static implicit operator IdeaTitle(string value) => new(value);
+}
+
+public class IdeaTitleValidator : ConceptValidator<IdeaTitle>
+{
+    public IdeaTitleValidator() => RuleFor(_ => _.Value).NotEmpty().MaximumLength(72);
+}
+```
+
+The command that captures an idea carries an `IdeaTitle` and an `IdeaSummary`, whose own concept validator limits it to 240 characters. After a build, the generated `CaptureIdea.ts` has both rules, and the hook:
+
+```ts
+export class CaptureIdeaValidator extends CommandValidator<ICaptureIdea> {
+    constructor() {
+        super();
+        this.ruleFor(c => c.summary).notEmpty();
+        this.ruleFor(c => c.summary).maxLength(240);
+        this.ruleFor(c => c.title).notEmpty();
+        this.ruleFor(c => c.title).maxLength(72);
+    }
+}
+// ...
+static use(initialValues?: ICaptureIdea): [CaptureIdea, SetCommandValues<ICaptureIdea>, ClearCommandValues] {
+    return useCommand<CaptureIdea, ICaptureIdea>(CaptureIdea, initialValues);
+}
+```
+
+Nobody wrote `maxLength(72)` in TypeScript. It came from the concept. When several sources contribute rules for one member, an explicit FluentValidation validator takes precedence, direct concept-validator rules add to it, and DataAnnotations fill in only where nothing else contributed.
+
+Only a [supported subset](https://cratis.io/arc/backend/csharp/proxy-generation/validation/) of rules makes the trip: not-empty, not-null, email address, length rules, `Matches` and numeric comparisons against constants. Cross-property comparisons and comparisons against non-numeric constants stay on the server, and so do rules that call services or run custom logic. The generated rules give the user early feedback. The server stays authoritative, and a field the browser accepts can still fail on `POST`.
+
+![A diagram titled A rule travels. On the left, a C# card: IdeaTitleValidator, RuleFor Value, NotEmpty and MaximumLength 72. An arrow labeled build leads to a generated TypeScript card on the right: CaptureIdeaValidator, ruleFor title, notEmpty and maxLength 72. It leads down to a browser form giving early feedback, and from the form an arrow labeled POST leads left to a server card: the same C# rule runs again. A band reads: Early feedback in the browser. The server stays authoritative. A note reads: Stays on the server: cross-property comparisons, non-numeric constants, rules that call services.](./a-rule-travels.png)
+
+*Written once on a concept, checked early in the browser and again on the server.*
+
+Rename `Title` on the C# command, rebuild, and every piece of TypeScript that used the old accessor stops compiling. Drift between the backend and the frontend shows up as a compile error in your own build, before anyone opens a browser. That only holds if the build runs in order, backend first so the proxies are regenerated, then the frontend.
+
+Setting it up takes the build package, a `CratisProxiesOutputPath` pointing at a folder that holds only generated files, and the `@cratis/arc`, `@cratis/arc.react` and `@cratis/fundamentals` packages on the frontend. The MSBuild integration writes incrementally, keeping files whose content hash still matches and removing stale ones. A full regeneration, through the generator executable or with `CratisProxiesSkipOutputDeletion=false`, deletes the entire output directory, handwritten files included, which is why the folder should hold nothing else. The generated files start with a `DO NOT EDIT` header, and a later build can overwrite anything changed in them. [*Arc gotchas*](/arc-gotchas/) collects the ways this bites.
+
+Only public properties declared directly on the command type become fields in the proxy. Properties inherited from a base type aren't collected.
+
+## The same pipeline without HTTP
+
+A background worker can run a command through the same pipeline. Inject `ICommandPipeline` and call `Execute<TResult>(command)`, and you get a result with `IsSuccess`, `IsAuthorized`, `IsValid`, `HasExceptions`, `ValidationResults` and a `CorrelationId`. `Validate(command)` runs the filters and stops before `Provide()` and `Handle()`.
+
+The typed `Execute<T>` returns `default(TResult)` when the command fails, so a failed command that should have produced a `Guid` hands back `Guid.Empty`. Check `IsSuccess`. `IsValid` alone misses authorization failures and exceptions.
+
+Work outside a request has no header to read and no signed-in user. `ITenantScope.Begin(tenant)` selects a tenant for the work, and `ISystemExecution.AsSystem(roles)` runs it as a trusted system identity with the roles you name. [*Testing with Arc and Chronicle*](/testing-with-arc-and-chronicle/) runs the pipeline in a spec, in one process.
+
+## The Chronicle bridge, if you want it
+
+Chronicle is optional. With the Chronicle integration package, the events a command returns from `Handle()` are appended for it, whether that's a single event, a collection, a tuple or a `Result`. They join the command's pending transaction, so the batch commits when the command succeeds and rolls back when it fails, unless your code completed that transaction earlier. That's the one kind of write Arc does undo. A direct write to another service still isn't.
+
+The event source id comes from a convention. A command that implements `ICanProvideEventSourceId` supplies it. Otherwise Arc takes the first property that's an `EventSourceId`, a descendant of `EventSourceId<T>` or marked `[Key]`, and if there's none, it creates a new `EventSourceId`.
+
+The command also leaves a trace. Its name and property values are recorded in the causation of every event it appends, and `[PII]` and `[NotAudited]` keep top-level values out of that record. The subject, the identity personal data is keyed to, can be returned from `Handle()` as well. [*Personal data in an event log*](/personal-data-in-an-event-log/) explains why both matter.
+
+A Chronicle [read model can be a parameter](https://cratis.io/arc/backend/csharp/chronicle/read-models/) of a command's validator, `Provide()` or `Handle()`, looked up by the key the command already carries. It has to be backed by a projection or a reducer. If the instance doesn't exist, a nullable parameter gets null, and a non-nullable one fails the command with `ReadModelDoesNotExistForCommand` before your code runs. `[ReadModel]` on its own doesn't make a type injectable. [*Rules that hold when you write*](/rules-that-hold-when-you-write/) covers decision reads and aggregates, which build on this.
+
+## What Arc does and what stays yours
+
+For the author feature, Arc turned one record into a route, an authorization check, a validation step and a TypeScript class, and with the Chronicle integration it appended the event the handler returned. The query that lists authors is a static method on the `Author` read model, and it's routed and authorized the same way.
+
+Arc evaluates what's declared on the artifact, against a principal someone else established. The host or the edge proxy authenticates. Which records belong to which caller, and whether a caller belongs to the tenant they selected, are rules the application writes. Storage per tenant is configuration you choose, and with EF Core a tenant-specific connection is yours to set up.
+
+Arc for Kotlin and Java on Spring Boot and Arc for TypeScript share the HTTP contract and generate the same kind of proxies, each with its own gaps compared with .NET, and [*Beyond .NET*](/beyond-dotnet/) goes through them.
+
+---
+
+Part 8 of 23 in the Cratis series. The series starts at [From the edge to the event log](/from-the-edge-to-the-event-log/).
+
+- Previous: [Year two](/four-changes-in-year-two/)
+- Next: [Live UIs](/live-uis-with-arc/)
