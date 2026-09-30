@@ -14,11 +14,11 @@ tags:
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-*[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 23 of 23*
+*[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 23 of 25*
 
 `dotnet new cratis -n MyStore` writes a command that registers a name, a projection that lists the names, a reactor that logs each one and a React page for all of it, before you've written a line of your own. Three more commands start Chronicle, the backend and the frontend. The name you register on that page is an event you can open in the Workbench.
 
-The series ends on the template because it's the first thing to run once you've decided to try Cratis, and it leans on smaller tools that earlier parts only mention in passing.
+This part covers the template because it's the first thing to run once you've decided to try Cratis, and it leans on smaller tools that earlier parts only mention in passing.
 
 The feature from [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) has almost the same shape as the template's sample slice. A signed-in user registers an author, and author names are unique within the organization.
 
@@ -533,10 +533,12 @@ Earlier posts on the blog go deeper on single decisions. [Choosing an event sour
 21. [AI across the Cratis stack](/ai-across-the-cratis-stack/). The AI corpus, its hooks and the MCP servers, what each lets an assistant read or change, and the checks that run whether it listened or not.
 22. [Arc gotchas: where a convention decides for you](/arc-gotchas/). Validation that runs in two places, a proxy folder that gets cleared, and names that do the mapping for you until they don't.
 23. Getting started with Cratis, and the tools around it. `cratis new`, the samples, and the supporting pieces, from Fundamentals and Specifications to Synopsis and Narrator.
+24. [Running Chronicle and a Cratis application in production](/running-chronicle-in-production/). What the production image won't start without, what a client trusts until you tell it otherwise, where a trace stops today, and the order a restore has to follow.
+25. [Cratis Components, the React layer](/cratis-components-the-react-layer/). The author list and the register dialog built with Components 4, how a field binds to a generated command, how a taken name gets back to the Name field, and where the library stops.
 
 The hub, [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/), follows the author feature through all of them once, briefly.
 
 ---
 
 - Previous: [Part 22 — Arc gotchas: where a convention decides for you](/arc-gotchas/)
-- Next: back to the start of the series, [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/)
+- Next: [Part 24 — Running Chronicle and a Cratis application in production](/running-chronicle-in-production/)

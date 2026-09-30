@@ -13,7 +13,7 @@ tags:
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-*[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 10 of 23*
+*[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 10 of 25*
 
 Chronicle has clients for .NET, Kotlin and Java, TypeScript and Elixir, and all of them append to the same kernel through the same contract. Only one of them checks concurrency on an append unless you ask it to. The .NET client reads the tail of the event source and sends the sequence number it expects, so an append that lands between that read and its write fails. The Kotlin and Java client appends with no concurrency scope, and the TypeScript and Elixir clients send no check at all.
 
