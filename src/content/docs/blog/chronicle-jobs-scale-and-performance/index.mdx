@@ -1,6 +1,6 @@
 ---
-title: "Part 15: Chronicle jobs, scale and performance"
-date: 2026-09-30T09:09:00Z
+title: "From script to stage · Part 15: Chronicle jobs, scale and performance"
+date: 2026-09-30T09:15:00Z
 authors: sindre
 excerpt: "Replays you can stop and resume, what a crash in the middle of one delivers twice, how events reach observers without making appends wait, and what running Chronicle on more than one node does and doesn't promise."
 tags:
@@ -11,11 +11,11 @@ tags:
   - event-sourcing
 ---
 
-*[From the edge to the event log](/from-the-edge-to-the-event-log/) · Part 15 of 23*
+*[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 15 of 23*
 
 Replaying a projection in Chronicle runs as a job, and a job can be stopped halfway and resumed later from where it stopped, as long as the application that owns the observer is connected. If the server crashes instead, the replay picks up from its last checkpoint, and the batches it processed since that checkpoint are delivered a second time.
 
-The running example is the feature from [From the edge to the event log](/from-the-edge-to-the-event-log/): a signed-in user registers an author, and author names are unique within the organization. Change the projection behind the `Author` read model and deploy it, and Chronicle decides whether the change needs a replay. Replays, catch-ups and event migrations run as [jobs](https://cratis.io/chronicle/jobs/) you can inspect, stop and resume, with a setting that caps how many steps run in parallel. A replay can also repeat a reactor's side effects, and [`[OnceOnly]`](https://cratis.io/chronicle/reactors/once-only/) keeps a reactor out of replays without stopping retries.
+The running example is the feature from [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/): a signed-in user registers an author, and author names are unique within the organization. Change the projection behind the `Author` read model and deploy it, and Chronicle decides whether the change needs a replay. Replays, catch-ups and event migrations run as [jobs](https://cratis.io/chronicle/jobs/) you can inspect, stop and resume, with a setting that caps how many steps run in parallel. A replay can also repeat a reactor's side effects, and [`[OnceOnly]`](https://cratis.io/chronicle/reactors/once-only/) keeps a reactor out of replays without stopping retries.
 
 ## What runs as a job
 

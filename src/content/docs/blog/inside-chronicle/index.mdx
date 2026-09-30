@@ -1,6 +1,6 @@
 ---
-title: "Part 02: Inside Chronicle"
-date: 2026-09-30T09:22:00Z
+title: "From script to stage · Part 02: Inside Chronicle"
+date: 2026-09-30T09:02:00Z
 authors: sindre
 excerpt: "Chronicle's append returns without waiting for a single projection. What the kernel does inside that call, how observers and partitions pick the event up afterwards, and what happens when one of them fails."
 tags:
@@ -10,11 +10,11 @@ tags:
   - architecture
 ---
 
-*[From the edge to the event log](/from-the-edge-to-the-event-log/) · Part 02 of 23*
+*[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 02 of 23*
 
 When `Append` returns in Chronicle, the event has been checked, numbered and written to storage, and nothing has waited for a projection. The read model that will show the event is updated afterwards, by a different part of the server, on its own schedule. A read straight after a write that misses the event, and a list that stays empty while the log has the event, both come from that gap.
 
-The author feature from [From the edge to the event log](/from-the-edge-to-the-event-log/) meets the gap directly. A signed-in user registers an author, the `[Unique]` rule on the name is checked, `AuthorRegistered` is appended, and a moment later the author appears in the list. Everything between the append and the sink write happens inside the kernel.
+The author feature from [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) meets the gap directly. A signed-in user registers an author, the `[Unique]` rule on the name is checked, `AuthorRegistered` is appended, and a moment later the author appears in the list. Everything between the append and the sink write happens inside the kernel.
 
 ## One process with the log and the bookkeeping
 

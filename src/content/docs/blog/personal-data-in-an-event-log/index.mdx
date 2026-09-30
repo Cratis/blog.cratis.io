@@ -1,6 +1,6 @@
 ---
-title: "Part 06: Personal data in an event log"
-date: 2026-09-30T09:18:00Z
+title: "From script to stage · Part 06: Personal data in an event log"
+date: 2026-09-30T09:06:00Z
 authors: sindre
 excerpt: "Chronicle erases a person by destroying their key. The events stay, their marked values read as empty, and the fence stops the key from coming back."
 tags:
@@ -11,11 +11,11 @@ tags:
   - event-sourcing
 ---
 
-*[From the edge to the event log](/from-the-edge-to-the-event-log/) · Part 06 of 23*
+*[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 06 of 23*
 
 Erasing a person in Chronicle is one call that deletes their key. Every event they appear in stays in the log at the same sequence number, and the values marked as personal data come back as empty strings. If something then tries to append new personal data for that person, the append fails on purpose instead of quietly starting a fresh key.
 
-In [From the edge to the event log](/from-the-edge-to-the-event-log/), a signed-in user registers an author, and names are unique within the organization. The name travels further than the event: into the command's audit trail, into read models, into other event stores and into backups.
+In [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/), a signed-in user registers an author, and names are unique within the organization. The name travels further than the event: into the command's audit trail, into read models, into other event stores and into backups.
 
 ## Personal data, marked once
 

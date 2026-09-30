@@ -1,6 +1,6 @@
 ---
-title: "Part 22: Arc gotchas: where a convention decides for you"
-date: 2026-09-30T09:02:00Z
+title: "From script to stage · Part 22: Arc gotchas: where a convention decides for you"
+date: 2026-09-30T09:22:00Z
 authors: sindre
 excerpt: "Three places Arc's conventions make a decision you might not see: a validator that runs in the browser and on the server but not identically, a proxy folder the generator owns, and routes, event identities and mappings chosen by a name. What each one does, and the fix."
 tags:
@@ -11,13 +11,13 @@ tags:
   - typescript
 ---
 
-*[From the edge to the event log](/from-the-edge-to-the-event-log/) · Part 22 of 23*
+*[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 22 of 23*
 
 A validation rule that applies only sometimes on the server can apply every time in the browser. Arc's proxy generator copies the rules it recognizes from a C# validator into the generated TypeScript, and it doesn't copy `When` or `Unless` conditions. A rule that sat inside a condition can arrive on the client [without it](https://cratis.io/arc/backend/csharp/proxy-generation/validation/), and a form will then refuse input the server would have accepted.
 
 [Arc](https://cratis.io/arc/) is an opinionated CQRS application framework for ASP.NET Core with commands, queries, validation, authorization, and TypeScript proxy generation. Most of what it saves you comes from conventions. A namespace becomes a route, a validator becomes browser rules, a property becomes a field in the generated TypeScript. Each convention makes one decision in the place that owns it, and each has an edge that's documented but easy to miss until it costs an afternoon.
 
-The example is the feature from [From the edge to the event log](/from-the-edge-to-the-event-log/). A signed-in user registers an author, and author names are unique within the organization. [*Arc: commands and queries without the plumbing*](/arc-commands-and-queries/) covers the pipeline and the proxies in general.
+The example is the feature from [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/). A signed-in user registers an author, and author names are unique within the organization. [*Arc: commands and queries without the plumbing*](/arc-commands-and-queries/) covers the pipeline and the proxies in general.
 
 ## Validation that runs in two places
 

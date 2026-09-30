@@ -1,6 +1,6 @@
 ---
-title: "Part 11: Tenancy and identity end to end"
-date: 2026-09-30T09:13:00Z
+title: "From script to stage · Part 11: Tenancy and identity end to end"
+date: 2026-09-30T09:11:00Z
 authors: sindre
 excerpt: "AuthProxy signs the user in, picks a tenant and forwards it as Tenant-ID. Arc reads a header called x-cratis-tenant-id until you tell it otherwise, and Chronicle turns the tenant into a namespace. Every hop from the edge to storage, what a missing tenant becomes at each one, and what stays yours to check."
 tags:
@@ -11,13 +11,13 @@ tags:
   - chronicle
 ---
 
-*[From the edge to the event log](/from-the-edge-to-the-event-log/) · Part 11 of 23*
+*[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 11 of 23*
 
 AuthProxy forwards the tenant it resolved in a header named `Tenant-ID`. Arc, left on its defaults, reads the tenant from a header named `x-cratis-tenant-id`. Put the two together without configuring either, and Arc ignores the tenant AuthProxy resolved. A request with no `x-cratis-tenant-id` header gets no tenant, and Arc's Chronicle integration sends it to Chronicle's `Default` namespace. Nothing fails, and every organization ends up in one event log. A request that carries `x-cratis-tenant-id` gets whatever tenant the caller put there, because AuthProxy passes that header through.
 
 The workaround is one line, `options.UseHeaderTenancy("Tenant-ID")`. The fix on the proxy side is tracked in the public issue [Cratis/AuthProxy#157](https://github.com/Cratis/AuthProxy/issues/157).
 
-In [From the edge to the event log](/from-the-edge-to-the-event-log/), a signed-in user registers an author, and author names are unique within the user's organization. "Within the organization" rests on a tenant ID that travels from the edge to the database. Take a made-up week with the mismatch in place. Contoso tries to register Jane Austen and is told the name is taken, because Acme registered her on Monday and both organizations are writing to `Default`. On Friday, Acme's admin asks why their author list shows names they've never seen. Every step behind that week is a default, and each one is sensible on its own. Follow one tenant, `acme`, from sign-in to storage, and past the edge a missing tenant turns into `Default` at each hop, without an error.
+In [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/), a signed-in user registers an author, and author names are unique within the user's organization. "Within the organization" rests on a tenant ID that travels from the edge to the database. Take a made-up week with the mismatch in place. Contoso tries to register Jane Austen and is told the name is taken, because Acme registered her on Monday and both organizations are writing to `Default`. On Friday, Acme's admin asks why their author list shows names they've never seen. Every step behind that week is a default, and each one is sensible on its own. Follow one tenant, `acme`, from sign-in to storage, and past the edge a missing tenant turns into `Default` at each hop, without an error.
 
 ![A diagram titled Four hops of a tenant ID. Four boxes from top to bottom, each with an arrow to the next: AuthProxy resolves acme and forwards it as Tenant-ID; Arc's default header is x-cratis-tenant-id; Chronicle namespace acme, mapped from the tenant; MongoDB storage, with Ada+es+acme for events and Ada+acme for read models. From each of the first three boxes an arrow goes to a Default namespace box on the right, holding Ada+es+Default and Ada, labeled with what sends a request there: no strategies, no header, and NotSet or Default. From storage, an arrow points to an Ada+Default box, which does not exist and reads empty.](./four-hops.png)
 

@@ -1,6 +1,6 @@
 ---
-title: "Part 13: Chronicle Workbench, screen by screen"
-date: 2026-09-30T09:11:00Z
+title: "From script to stage · Part 13: Chronicle Workbench, screen by screen"
+date: 2026-09-30T09:13:00Z
 authors: sindre
 excerpt: "The Chronicle server serves its own browser tool on the port your clients already use. What each screen shows, how to follow a failed partition back to one author, and which screens can change a store."
 tags:
@@ -10,13 +10,13 @@ tags:
   - event-sourcing
 ---
 
-*[From the edge to the event log](/from-the-edge-to-the-event-log/) · Part 13 of 23*
+*[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 13 of 23*
 
 Chronicle Workbench has nothing to install. The Chronicle server serves it on port 35000, the same TLS port your clients connect to, so starting Chronicle starts the Workbench with it.
 
 [Chronicle](https://cratis.io/chronicle/) is an event-sourcing database and processing runtime with a first-class .NET SDK, and [clients](https://cratis.io/chronicle-clients/) for TypeScript, Kotlin/Java (JVM) and Elixir. Storage is pluggable, with providers for MongoDB (the default), PostgreSQL, SQL Server and SQLite. [Chronicle Workbench](https://cratis.io/chronicle/workbench/) ships with Chronicle and runs locally in your browser. Once you're authorized, it shows what the running Chronicle is doing, and previews how a projection will behave for the projection features it supports.
 
-The running example is the feature from [From the edge to the event log](/from-the-edge-to-the-event-log/): a signed-in user registers an author, and author names are unique within the organization. Say an author registers without an error and never appears in the list of authors. The command succeeded, so the event should be in the log, and the interesting part is what happened after the append. Most of the Workbench's screens answer a piece of that.
+The running example is the feature from [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/): a signed-in user registers an author, and author names are unique within the organization. Say an author registers without an error and never appears in the list of authors. The command succeeded, so the event should be in the log, and the interesting part is what happened after the append. Most of the Workbench's screens answer a piece of that.
 
 ## Starting one locally
 

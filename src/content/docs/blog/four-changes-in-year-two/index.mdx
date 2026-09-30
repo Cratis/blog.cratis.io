@@ -1,6 +1,6 @@
 ---
-title: "Part 07: Year two"
-date: 2026-09-30T09:17:00Z
+title: "From script to stage · Part 07: Year two"
+date: 2026-09-30T09:07:00Z
 authors: sindre
 excerpt: "A new event shape, a new view over old events, a correction to a stored fact and an observer stuck on one stream look alike, and they aren't. What each one changes in Chronicle, what the kernel works out on its own, and what an operator still decides."
 tags:
@@ -11,11 +11,11 @@ tags:
   - operations
 ---
 
-*[From the edge to the event log](/from-the-edge-to-the-event-log/) · Part 07 of 23*
+*[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 07 of 23*
 
 When a Chronicle client appends an event in the old shape of its type, the kernel stores the new shape next to it. Append the new shape and the kernel stores the old one as well, translated back. Two services written a year apart can share an event type, each reading the generation it was built against, and nobody runs a migration script over the store.
 
-That's one of four kinds of change a system meets after launch. In [From the edge to the event log](/from-the-edge-to-the-event-log/), a signed-in user registers an author, and author names are unique within the organization. Take a made-up but ordinary year for that feature. The business wants the name split into a first and a last name. Someone wants a new list of authors on a screen that didn't exist at launch. Support finds one author registered with a misspelled name. And the reactor that sends welcome mail has stopped on one author and stays stopped.
+That's one of four kinds of change a system meets after launch. In [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/), a signed-in user registers an author, and author names are unique within the organization. Take a made-up but ordinary year for that feature. The business wants the name split into a first and a last name. Someone wants a new list of authors on a screen that didn't exist at launch. Support finds one author registered with a misspelled name. And the reactor that sends welcome mail has stopped on one author and stays stopped.
 
 ## Four kinds of change
 

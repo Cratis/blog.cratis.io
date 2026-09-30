@@ -1,6 +1,6 @@
 ---
-title: "Part 01: Events are facts"
-date: 2026-09-30T09:23:00Z
+title: "From script to stage · Part 01: Events are facts"
+date: 2026-09-30T09:01:00Z
 authors: sindre
 excerpt: "An event records something that happened, and no event is taken out of the log afterwards. How to name and shape events that still read in five years, and what Chronicle stores with each one: a sequence number, its source, the operation it belonged to, who caused it and why."
 tags:
@@ -10,11 +10,11 @@ tags:
   - arc
 ---
 
-*[From the edge to the event log](/from-the-edge-to-the-event-log/) · Part 01 of 23*
+*[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 01 of 23*
 
 A table row holds the last thing that happened to it. Change an author's name in a row and the old name is gone, along with the request that changed it, the person who sent it and the reason. In an event-sourced system the change is a new fact at the end of a log. It gets a sequence number that never changes. The request, the identity behind it and the chain of causes are stored with it, and nothing recorded before it moves.
 
-That difference decides how you name an event and what you put in it. [From the edge to the event log](/from-the-edge-to-the-event-log/) follows one small feature through all of Cratis: a signed-in user registers an author, and author names are unique within the organization. The feature records a single fact, `AuthorRegistered`, and everything else in its life is built on that fact.
+That difference decides how you name an event and what you put in it. [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) follows one small feature through all of Cratis: a signed-in user registers an author, and author names are unique within the organization. The feature records a single fact, `AuthorRegistered`, and everything else in its life is built on that fact.
 
 The fact has to hold up over time. In month three someone asks to be forgotten, and the author's name is personal data. In month nine a view stops updating. In year two the event needs a new field and a second service wants to hear about new authors. What goes into `AuthorRegistered` today decides how each of those goes.
 
@@ -224,5 +224,5 @@ Of all the design decisions in an event-sourced system, the events are the most 
 
 ---
 
-- Previous: [From the edge to the event log](/from-the-edge-to-the-event-log/), the start of the series
+- Previous: [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/), the start of the series
 - Next: [Part 02 — Inside Chronicle](/inside-chronicle/)
