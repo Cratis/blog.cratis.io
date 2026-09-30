@@ -85,30 +85,22 @@ Press Play, and Studio starts a disposable Stage session for the model, so you c
 
 Export the model as Screenplay, as one `.play` document or a folder of them, or as Mermaid or JSON. Commit the Screenplay next to the code and review it as a diff. Importing it back shows a preview of what will change and warns about anything it can't bring in.
 
-Screenplay text looks like this. It's the lending example from the [Screenplay docs](https://cratis.io/screenplay/getting-started/), where a member borrows a book, written by hand and not exported from Studio:
+Screenplay reads well as a diff. This one, written by hand as an illustration and not exported from Studio, adds a rule to the `RegisterAuthor` slice of the author feature:
 
-```text
-    slice StateChange BorrowBook
-      command BorrowBook
-        bookId     BookId
-        borrowedBy MemberId
-        authorize  IsMember
-        validate
-          bookId not empty  message "A book is required"
-        produces BookBorrowed
-          bookId       = bookId
-          borrowedBy   = borrowedBy
-          borrowedAt   = $context.occurred
-
-      event BookBorrowed
-        bookId     BookId
-        borrowedBy MemberId
-        borrowedAt DateTime
+```diff
+     slice StateChange RegisterAuthor
+       command RegisterAuthor
+         authorId AuthorId identifier
+         name     AuthorName
+         authorize IsSignedIn
++        validate
++          name not empty  message "A name is required"
+         produces AuthorRegistered
+           for authorId
+           name = name
 ```
 
-The author slice has the same shape, with `RegisterAuthor` where `BorrowBook` is and `AuthorRegistered` where `BookBorrowed` is. The command, its rules and the event it produces sit in one diff.
-
-That makes a change to the author feature reviewable in a pull request before anyone writes code for it. A new rule on the slice shows up as a few changed lines of Screenplay, and the reviewer reads the intent there.
+The rule sits beside the command it guards, so a change to the author feature can be reviewed in a pull request before anyone writes code for it, and the reviewer reads the intent in a few changed lines.
 
 ### Code for one slice
 

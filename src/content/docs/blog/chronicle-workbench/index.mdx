@@ -48,7 +48,7 @@ The Sequences page is a query editor over an [event sequence](https://cratis.io/
 
 If the event isn't in the log, the problem sits on the write side, and the command result or the append result carries the reason. If it is there, the next question is who should have handled it.
 
-Each event type has a page of its own at store level, and it lists the observers that read that type. For `AuthorRegistered`, that list should include the projection behind the `Author` read model. An event type that no observer reads is recorded and then ignored, which is sometimes the intent and sometimes the bug.
+Event types is one store-level list. Selecting a type opens a side panel with its schema and an Observers tab that lists the observers reading it, in every namespace. For `AuthorRegistered`, that list should include the projection behind the `Author` read model. An event type that no observer reads is recorded and then ignored, which is sometimes the intent and sometimes the bug.
 
 ## Who should have handled it
 
@@ -56,7 +56,7 @@ The Observers page lists every [observer](https://cratis.io/chronicle/concepts/o
 
 An observer's position doesn't say whether it's healthy, because one that has stopped consuming looks exactly like one with nothing to do. The Failed partitions page answers that.
 
-The observer's detail view has a tab for connected clients, with each client's type, version, machine, process and when it was last seen. An observer with no connected client has nobody to deliver events to. That's the normal state while the application is stopped, and the first thing to check when it's supposed to be running.
+The observer's detail view has a connected clients section in its Summary tab, with each client's connection, type, version, machine, process ID and process. When a client was last seen is on the Connected Clients page. An observer with no connected client has nobody to deliver events to. That's the normal state while the application is stopped, and the first thing to check when it's supposed to be running.
 
 ## Why it failed
 
@@ -93,7 +93,7 @@ The Read models page lists the read-model definitions in the namespace, their oc
 
 ## Around the edges
 
-The dashboard gives key figures, a distribution of events by type and a breakdown by namespace. The Jobs page shows replays, catch-ups and migrations with their type, status and progress. The Recommendations page shows the replays Chronicle has filed for a person to decide on, each with a name, a description and when it occurred.
+The dashboard gives key figures, a distribution of events by type and a breakdown by namespace. The Jobs page shows replays, catch-ups, migrations and failed-partition retries with their type, status and progress. The Recommendations page shows the replays Chronicle has filed for a person to decide on, each with a name, a description and when it occurred.
 
 The other store-level pages aren't on the missing author's route: read-model types, known identities, [webhooks](https://cratis.io/chronicle/webhooks/), external services, captures and a page that seeds events into a store.
 
