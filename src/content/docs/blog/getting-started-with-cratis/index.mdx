@@ -229,7 +229,7 @@ A few differences from `dotnet new` matter on the first run. `--language` (`csha
 
 When it's done, `cratis new` synchronizes the project's AI configuration, the same work `cratis ai update` does. Every template ships a `.cratis/ai.json` that selects the Cratis AI profiles, languages and assistant integrations, so after `dotnet new` you run `cratis ai update` yourself, and after `cratis new` there's nothing left to run. [*AI across the Cratis stack*](/ai-across-the-cratis-stack/) goes into what that installs, and [*The Cratis CLI, from diagnose to llm-context*](/the-cratis-cli/) covers the rest of the CLI.
 
-The package holds four .NET templates. `cratis` is the web application above, and `cratis-aspire` is the same application orchestrated with .NET Aspire.
+The package holds four .NET templates. `cratis` is the web application above, and `cratis-aspire` is the same application orchestrated with .NET Aspire. A minimal AppHost that runs Chronicle for a project looks like this:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
