@@ -26,6 +26,26 @@ Not every team is on .NET, and not every service in one system should have to be
 On the JVM, [Arc for Kotlin](https://cratis.io/arc/backend/kotlin/) is a Spring Boot implementation for Kotlin and Java, published to Maven Central. This command and its event come from its Chronicle Spring Boot sample, trimmed, and the TypeScript tab has the same command from Arc for TypeScript's Chronicle guide:
 
 <Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+using Cratis.Arc.Authorization;
+using Cratis.Arc.Commands.ModelBound;
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.Keys;
+
+[EventType]
+public record TaskCreated(string Title);
+
+[Command]
+[AllowAnonymous]
+public record CreateTask([Key] string Id, string Title)
+{
+    public TaskCreated Handle() => new(Title);
+}
+```
+
+</TabItem>
 <TabItem label="Kotlin">
 
 ```kotlin
@@ -92,6 +112,11 @@ export class CreateTask {
 ```
 
 </TabItem>
+<TabItem label="Elixir">
+
+Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
+
+</TabItem>
 </Tabs>
 
 The command returns the event, and Arc's Chronicle integration, which the sample uses, appends it to the event source named by `@CommandKey`. Arc for Kotlin also has validation, authorization, tenancy, observable queries and in-process command scenarios. It isn't at parity with .NET. Command operations and aggregates aren't in it, and it runs only on Spring Boot.
@@ -130,6 +155,20 @@ A command is a `@Command` class with a `handle()` method, and a query is a compa
 A query stays live by returning something that emits. In Kotlin that's a `Flow` or a `StateFlow`. In Java it's a JDK `Flow.Publisher` or Arc's `ObservableState<T>`, and with the optional `arc-rxjava3` artifact it can be an RxJava 3 `Observable`. The Kotlin and Java tabs follow the [observable queries guide](https://cratis.io/arc/backend/kotlin/guides/observable-queries/), and the TypeScript tab follows Arc for TypeScript's guide to observable queries:
 
 <Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+[ReadModel]
+[AllowAnonymous]
+public record TaskView(string Id, string Title)
+{
+    static readonly BehaviorSubject<IEnumerable<TaskView>> Tasks = new([]);
+
+    public static ISubject<IEnumerable<TaskView>> All() => Tasks;
+}
+```
+
+</TabItem>
 <TabItem label="Kotlin">
 
 ```kotlin
@@ -176,6 +215,11 @@ export class TaskView {
     static all(): Observable<TaskView[]> { return tasks; }
 }
 ```
+
+</TabItem>
+<TabItem label="Elixir">
+
+Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
 
 </TabItem>
 </Tabs>

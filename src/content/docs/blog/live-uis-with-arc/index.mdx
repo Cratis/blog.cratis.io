@@ -11,6 +11,8 @@ tags:
   - typescript
 ---
 
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
 *[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 09 of 23*
 
 In Arc, the difference between a query that loads a list once and a query that keeps pushing new results to a React screen is the return type of one C# method, as long as the data it returns comes from a source that notifies on change. Return a list and the browser gets a snapshot. Return an `ISubject` of that list and the generated hook subscribes, and the server pushes later results to it over Server-Sent Events or WebSocket. The C# record stays the same. The generator writes an observable query class instead of a plain one, and the component still calls `.use()`, whose tuple is `[result, setSorting]` instead of `[result, perform, setSorting]`.
@@ -20,6 +22,9 @@ In [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-
 ## A live query is a return type
 
 A C# [model-bound query](https://cratis.io/arc/backend/csharp/queries/model-bound/) is a static method on a `[ReadModel]` record. Returning `ISubject<IEnumerable<T>>`, or `ISubject<T>` for one item, makes it an [observable query](https://cratis.io/arc/backend/csharp/queries/model-bound/observable-queries/). The Ideas board in the Cratis Samples repository keeps its ideas in memory and observes them:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
 
 ```csharp
 [ReadModel, AllowAnonymous]
@@ -44,6 +49,94 @@ public sealed class IdeaStore : IDisposable
 }
 ```
 
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+@ReadModel
+@AllowAnonymous
+data class Idea(val id: IdeaId, val title: IdeaTitle, val summary: IdeaSummary) {
+    companion object {
+        @JvmStatic
+        fun observeIdeas(@FromServices store: IdeaStore): Flow<List<Idea>> = store.observe()
+    }
+}
+
+@Component
+class IdeaStore {
+    private val ideas = MutableStateFlow<List<Idea>>(emptyList())
+
+    fun capture(idea: Idea) {
+        ideas.update { listOf(idea) + it }
+    }
+
+    fun observe(): Flow<List<Idea>> = ideas
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+@ReadModel
+@AllowAnonymous
+public record Idea(IdeaId id, IdeaTitle title, IdeaSummary summary) {
+    public static Flow.Publisher<List<Idea>> observeIdeas(@FromServices IdeaStore store) {
+        return store.observe();
+    }
+}
+
+@Component
+public final class IdeaStore {
+    private final ObservableState<List<Idea>> ideas = new ObservableState<>(List.of());
+
+    public synchronized void capture(Idea idea) {
+        var updated = new ArrayList<Idea>();
+        updated.add(idea);
+        updated.addAll(ideas.get());
+        ideas.set(List.copyOf(updated));
+    }
+
+    public Flow.Publisher<List<Idea>> observe() {
+        return ideas;
+    }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+export class IdeaStore {
+    readonly #ideas = new BehaviorSubject<Idea[]>([]);
+
+    capture(idea: Idea): void {
+        this.#ideas.next([idea, ...this.#ideas.value]);
+    }
+
+    observe(): Observable<Idea[]> { return this.#ideas; }
+}
+
+@readModel()
+@allowAnonymous()
+export class Idea {
+    @field(IdeaId) id!: IdeaId;
+    @field(IdeaTitle) title!: IdeaTitle;
+    @field(IdeaSummary) summary!: IdeaSummary;
+
+    @query({ observable: true }, service(IdeaStore))
+    static observeIdeas(store: IdeaStore): Observable<Idea[]> { return store.observe(); }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
+
+</TabItem>
+</Tabs>
+
 `Task<ISubject<T>>` is allowed as well. An arbitrary `IObservable<T>` isn't something Arc discovers as a query. You can compose with Rx operators such as `Select` or `CombineLatest`, as long as the subscription you return releases every upstream subscription when it's disposed and passes terminal errors on. The direct transports dispose the subscription they receive.
 
 The return type alone doesn't open a connection. The client decides whether it wants a one-off snapshot, a direct SSE or WebSocket connection, or a subscription on a shared hub, and the default is the hub.
@@ -60,6 +153,9 @@ In the Ideas board there's no event store. The command's `Handle(IdeaStore store
 
 With Chronicle and MongoDB, the chain is longer. This is the author list from Cratis's [full-app walkthrough](https://cratis.io/build-a-full-app/):
 
+<Tabs syncKey="language">
+<TabItem label="C#">
+
 ```csharp
 [ReadModel]
 [FromEvent<AuthorRegistered>]
@@ -69,6 +165,66 @@ public record Author(AuthorId Id, string Name)
         collection.Observe();
 }
 ```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+@ReadModel
+@io.cratis.chronicle.readModels.ReadModel
+@FromEvent(AuthorRegistered::class)
+data class Author(@FromEventSourceId val id: String = "", val name: String = "") {
+    companion object {
+        @JvmStatic
+        fun allAuthors(@FromServices queries: MongoObservableQuery): Flow<List<Author>> =
+            queries.observe<Author>()
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+@ReadModel
+@io.cratis.chronicle.readModels.ReadModel
+@FromEvent(eventType = AuthorRegistered.class)
+public class Author {
+    @FromEventSourceId
+    public String id = "";
+
+    public String name = "";
+
+    public static Flow.Publisher<List<Author>> allAuthors(@FromServices MongoObservableQuery queries) {
+        return queries.observePublisher(Author.class);
+    }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+@readModel()
+@fromEvent(AuthorRegistered)
+export class Author {
+    @field(AuthorId) id!: AuthorId;
+    @field(String) name!: string;
+
+    @query({ observable: true }, service(ChronicleReadModels))
+    static allAuthors(models: ChronicleReadModels): Observable<Author[]> {
+        return models.observeAll(Author, author => author.id.toString());
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
+
+</TabItem>
+</Tabs>
 
 The command returns an `AuthorRegistered` event and Chronicle appends it. The projection declared by `[FromEvent<AuthorRegistered>]` writes the `Author` document to MongoDB. `collection.Observe()` sees that document change through a MongoDB change stream, and Arc pushes the new result to every subscribed client.
 

@@ -11,6 +11,8 @@ tags:
   - chronicle
 ---
 
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
 *[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 11 of 23*
 
 AuthProxy forwards the tenant it resolved in a header named `Tenant-ID`. Arc, left on its defaults, reads the tenant from a header named `x-cratis-tenant-id`. Put the two together without configuring either, and Arc ignores the tenant AuthProxy resolved. A request with no `x-cratis-tenant-id` header gets no tenant, and Arc's Chronicle integration sends it to Chronicle's `Default` namespace. Nothing fails, and every organization ends up in one event log. A request that carries `x-cratis-tenant-id` gets whatever tenant the caller put there, because AuthProxy passes that header through.
@@ -65,6 +67,9 @@ Identity and tenant arrive by the same route, as headers the proxy sets. Arc tru
 
 Arc reads the tenant from a header too, but its default header name is `x-cratis-tenant-id`, so point it at the proxy's header. The [tenant resolver docs](https://cratis.io/arc/backend/csharp/tenancy/resolvers/) show the setting with a custom name, and the extension method lives in `Cratis.Arc.Tenancy`:
 
+<Tabs syncKey="language">
+<TabItem label="C#">
+
 ```csharp
 using Cratis.Arc;
 using Cratis.Arc.Tenancy;
@@ -74,6 +79,39 @@ builder.AddCratisArc(options =>
     options.UseHeaderTenancy("Tenant-ID");
 });
 ```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```properties
+cratis.arc.tenancy.header-name=Tenant-ID
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```properties
+cratis.arc.tenancy.header-name=Tenant-ID
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { ArcApplication } from '@cratis/arc.core';
+
+const builder = ArcApplication.createBuilder({
+    tenancy: { httpHeader: 'Tenant-ID' }
+});
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
+
+</TabItem>
+</Tabs>
 
 With the default resolvers, a missing header doesn't reject the request. It selects the unset tenant and then Chronicle's default namespace, so decide deliberately whether that's allowed.
 
@@ -143,6 +181,9 @@ Arc's MongoDB integration uses the same shape, the configured base database for 
 
 A scheduled job, or a reactor that starts work later, has no header to read, so it names its tenant. Arc's [command pipeline](https://cratis.io/arc/backend/csharp/commands/command-pipeline/) shows the pattern with a cart:
 
+<Tabs syncKey="language">
+<TabItem label="C#">
+
 ```csharp
 public class TenantCartJob(ITenantScope tenants, ICommandPipeline pipeline)
 {
@@ -155,6 +196,70 @@ public class TenantCartJob(ITenantScope tenants, ICommandPipeline pipeline)
     }
 }
 ```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+class TenantCartJob(
+    private val pipeline: CommandPipeline,
+    private val services: ServiceResolver
+) {
+    suspend fun add(tenant: TenantId, sku: Sku, quantity: Quantity, principal: ArcPrincipal): CommandResult<*> =
+        pipeline.execute(
+            AddItemToCart(sku, quantity),
+            CommandExecutionOptions(UUID.randomUUID(), principal, services, tenant.value())
+        )
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+public class TenantCartJob {
+    private final BlockingCommandPipeline pipeline;
+    private final ServiceResolver services;
+
+    public TenantCartJob(BlockingCommandPipeline pipeline, ServiceResolver services) {
+        this.pipeline = pipeline;
+        this.services = services;
+    }
+
+    public CommandResult<?> add(TenantId tenant, Sku sku, Quantity quantity, ArcPrincipal principal) {
+        return pipeline.execute(
+            new AddItemToCart(sku, quantity),
+            new CommandExecutionOptions(UUID.randomUUID(), principal, services, tenant.value()));
+    }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+export class TenantCartJob {
+    constructor(private readonly app: ArcApplication) {}
+
+    add(tenant: string, sku: string, quantity: number, principal: Principal, signal: AbortSignal): Promise<CommandResult> {
+        return this.app.server.executeCommand('AddItemToCart', { sku, quantity }, {
+            correlationId: randomUUID(),
+            principal,
+            tenantId: tenant,
+            signal,
+            allowedSeverity: Severity.Warning
+        });
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
+
+</TabItem>
+</Tabs>
 
 `Begin` refuses an empty tenant, and the explicit scope wins over the configured resolver, even during an HTTP request. Dependency injection is where it goes wrong. A tenant-scoped service, such as Chronicle's event store or a `DbContext`, that was already resolved in an existing DI scope stays bound to that scope's original tenant after the current tenant changes. Create the DI scope inside the tenant scope. The `Execute` call above takes no scope of its own and creates one for you.
 
