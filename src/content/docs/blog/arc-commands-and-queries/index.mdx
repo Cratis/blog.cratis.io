@@ -87,17 +87,25 @@ export class RegisterAuthor {
 ```
 
 </TabItem>
+<TabItem label="Elixir">
+
+Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
+
+</TabItem>
 </Tabs>
 
 The TypeScript tab is Arc for TypeScript, an early source preview whose packages aren't on npm yet.
 
 That's the whole command. [Arc](https://cratis.io/arc/) gives it an HTTP route and runs validation and [declared authorization](https://cratis.io/arc/backend/csharp/authorizing-commands-and-queries/) on it (`[Authorize]`, roles and policies). The handler returns an `AuthorRegistered` event, and the command can [append the event it returns](https://cratis.io/arc/backend/csharp/chronicle/commands/events/). You write no controller, no DTO and no registration list, and the name travels as a typed value instead of a bare string. The service code, the authorization policy and the storage stay yours.
 
-Arc discovers a command when the type has `[Command]` and a public instance `Handle()`. The route comes from the configured prefix, `api` by default, then the namespace in kebab-case with its leading segments skipped, then the type name. An explicit path is kept exactly as written. Nothing about this needs an event store.
+In .NET, Arc discovers a command when the type has `[Command]` and a public instance `Handle()`. The route comes from the configured prefix, `api` by default, then the namespace in kebab-case with its leading segments skipped, then the type name. An explicit path is kept exactly as written. Nothing about this needs an event store.
 
-`AuthorName` is a `ConceptAs<string>`. On the wire it's just the string, and the proxy generator maps it to a TypeScript value type, so the C# model gets a named type without the HTTP contract getting a wrapper object.
+`AuthorName` is a `ConceptAs<string>`. On the wire it's just the string, and in .NET the proxy generator maps it to a TypeScript value type, so the C# model gets a named type without the HTTP contract getting a wrapper object. Arc for Kotlin and Java erase it to the underlying type in the generated TypeScript.
 
 Dependencies go on `Handle()` as parameters, resolved from the command's service scope. A `CancellationToken` parameter gets the request-aborted token over HTTP. A version of the command with a first and last name, where the command also produces the new author's id, shows the other half of the model:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
 
 ```csharp
 [EventType]
@@ -113,9 +121,79 @@ public record RegisterAuthor(AuthorName FirstName, AuthorName LastName)
 }
 ```
 
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+@EventType
+data class AuthorRegistered(val firstName: AuthorName, val lastName: AuthorName)
+
+@Command
+data class RegisterAuthor(val firstName: AuthorName, val lastName: AuthorName) {
+    fun provide(): AuthorId = AuthorId.new()
+
+    fun handle(authorId: AuthorId): Pair<AuthorId, EventForEventSourceId> =
+        authorId to EventForEventSourceId(authorId.value().toString(), AuthorRegistered(firstName, lastName))
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+@EventType
+public record AuthorRegistered(AuthorName firstName, AuthorName lastName) { }
+
+@Command
+public record RegisterAuthor(AuthorName firstName, AuthorName lastName) {
+    public AuthorId provide() { return AuthorId.newId(); }
+
+    public CommandResponseValues handle(AuthorId authorId) {
+        return CommandResponseValues.of(
+            authorId,
+            new EventForEventSourceId(authorId.value().toString(), new AuthorRegistered(firstName, lastName)));
+    }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+@eventType()
+export class AuthorRegistered {
+    @field(AuthorName) firstName: AuthorName;
+    @field(AuthorName) lastName: AuthorName;
+    constructor(firstName: AuthorName = new AuthorName(''), lastName: AuthorName = new AuthorName('')) {
+        this.firstName = firstName;
+        this.lastName = lastName;
+    }
+}
+
+@command()
+export class RegisterAuthor {
+    @field(AuthorName) firstName!: AuthorName;
+    @field(AuthorName) lastName!: AuthorName;
+
+    provide(): AuthorId { return AuthorId.create(); }
+
+    handle(authorId: AuthorId) {
+        return tuple(eventSourceIdResponse(authorId.toString()), new AuthorRegistered(this.firstName, this.lastName));
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
+
+</TabItem>
+</Tabs>
+
 `Provide()` runs after the request has passed authorization and validation, and whatever it returns is handed to `Handle()`. It's where a command fetches or creates what it needs. It can also stop the command with a validation result.
 
-What `Handle()` returns decides the response. `void` and `Task` give no response. A plain `T` or `Task<T>` becomes the response, unless a response handler claims it. A `Result<TSuccess, TError>` from `Cratis.Monads` is processed for whichever alternative is active. A tuple is split. Arc processes the values it has handlers for and allows at most one unhandled value, which becomes the response. In the command above, the Chronicle integration appends the event under the new `AuthorId`, and the id goes back to the caller as the response. Two unhandled values fail with `MultipleUnhandledTupleValues`. An arbitrary error record doesn't mark a command as failed on its own, and a returned `ValidationResult` does.
+In .NET, what `Handle()` returns decides the response. `void` and `Task` give no response. A plain `T` or `Task<T>` becomes the response, unless a response handler claims it. A `Result<TSuccess, TError>` from `Cratis.Monads` is processed for whichever alternative is active. A tuple is split. Arc processes the values it has handlers for and allows at most one unhandled value, which becomes the response. In the command above, the Chronicle integration appends the event under the new `AuthorId`, and the id goes back to the caller as the response. Two unhandled values fail with `MultipleUnhandledTupleValues`. An arbitrary error record doesn't mark a command as failed on its own, and a returned `ValidationResult` does.
 
 ## The order is part of the contract
 
@@ -157,6 +235,9 @@ Authorization is declared on the command or query it protects. `[Authorize]` req
 
 [Queries are authorized](https://cratis.io/arc/backend/csharp/queries/model-bound/authorization/) the same way, and a method-level attribute replaces the type-level one:
 
+<Tabs syncKey="language">
+<TabItem label="C#">
+
 ```csharp
 using System.Collections.Generic;
 using Cratis.Arc.Authorization;
@@ -180,13 +261,119 @@ public record DebitAccount(AccountId Id, AccountName Name, decimal Balance)
 }
 ```
 
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+package banking.accounts
+
+import io.cratis.arc.artifacts.FromServices
+import io.cratis.arc.artifacts.ReadModel
+import io.cratis.arc.authorization.Roles
+import io.cratis.arc.queries.Path
+import java.math.BigDecimal
+
+@ReadModel
+@Roles("AccountReader")
+data class DebitAccount(val id: AccountId, val name: AccountName, val balance: BigDecimal) {
+    companion object {
+        @JvmStatic
+        @Path("/api/accounts")
+        fun allAccounts(@FromServices accounts: DebitAccountRepository): List<DebitAccount> =
+            accounts.findAll()
+
+        @JvmStatic
+        @Roles("Admin", "Auditor")
+        @Path("/api/accounts/overdrawn")
+        fun overdrawnAccounts(@FromServices accounts: DebitAccountRepository): List<DebitAccount> =
+            accounts.findOverdrawn()
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+package banking.accounts;
+
+import io.cratis.arc.artifacts.FromServices;
+import io.cratis.arc.artifacts.ReadModel;
+import io.cratis.arc.authorization.Roles;
+import io.cratis.arc.queries.Path;
+import java.math.BigDecimal;
+import java.util.List;
+
+@ReadModel
+@Roles("AccountReader")
+public record DebitAccount(AccountId id, AccountName name, BigDecimal balance) {
+    @Path("/api/accounts")
+    public static List<DebitAccount> allAccounts(@FromServices DebitAccountRepository accounts) {
+        return accounts.findAll();
+    }
+
+    @Roles({"Admin", "Auditor"})
+    @Path("/api/accounts/overdrawn")
+    public static List<DebitAccount> overdrawnAccounts(@FromServices DebitAccountRepository accounts) {
+        return accounts.findOverdrawn();
+    }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { field } from '@cratis/fundamentals';
+import { path, query, readModel, roles, service } from '@cratis/arc.core';
+import { mongoCollection, type MongoCollection } from '@cratis/arc.mongodb';
+import { AccountId } from './AccountId.js';
+import { AccountName } from './AccountName.js';
+
+export class DebitAccount {
+    @field(AccountId) id!: AccountId;
+    @field(AccountName) name!: AccountName;
+    @field(Number) balance!: number;
+}
+
+const accounts = mongoCollection(DebitAccount);
+
+@readModel()
+@roles('AccountReader')
+export class DebitAccounts {
+    @query(service(accounts))
+    @path('/api/accounts')
+    static allAccounts(items: MongoCollection<DebitAccount>): Promise<DebitAccount[]> {
+        return items.find();
+    }
+
+    @roles('Admin', 'Auditor')
+    @query(service(accounts))
+    @path('/api/accounts/overdrawn')
+    static overdrawnAccounts(items: MongoCollection<DebitAccount>): Promise<DebitAccount[]> {
+        return items.find({ balance: { $lt: 0 } });
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
+
+</TabItem>
+</Tabs>
+
 A role says what kind of caller someone is. It doesn't say which records are theirs. An account reader in that example can read every account. If each caller should only see their own, the query has to derive the owner from the authenticated principal and filter on it, and Arc has no universal mapping from a claim to an owner that could do it for you.
 
 Arc doesn't authenticate anyone either. The host establishes the principal, through ASP.NET authentication or an edge proxy such as AuthProxy, and Arc's attributes check it. Arc doesn't validate or modify the identity provider's token. An [identity details provider](https://cratis.io/arc/understanding-identity-and-access/) can compose application-specific details from the principal, and Arc registers `/.cratis/me` for the frontend only when such a provider exists. The `.cratis-identity` cookie that carries those details is unsigned and under the client's control. It's display data, and backend authorization must never rest on it.
 
 Two more endpoints are open by default. `/.cratis/commands` and `/.cratis/queries` list every command and query with its route and schema, and on .NET they're anonymous unless you configure them otherwise.
 
-Arc reads the tenant from a header too, but its default header name is `x-cratis-tenant-id`, so point it at the proxy's header. The [tenant resolver docs](https://cratis.io/arc/backend/csharp/tenancy/resolvers/) show the setting with a custom name, and the extension method lives in `Cratis.Arc.Tenancy`:
+Arc reads the tenant from a header too, but its default header name is `x-cratis-tenant-id`, so point it at the proxy's header. The [tenant resolver docs](https://cratis.io/arc/backend/csharp/tenancy/resolvers/) show the setting with a custom name, and in .NET the extension method lives in `Cratis.Arc.Tenancy`:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
 
 ```csharp
 using Cratis.Arc;
@@ -198,7 +385,46 @@ builder.AddCratisArc(options =>
 });
 ```
 
-With the default resolvers, a missing header doesn't reject the request. It selects the unset tenant and then Chronicle's default namespace, so decide deliberately whether that's allowed.
+</TabItem>
+<TabItem label="Kotlin">
+
+In Arc for Kotlin and Java this is a Spring property; a request without the header has no tenant (`null`) unless `cratis.arc.tenancy.required` is set, which rejects it with a 400, and the Chronicle integration uses the default event store for a null tenant.
+
+```properties
+cratis.arc.tenancy.header-name=Tenant-ID
+```
+
+</TabItem>
+<TabItem label="Java">
+
+In Arc for Kotlin and Java this is a Spring property; a request without the header has no tenant (`null`) unless `cratis.arc.tenancy.required` is set, which rejects it with a 400, and the Chronicle integration uses the default event store for a null tenant.
+
+```properties
+cratis.arc.tenancy.header-name=Tenant-ID
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+In Arc for TypeScript this is the `tenancy.httpHeader` option; a request without the header has no `tenantId` (`undefined`) unless `tenancy.required` is set, which answers 400, and the Chronicle integration then appends in the `Default` namespace.
+
+```typescript
+import { ArcApplication } from '@cratis/arc.core';
+
+const builder = ArcApplication.createBuilder({
+    tenancy: { httpHeader: 'Tenant-ID' }
+});
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
+
+</TabItem>
+</Tabs>
+
+In .NET, with the default resolvers, a missing header doesn't reject the request. It selects the unset tenant and then Chronicle's default namespace, so decide deliberately whether that's allowed.
 
 A resolver, whether it reads a header, a query string, a claim or a subdomain, selects a tenant. It doesn't check that the caller belongs to it, and a header the caller controls isn't evidence of membership. [*Tenancy and identity end to end*](/tenancy-and-identity-end-to-end/) follows the tenant from the edge to the event store.
 
@@ -218,7 +444,10 @@ Returning `ISubject<T>` instead of a list makes it an observable query, and a br
 
 At build time, Arc's [proxy generator](https://cratis.io/arc/backend/csharp/proxy-generation/) loads the compiled assembly and writes a TypeScript file for each command and query into the folder you configure. A command becomes a class that extends `Command<ICommandName>` and carries its route. Its interface has the C# XML documentation as comments. The class has typed property accessors, property descriptors and a validator, plus the roles from the C# attributes. A static `use()` hook for React returns the command with functions to set and clear its values.
 
-Validation rules are extracted from the compiled model and projected into the generated validator. The Ideas board sample in the Cratis Samples repository has a title concept with a rule on it:
+In .NET, validation rules are extracted from the compiled model and projected into the generated validator. The Ideas board sample in the Cratis Samples repository has a title concept with a rule on it:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
 
 ```csharp
 public record IdeaTitle(string Value) : ConceptAs<string>(Value)
@@ -233,7 +462,94 @@ public class IdeaTitleValidator : ConceptValidator<IdeaTitle>
 }
 ```
 
-The command that captures an idea carries an `IdeaTitle` and an `IdeaSummary`, whose own concept validator limits it to 240 characters. After a build, the generated `CaptureIdea.ts` has both rules, and the hook:
+</TabItem>
+<TabItem label="Kotlin">
+
+Arc for Kotlin and Java runs `ConceptValidator` rules on the server only; the generated TypeScript gets its client rules from Jakarta constraint annotations and shared `FluentModelValidator` rules.
+
+```kotlin
+data class IdeaTitle(private val title: String) :
+    io.cratis.arc.concepts.ConceptAs<String>,
+    io.cratis.chronicle.concepts.ConceptAs<String> {
+    override fun value(): String = title
+    override val value: String get() = title
+
+    companion object {
+        val NOT_SET = IdeaTitle("")
+    }
+}
+
+@Component
+class IdeaTitleValidator : ConceptValidator<IdeaTitle> {
+    override val conceptType: Class<IdeaTitle> = IdeaTitle::class.java
+
+    override fun validate(concept: IdeaTitle): List<ValidationResult> = buildList {
+        if (concept.value().isEmpty()) add(ValidationResult.error("A title is required."))
+        if (concept.value().length > 72) add(ValidationResult.error("A title can be at most 72 characters."))
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+Arc for Kotlin and Java runs `ConceptValidator` rules on the server only; the generated TypeScript gets its client rules from Jakarta constraint annotations and shared `FluentModelValidator` rules.
+
+```java
+public record IdeaTitle(String value)
+        implements io.cratis.arc.concepts.ConceptAs<String>, io.cratis.chronicle.concepts.ConceptAs<String> {
+    public static final IdeaTitle NOT_SET = new IdeaTitle("");
+
+    @Override
+    public String getValue() {
+        return value;
+    }
+}
+
+@Component
+public final class IdeaTitleValidator implements ConceptValidator<IdeaTitle> {
+    @Override
+    public Class<IdeaTitle> getConceptType() {
+        return IdeaTitle.class;
+    }
+
+    @Override
+    public List<ValidationResult> validate(IdeaTitle concept) {
+        var results = new ArrayList<ValidationResult>();
+        if (concept.value().isEmpty()) results.add(ValidationResult.error("A title is required."));
+        if (concept.value().length() > 72) results.add(ValidationResult.error("A title can be at most 72 characters."));
+        return results;
+    }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+export class IdeaTitle extends ConceptAs<string> {
+    static readonly valueType = String;
+    static readonly NotSet = new IdeaTitle('');
+}
+
+@validator(IdeaTitle)
+export class IdeaTitleValidator extends ConceptValidator<IdeaTitle> {
+    constructor() {
+        super();
+        this.ruleFor(_ => _.value).notEmpty().maxLength(72);
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
+
+</TabItem>
+</Tabs>
+
+The command that captures an idea carries an `IdeaTitle` and an `IdeaSummary`, whose own concept validator limits it to 240 characters. In .NET, after a build, the generated `CaptureIdea.ts` has both rules, and the hook:
 
 ```ts
 export class CaptureIdeaValidator extends CommandValidator<ICaptureIdea> {
@@ -251,7 +567,7 @@ static use(initialValues?: ICaptureIdea): [CaptureIdea, SetCommandValues<ICaptur
 }
 ```
 
-Nobody wrote `maxLength(72)` in TypeScript. It came from the concept. When several sources contribute rules for one member, an explicit FluentValidation validator takes precedence, direct concept-validator rules add to it, and DataAnnotations fill in only where nothing else contributed.
+In .NET, nobody wrote `maxLength(72)` in TypeScript. It came from the concept. When several sources contribute rules for one member, an explicit FluentValidation validator takes precedence, direct concept-validator rules add to it, and DataAnnotations fill in only where nothing else contributed.
 
 Only a [supported subset](https://cratis.io/arc/backend/csharp/proxy-generation/validation/) of rules makes the trip: not-empty, not-null, email address, length rules, `Matches` and numeric comparisons against constants. Cross-property comparisons and comparisons against non-numeric constants stay on the server, and so do rules that call services or run custom logic. The generated rules give the user early feedback. The server stays authoritative, and a field the browser accepts can still fail on `POST`.
 

@@ -11,6 +11,8 @@ tags:
   - operations
 ---
 
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
 *[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 07 of 23*
 
 When a Chronicle client appends an event in the old shape of its type, the kernel stores the new shape next to it. Append the new shape and the kernel stores the old one as well, translated back. Two services written a year apart can share an event type, each reading the generation it was built against, and nobody runs a migration script over the store.
@@ -31,6 +33,9 @@ A new generation changes how an event is represented and leaves the stored fact 
 
 Chronicle keeps [generations of an event type](https://cratis.io/chronicle/understanding-event-evolution/) side by side. An event type is identified by a stable id, and a new shape is a new generation of that same id. In the [.NET client](https://cratis.io/chronicle/migrations/dotnet-client/), the current generation carries the id and its generation number, and the previous generation points at the current one:
 
+<Tabs syncKey="language">
+<TabItem label="C#">
+
 ```csharp
 using Cratis.Chronicle.Events;
 
@@ -44,9 +49,101 @@ public record AuthorRegistered(string FirstName, string LastName);
 public record AuthorRegisteredV1(string Name);
 ```
 
-The older record has no id of its own, and that's deliberate. Its event type id is resolved from the current type. A previous generation that simply leaves the id out would fall back to its CLR name and quietly become a different event type, which is the trap this shape closes. The older style, with the same explicit id string on every generation and a different `generation:` value, still works. Give long-lived events an explicit ID. Otherwise event types take their identity from the type name, and renaming the class changes the identity.
+</TabItem>
+<TabItem label="Kotlin">
+
+These clients repeat the explicit id on every generation.
+
+```kotlin
+import io.cratis.chronicle.events.EventType
+
+// Generation 2 (current) - Name has been split into firstName and lastName
+@EventType(id = "author-registered", generation = 2)
+data class AuthorRegistered(val firstName: String, val lastName: String)
+
+// Generation 1 (original) - same explicit id as the current generation, only the generation differs
+@EventType(id = "author-registered", generation = 1)
+data class AuthorRegisteredV1(val name: String)
+```
+
+</TabItem>
+<TabItem label="Java">
+
+These clients repeat the explicit id on every generation.
+
+```java
+import io.cratis.chronicle.events.EventType;
+
+// Generation 2 (current) - name has been split into firstName and lastName
+@EventType(id = "author-registered", generation = 2)
+record AuthorRegistered(String firstName, String lastName) {}
+
+// Generation 1 (original) - same explicit id as the current generation, only the generation differs
+@EventType(id = "author-registered", generation = 1)
+record AuthorRegisteredV1(String name) {}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+These clients repeat the explicit id on every generation.
+
+```typescript
+import { eventType } from '@cratis/chronicle';
+import { field } from '@cratis/fundamentals';
+
+// Generation 2 (current) — Name has been split into FirstName and LastName
+@eventType('author-registered', 2)
+class AuthorRegistered {
+    @field(String) readonly firstName: string;
+    @field(String) readonly lastName: string;
+
+    constructor(firstName: string, lastName: string) {
+        this.firstName = firstName;
+        this.lastName = lastName;
+    }
+}
+
+// Generation 1 (original) — same id, generation 1, kept only so the migration below can
+// upcast from it. It is not the "current" shape of the event any more.
+@eventType('author-registered', 1)
+class AuthorRegisteredV1 {
+    @field(String) readonly name: string;
+
+    constructor(name: string) {
+        this.name = name;
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+These clients repeat the explicit id on every generation.
+
+```elixir
+defmodule MyApp.Events.AuthorRegistered do
+  use Chronicle.Events.EventType, id: "author-registered", generation: 2
+
+  defstruct [:first_name, :last_name]
+end
+
+defmodule MyApp.Events.AuthorRegisteredV1 do
+  use Chronicle.Events.EventType, id: "author-registered", generation: 1
+
+  defstruct [:name]
+end
+```
+
+</TabItem>
+</Tabs>
+
+In the .NET client, the older record has no id of its own, and that's deliberate. Its event type id is resolved from the current type. A previous generation that simply leaves the id out would fall back to its CLR name and quietly become a different event type, which is the trap this shape closes. The older style, with the same explicit id string on every generation and a different `generation:` value, still works, and it's the style the other clients use. Give long-lived events an explicit ID. Otherwise event types take their identity from the type name, and renaming the class changes the identity.
 
 You [declare a migration](https://cratis.io/chronicle/migrations/) between adjacent generations. `Upcast` describes how the old shape becomes the new one, and `Downcast` describes the way back:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
 
 ```csharp
 public class AuthorRegisteredMigration : EventTypeMigration<AuthorRegistered, AuthorRegisteredV1>
@@ -62,9 +159,117 @@ public class AuthorRegisteredMigration : EventTypeMigration<AuthorRegistered, Au
 }
 ```
 
+</TabItem>
+<TabItem label="Kotlin">
+
+The Kotlin client takes property references and records their names as written.
+
+```kotlin
+class AuthorRegisteredMigration :
+    EventTypeMigration<AuthorRegistered, AuthorRegisteredV1>(
+        AuthorRegistered::class,
+        AuthorRegisteredV1::class
+    ) {
+    override fun upcast(builder: EventTypeMigrationBuilder<AuthorRegistered, AuthorRegisteredV1>) {
+        builder
+            .split(AuthorRegistered::firstName, AuthorRegisteredV1::name, " ", 0)
+            .split(AuthorRegistered::lastName, AuthorRegisteredV1::name, " ", 1)
+    }
+
+    override fun downcast(builder: EventTypeMigrationBuilder<AuthorRegisteredV1, AuthorRegistered>) {
+        builder.combine(
+            AuthorRegisteredV1::name,
+            " ",
+            AuthorRegistered::firstName,
+            AuthorRegistered::lastName
+        )
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+The Java client takes property names as strings and records them as written.
+
+```java
+class AuthorRegisteredMigration
+        extends EventTypeMigration<AuthorRegistered,
+                                   AuthorRegisteredV1> {
+    AuthorRegisteredMigration() {
+        super(AuthorRegistered.class, AuthorRegisteredV1.class);
+    }
+
+    @Override
+    public void upcast(EventTypeMigrationBuilder<AuthorRegistered,
+                                                 AuthorRegisteredV1> builder) {
+        builder
+            .split("firstName", "name", " ", 0)
+            .split("lastName", "name", " ", 1);
+    }
+
+    @Override
+    public void downcast(EventTypeMigrationBuilder<AuthorRegisteredV1,
+                                                   AuthorRegistered> builder) {
+        builder.combine("name", " ", "firstName", "lastName");
+    }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+The TypeScript client takes property names as strings, typed as keys of the event class.
+
+```typescript
+@eventTypeMigration(AuthorRegistered, AuthorRegisteredV1)
+class AuthorRegisteredMigration implements IEventTypeMigration<AuthorRegistered, AuthorRegisteredV1> {
+    upcast(builder: IEventMigrationBuilder<AuthorRegistered, AuthorRegisteredV1>): void {
+        builder.properties(propertyBuilder => propertyBuilder
+            .split('firstName', 'name', ' ', 0)
+            .split('lastName', 'name', ' ', 1));
+    }
+
+    downcast(builder: IEventMigrationBuilder<AuthorRegisteredV1, AuthorRegistered>): void {
+        builder.properties(propertyBuilder => propertyBuilder
+            .combine('name', ' ', 'firstName', 'lastName'));
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+The Elixir client takes property names as atoms or strings and writes a snake_case name in camelCase.
+
+```elixir
+defmodule MyApp.Migrations.AuthorRegisteredMigration do
+  use Chronicle.Events.Migration,
+    from: {MyApp.Events.AuthorRegisteredV1, generation: 1},
+    to: {MyApp.Events.AuthorRegistered, generation: 2}
+
+  alias Chronicle.Events.MigrationBuilder
+
+  @impl true
+  def upcast(builder) do
+    builder
+    |> MigrationBuilder.split_property(:name, :first_name, " ", 0)
+    |> MigrationBuilder.split_property(:name, :last_name, " ", 1)
+  end
+
+  @impl true
+  def downcast(builder) do
+    MigrationBuilder.combine_properties(builder, [:first_name, :last_name], :name, " ")
+  end
+end
+```
+
+</TabItem>
+</Tabs>
+
 The builder has a small vocabulary. `Split` and `Combine` handle the name, `RenamedFrom` covers a renamed property and `DefaultValue` fills a new one. `MapValues` translates values, applies the map forward and inverts it on the way back. Values the map doesn't mention pass through. If two old values collapse onto one new value, the way back takes the first pair you declared, so a map like that forces you to choose what the reverse means. `MapValues` exists in the C# client only.
 
-The property expressions are typed, and they resolve to the JSON names Chronicle stores, `[JsonPropertyName]` first and then the client's naming policy. An expression that points at nothing is rejected at registration with `InvalidMigrationPropertyForEventType`. Adding or removing an optional property still needs a migration class, with no operations inside, so that the chain from generation 1 to the current one has no holes.
+In the .NET client, the property expressions are typed, and they resolve to the JSON names Chronicle stores, `[JsonPropertyName]` first and then the client's naming policy. An expression that points at nothing is rejected at registration with `InvalidMigrationPropertyForEventType`. The other clients don't check the names at registration. Adding or removing an optional property still needs a migration class, with no operations inside, so that the chain from generation 1 to the current one has no holes.
 
 The base class refuses a migration whose two generations don't share an event type ID, or that skips a generation. It's a check in the constructor:
 
