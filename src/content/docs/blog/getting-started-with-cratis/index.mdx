@@ -12,6 +12,8 @@ tags:
   - narrator
 ---
 
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
 *[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 23 of 23*
 
 `dotnet new cratis -n MyStore` writes a command that registers a name, a projection that lists the names, a reactor that logs each one and a React page for all of it, before you've written a line of your own. Three more commands start Chronicle, the backend and the frontend. The name you register on that page is an event you can open in the Workbench.
@@ -51,6 +53,9 @@ The backend listens on `http://localhost:5000`, with Swagger at `/swagger`. Vite
 
 The [`cratis` template](https://cratis.io/templates/cratis-web/) puts its sample under `SomeModule/SomeFeature/`, in two vertical slices. `Registration/` holds a `[Command]` record, a `Registered` event, a reactor and a dialog. `Listing/` holds a `[ReadModel]` projected from that event, an observable query and a list page. The command is short:
 
+<Tabs syncKey="language">
+<TabItem label="C#">
+
 ```csharp
 [Command]
 public record Register(SomeName Name)
@@ -63,6 +68,60 @@ public record Register(SomeName Name)
     }
 }
 ```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+@Command
+data class Register(val name: SomeName) {
+    fun handle(): Pair<SomeId, EventForEventSourceId> {
+        val someId = SomeId.new()
+        return someId to EventForEventSourceId(someId.value().toString(), Registered(name))
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+@Command
+public record Register(SomeName name) {
+    public Pair<SomeId, EventForEventSourceId> handle() {
+        var someId = SomeId.newId();
+        return new Pair<>(someId, new EventForEventSourceId(someId.value().toString(), new Registered(name)));
+    }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+@command()
+export class Register {
+    @field(SomeName) name!: SomeName;
+
+    provide(): SomeId {
+        return SomeId.create();
+    }
+
+    handle(someId: SomeId) {
+        return tuple(
+            eventSourceIdResponse(someId.value.toString()),
+            new Registered(this.name));
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
+
+</TabItem>
+</Tabs>
 
 `Handle()` returns the identity it chose and the event to append, and Arc appends it. The project has no controller and registers no route. [Arc derives the route from the namespace](https://cratis.io/arc/backend/csharp/proxy-generation/configuration/routing/), and the build generates the TypeScript proxy the dialog calls, next to its C# source. The route settings live in `appsettings.json` and have matching `CratisProxies*` properties in the `.csproj`, and the two have to change together. [*Arc gotchas: where a convention decides for you*](/arc-gotchas/) shows what happens when they don't, and why a project laid out like this one should leave `CratisProxiesSkipOutputDeletion` at `true`.
 
@@ -110,11 +169,54 @@ Focused samples leave things out so one concept stays visible, and neither the s
 
 [Fundamentals](https://cratis.io/fundamentals/) holds the shared building blocks beneath the Cratis stack. For .NET that means concepts, serialization, convention-based dependency injection and type discovery. For TypeScript it means GUIDs, serialization of derived types, property-path proxies and decorators. Chronicle, Arc and Components build on it, and you can use it on its own. Parity between the two isn't a goal, because the environments offer different things.
 
-Most people meet it through a [concept](https://cratis.io/fundamentals/csharp/concepts/). `ConceptAs<T>` wraps a primitive so the compiler stops you passing an author's ID where a book's ID belongs. Services are registered [by convention](https://cratis.io/fundamentals/csharp/dependency_injection/):
+Most people meet it through a [concept](https://cratis.io/fundamentals/csharp/concepts/). `ConceptAs<T>` wraps a primitive so the compiler stops you passing an author's ID where a book's ID belongs. In .NET, services are registered [by convention](https://cratis.io/fundamentals/csharp/dependency_injection/):
+
+<Tabs syncKey="language">
+<TabItem label="C#">
 
 ```csharp
 public record SocialSecurityNumber(string value) : ConceptAs<string>(value);
 ```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+data class SocialSecurityNumber(private val rawValue: String) : ConceptAs<String> {
+    override fun value(): String = rawValue
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+public record SocialSecurityNumber(String value) implements ConceptAs<String> { }
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+export class SocialSecurityNumber extends ConceptAs<string> {
+    static readonly valueType = String;
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+```elixir
+defmodule MyApp.SocialSecurityNumber do
+  use Chronicle.Concept, type: :string
+end
+```
+
+</TabItem>
+</Tabs>
+
+<Tabs syncKey="language">
+<TabItem label="C#">
 
 ```csharp
 services.AddBindingsByConvention();
@@ -122,6 +224,36 @@ services.AddBindingsByConvention();
 public interface IUserService { }
 public class UserService : IUserService { } // Registered as Transient
 ```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+No Kotlin equivalent: Arc for Kotlin runs on Spring Boot, which registers the services.
+
+</TabItem>
+<TabItem label="Java">
+
+No Java equivalent: Arc for Kotlin runs on Spring Boot, which registers the services.
+
+</TabItem>
+<TabItem label="TypeScript">
+
+Arc for TypeScript registers services explicitly:
+
+```typescript
+export class UserService { }
+
+const builder = ArcApplication.createBuilder();
+builder.services.addTransient(UserService);
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+No Elixir equivalent.
+
+</TabItem>
+</Tabs>
 
 A concept wraps exactly one value. The serializers and converters Fundamentals provides unwrap it to the primitive, so a property you add to a concept is ignored and lost. C# gives you an implicit conversion from the concept to the primitive but not back, so you add that one yourself. `AddBindingsByConvention()` pairs `IUserService` with `UserService` only when both sit in the same namespace and the interface has one implementation. Registrations are transient unless the class says `[Singleton]`, and `[IgnoreConvention]` opts a type out. [*Arc: commands and queries without the plumbing*](/arc-commands-and-queries/) shows what Arc does with concepts, from validation to the TypeScript types.
 
@@ -137,6 +269,9 @@ The folder and class names carry the meaning. A `for_<unit>` folder, a `when_<be
 
 A spec written with Cratis Specifications:
 
+<Tabs syncKey="language">
+<TabItem label="C#">
+
 ```csharp
 public class when_borrowing_an_available_book : given.a_registered_member
 {
@@ -145,6 +280,29 @@ public class when_borrowing_an_available_book : given.a_registered_member
     [Fact] void should_confirm_the_loan() => _receipt.Confirmed.ShouldBeTrue();
 }
 ```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+No Kotlin equivalent: Cratis Specifications runs on xUnit and NUnit.
+
+</TabItem>
+<TabItem label="Java">
+
+No Java equivalent: Cratis Specifications runs on xUnit and NUnit.
+
+</TabItem>
+<TabItem label="TypeScript">
+
+No TypeScript equivalent: Cratis Specifications runs on xUnit and NUnit.
+
+</TabItem>
+<TabItem label="Elixir">
+
+No Elixir equivalent: Cratis Specifications runs on xUnit and NUnit.
+
+</TabItem>
+</Tabs>
 
 becomes a card on the page:
 
