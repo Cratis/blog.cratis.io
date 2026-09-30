@@ -37,13 +37,13 @@ yarn dev
 
 `dotnet run` and `yarn dev` each want a terminal of their own.
 
-Creating the project runs post-creation actions that add the Cratis NuGet packages at their current release and install the frontend dependencies. The template source leaves its package versions open on purpose, and the generated `.csproj` records the versions it resolved, so two projects scaffolded a week apart can differ. `dotnet new` asks before it runs the frontend install. In a script or a dev container nobody is there to answer, and it waits, so pass `--allow-scripts yes`. Add `--packageManager none` as well to pin the packages and skip the install.
+Creating the project runs post-creation actions that add the Cratis NuGet packages at their current release and install the frontend dependencies. The template source leaves its package versions open on purpose, and the generated `.csproj` records the versions it resolved, so two projects scaffolded a week apart can differ. `dotnet new` asks before it runs the frontend install. In a script or a dev container nobody is there to answer, and Cratis.Templates 1.7.2 keeps re-prompting instead of moving on, so pass `--allow-scripts yes`. Add `--packageManager none` as well to pin the packages and skip the install.
 
 `--Database` picks MongoDB, the default, or PostgreSQL, SQL Server or SQLite. Any choice other than MongoDB swaps Arc's MongoDB package for its Entity Framework Core one and points Chronicle's sink at SQL.
 
 `docker compose up -d` starts the Chronicle development image, which bundles MongoDB, and an Aspire dashboard. The compose file is for development. It publishes its ports on every network interface and the Chronicle image uses well-known development credentials, so keep it on a machine you trust. With the default MongoDB setup, events and read models live inside the Chronicle container. `docker compose stop` keeps them and `docker compose down` deletes them.
 
-The backend listens on `http://localhost:5000`, with Swagger at `/swagger`. Vite serves the frontend on `http://localhost:9000` and forwards `/api`, `/.cratis` and `/swagger` to the backend. Register a name on the Demo page and three things happen. The backend logs `Registered: <name>` from the sample reactor, the name appears in the list, and the event shows up in the [Chronicle Workbench](https://cratis.io/chronicle/workbench/) at `https://localhost:35000`, once you've accepted the self-signed development certificate and signed in with the development account.
+The backend listens on `http://localhost:5000`, with Swagger at `/swagger`. Vite serves the frontend on `http://localhost:9000` and forwards `/api`, `/.cratis` and `/swagger` to the backend. Port 5000 has to be free because the Vite proxy is fixed to it, and so does 27017, because the Chronicle image advertises its MongoDB replica-set member as `localhost:27017`. Register a name on the Demo page and three things happen. The backend logs `Registered: <name>` from the sample reactor, the name appears in the list, and the event shows up in the [Chronicle Workbench](https://cratis.io/chronicle/workbench/) at `https://localhost:35000`, once you've accepted the self-signed development certificate and signed in with the development account.
 
 ![A diagram titled The first hour, six numbered steps. 1 Install: dotnet new install Cratis.Templates. 2 Scaffold: dotnet new cratis -n MyStore. 3 Start: docker compose up -d. 4 Run: dotnet run and yarn dev. 5 Register: a name on the Demo page. 6 Inspect: the event in the Workbench. Below, a folder labeled What you get: SomeModule/SomeFeature/, with Registration holding a command, an event, a reactor and a dialog, and Listing holding a read model, an observable query and a list page. A footer reads: Needs the .NET 10 SDK, Docker Compose and Node. Development only.](./first-hour.png)
 
@@ -159,11 +159,12 @@ public record Register(SomeName Name)
 
 ```kotlin
 @Command
-data class Register(val name: SomeName) {
-    fun handle(): Pair<SomeId, EventForEventSourceId> {
-        val someId = SomeId.new()
-        return someId to EventForEventSourceId(someId.value().toString(), Registered(name))
-    }
+@AllowAnonymous
+data class Register(
+    @CommandKey val id: SomeId,
+    val name: SomeName
+) {
+    fun handle(): Registered = Registered(name)
 }
 ```
 
@@ -172,10 +173,10 @@ data class Register(val name: SomeName) {
 
 ```java
 @Command
-public record Register(SomeName name) {
-    public Pair<SomeId, EventForEventSourceId> handle() {
-        var someId = SomeId.newId();
-        return new Pair<>(someId, new EventForEventSourceId(someId.value().toString(), new Registered(name)));
+@AllowAnonymous
+public record Register(@CommandKey SomeId id, SomeName name) {
+    public CompletionStage<Registered> handle() {
+        return CompletableFuture.completedFuture(new Registered(name()));
     }
 }
 ```
@@ -208,7 +209,7 @@ Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
 </TabItem>
 </Tabs>
 
-`Handle()` returns the identity it chose and the event to append, and Arc appends it. The project has no controller and registers no route. [Arc derives the route from the namespace](https://cratis.io/arc/backend/csharp/proxy-generation/configuration/routing/), and the build generates the TypeScript proxy the dialog calls, next to its C# source. The route settings live in `appsettings.json` and have matching `CratisProxies*` properties in the `.csproj`, and the two have to change together. [*Arc gotchas: where a convention decides for you*](/arc-gotchas/) shows what happens when they don't, and why a project laid out like this one should leave `CratisProxiesSkipOutputDeletion` at `true`.
+In C# and TypeScript, `Handle()` returns the identity it chose and the event to append, and Arc appends it. The Kotlin and Java templates take the identity as the command's `@CommandKey`, return only the event, and Arc appends it to that key. The project has no controller and registers no route. [Arc derives the route from the namespace](https://cratis.io/arc/backend/csharp/proxy-generation/configuration/routing/), and the build generates the TypeScript proxy the dialog calls, next to its C# source. The route settings live in `appsettings.json` and have matching `CratisProxies*` properties in the `.csproj`, and the two have to change together. [*Arc gotchas: where a convention decides for you*](/arc-gotchas/) shows what happens when they don't, and why a project laid out like this one should leave `CratisProxiesSkipOutputDeletion` at `true`.
 
 For the author feature, `Register` becomes `RegisterAuthor`, `SomeName` becomes a concept for the author's name, and the listing becomes the list of authors. Uniqueness within the organization is the part the template leaves out. That's a Chronicle constraint, covered in [*Rules that hold when you write*](/rules-that-hold-when-you-write/), and the tenant comes from the edge, as [*Tenancy and identity end to end*](/tenancy-and-identity-end-to-end/) explains.
 
@@ -467,7 +468,7 @@ It reads the log and the schemas and changes nothing in the store. That config f
 
 [cratis.io](https://cratis.io/) is a Starlight site built from many repositories. Most pages are written in the owning product's repository, in its `Documentation/` folder, and the site build copies them in. The edit link on a page therefore points at the product, where a fix belongs. Site-level pages, such as the front page, the scenarios, the AI section, the samples and the tools, live in the Documentation repository. A few tools, Synopsis among them, have no page on the site yet.
 
-A newcomer usually wants one of a handful of pages. [The Cratis stack](https://cratis.io/cratis-stack/) shows how the products fit, [Build a full app](https://cratis.io/build-a-full-app/) is a guided journey through Arc, Chronicle, generated contracts and React, and [learning paths](https://cratis.io/learning-paths/) order the rest. [What's new](https://cratis.io/whats-new/) and [compatibility](https://cratis.io/compatibility/) matter once you've picked versions.
+A newcomer usually wants one of a handful of pages. [The Cratis stack](https://cratis.io/cratis-stack/) shows how the products fit, [Build a full app](https://cratis.io/build-a-full-app/) is a guided journey through Arc, Chronicle, generated contracts and React, and [learning paths](https://cratis.io/learning-paths/) order the rest. [What's new](https://cratis.io/whats-new/) and [compatibility](https://cratis.io/compatibility/) matter once you've picked versions. The model-first layer is experimental and in early development.
 
 For an assistant, the site publishes [`llms.txt`](https://cratis.io/llms.txt), `llms-full.txt` and an `llms.txt` for each product. The bulk archives aren't the best default context for one question.
 
