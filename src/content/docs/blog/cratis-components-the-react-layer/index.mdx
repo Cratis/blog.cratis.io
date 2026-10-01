@@ -15,7 +15,7 @@ tags:
 
 The dialog that registers a name in the `cratis` template has one field and no event handlers. It still keeps its button disabled while validation fails, shows a spinner while the command runs, puts a server's rejection under the field it names and closes only when the command succeeds. Two packages share that work. Arc's React package runs the command and holds the form state, and [Cratis Components](https://cratis.io/components/) draws the dialog, the field and the buttons around it.
 
-Components is a React component library aligned with Arc application patterns. In [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/), a signed-in user registers an author, and author names are unique within the organization. The template you get from [*Getting started with Cratis, and the tools around it*](/getting-started-with-cratis/) already has the two screens that feature needs, a list page and a register dialog, and both are built with Components 4. [*Live UIs*](/live-uis-with-arc/) covered the live query behind the list and the props of `CommandDialog`.
+Components is a React component library aligned with Arc application patterns. In [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/), a signed-in user registers an author, and author names are unique within the organization. The `cratis` template, which `dotnet new cratis` and `cratis new` both scaffold and [*Getting started with Cratis, and the tools around it*](/getting-started-with-cratis/) walks through, already has the two screens that feature needs, a list page and a register dialog, and both are built with Components 4. [*Live UIs*](/live-uis-with-arc/) covered the live query behind the list and the props of `CommandDialog`.
 
 ## Arc underneath, Components on top
 
@@ -74,22 +74,22 @@ Keeping them in CSS also keeps `tsc` quiet. TypeScript 6 checks side-effect impo
 
 ## The registration dialog
 
-The template's dialog, with the names changed for authors:
+The template's dialog, with the names changed for authors. Its `Register` command creates the new id on the server, the shape [*Arc: commands and queries without the plumbing*](/arc-commands-and-queries/) calls `RegisterNewAuthor`, so that's its name here:
 
 ```tsx
 import { CommandDialog } from '@cratis/components/CommandDialog';
 import { InputTextField } from '@cratis/components/CommandForm';
 import { MdEdit } from 'react-icons/md';
-import { RegisterAuthor } from './RegisterAuthor';
+import { RegisterNewAuthor } from './RegisterNewAuthor';
 
 export const RegisterAuthorDialog = () => {
     return (
-        <CommandDialog<RegisterAuthor>
-            command={RegisterAuthor}
+        <CommandDialog<RegisterNewAuthor>
+            command={RegisterNewAuthor}
             title='Register author'
             okLabel='Register'
             cancelLabel='Cancel'>
-            <InputTextField<RegisterAuthor>
+            <InputTextField<RegisterNewAuthor>
                 value={command => command.name}
                 title='Name'
                 icon={<MdEdit />} />
@@ -98,10 +98,10 @@ export const RegisterAuthorDialog = () => {
 };
 ```
 
-`RegisterAuthor` isn't written by hand. After each build, Arc's [proxy generator](https://cratis.io/arc/backend/csharp/proxy-generation/) writes a class for the C# `[Command]` record, and the template ships the one for its `Register` command. Trimmed, and with the names changed, it looks like this:
+`RegisterNewAuthor` isn't written by hand. After each build, Arc's [proxy generator](https://cratis.io/arc/backend/csharp/proxy-generation/) writes a class for the C# `[Command]` record, and the template ships the one for its `Register` command. Trimmed, and with the names changed, it looks like this:
 
 ```typescript
-export class RegisterAuthor extends Command<IRegisterAuthor, Guid> implements IRegisterAuthor {
+export class RegisterNewAuthor extends Command<IRegisterNewAuthor, Guid> implements IRegisterNewAuthor {
     readonly route: string = '/api/authors/registration';
     readonly propertyDescriptors: PropertyDescriptor[] = [
         new PropertyDescriptor('name', String, false),
@@ -124,7 +124,7 @@ export class RegisterAuthor extends Command<IRegisterAuthor, Guid> implements IR
 
 The compiler checks `command => command.name` against the generated class. At runtime, Arc reads the accessor a second time, as source text, and takes the first identifier after a dot as the property name. A plain property read like `command => command.name` is all it can infer. An accessor like `command => command[key]` can't be read that way, and the field needs an explicit `fieldName`. In development, Arc warns in the console when a field stays unbound.
 
-The `Guid` in `Command<IRegisterAuthor, Guid>` is the response type. In C#, the template's handler creates the new id and returns it with the event, so the command responds with the new id as a `Guid` from `@cratis/fundamentals`, and `onSuccess` receives it. The Kotlin and Java templates take the id from the client instead, as a `@CommandKey` on the command. Their dialog adds `initialValues={{ id: crypto.randomUUID() }}`, a UUID string made in the browser, and imports the command from `Api/`, where the Gradle plugin writes the proxies.
+The `Guid` in `Command<IRegisterNewAuthor, Guid>` is the response type. In C#, the template's handler creates the new id and returns it with the event, so the command responds with the new id as a `Guid` from `@cratis/fundamentals`, and `onSuccess` receives it. The Kotlin and Java templates take the id from the client instead, as a `@CommandKey` on the command, the way `RegisterAuthor` does. Their dialog adds `initialValues={{ id: crypto.randomUUID() }}`, a UUID string made in the browser, and imports the command from `Api/`, where the Gradle plugin writes the proxies.
 
 The confirm button is focused when the dialog opens. With a required field the button starts disabled, so a held Enter key can't confirm an empty form. A command with no input, such as a delete, has nothing to keep the button disabled, and [the `CommandDialog` guide](https://cratis.io/components/commanddialog/) recommends `initialFocus={DialogInitialFocus.Cancel}` for those.
 

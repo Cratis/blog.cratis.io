@@ -213,7 +213,7 @@ Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
 
 In C# and TypeScript, `Handle()` returns the identity it chose and the event to append, and Arc appends it. The Kotlin and Java templates take the identity as the command's `@CommandKey`, return only the event, and Arc appends it to that key. The project has no controller and registers no route. [Arc derives the route from the namespace](https://cratis.io/arc/backend/csharp/proxy-generation/configuration/routing/), and the build generates the TypeScript proxy the dialog calls, next to its C# source. The route settings live in `appsettings.json` and have matching `CratisProxies*` properties in the `.csproj`, and the two have to change together. [*Arc gotchas: where a convention decides for you*](/arc-gotchas/) shows what happens when they don't, and why a project laid out like this one should leave `CratisProxiesSkipOutputDeletion` at `true`.
 
-For the author feature, `Register` becomes `RegisterAuthor`, `SomeName` becomes a concept for the author's name, and the listing becomes the list of authors. Uniqueness within the organization is the part the template leaves out. That's a Chronicle constraint, covered in [*Rules that hold when you write*](/rules-that-hold-when-you-write/), and the tenant comes from the edge, as [*Tenancy and identity end to end*](/tenancy-and-identity-end-to-end/) explains.
+For the author feature, `Register` becomes `RegisterAuthor`, `SomeName` becomes a concept for the author's name, and the listing becomes the list of authors. `RegisterAuthor` takes the author's id from the caller, as the Kotlin and Java templates do, instead of creating it in `Handle()`. Uniqueness within the organization is the part the template leaves out. That's a Chronicle constraint, covered in [*Rules that hold when you write*](/rules-that-hold-when-you-write/), and the tenant comes from the edge, as [*Tenancy and identity end to end*](/tenancy-and-identity-end-to-end/) explains.
 
 ## `cratis new`: the same templates from the CLI
 
@@ -392,8 +392,9 @@ public record SocialSecurityNumber(string Value) : ConceptAs<string>(Value);
 
 ```kotlin
 @Pii
-data class SocialSecurityNumber(private val rawValue: String) : ConceptAs<String> {
+data class SocialSecurityNumber(private val rawValue: String) : ArcConceptAs<String>, ChronicleConceptAs<String> {
     override fun value(): String = rawValue
+    override val value: String get() = rawValue
 }
 ```
 
@@ -402,7 +403,12 @@ data class SocialSecurityNumber(private val rawValue: String) : ConceptAs<String
 
 ```java
 @Pii
-public record SocialSecurityNumber(String value) implements ConceptAs<String> { }
+public record SocialSecurityNumber(String value) implements ConceptAs<String>, io.cratis.chronicle.concepts.ConceptAs<String> {
+    @Override
+    public String getValue() {
+        return value;
+    }
+}
 ```
 
 </TabItem>

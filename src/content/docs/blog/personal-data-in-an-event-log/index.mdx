@@ -364,7 +364,7 @@ public record ChangePassword(UserId User, Password OldPassword, Password NewPass
     public Result<PasswordChanged, ValidationResult> Handle(UserCredentials? credentials, IPasswordHasher hasher) =>
         credentials is not null && hasher.Verify(OldPassword, credentials.PasswordHash)
             ? new PasswordChanged(hasher.Hash(NewPassword))
-            : ValidationResult.Error("The old password is wrong.", [nameof(OldPassword)]);
+            : ValidationResult.Error("The old password is wrong.", ["oldPassword"]);
 }
 ```
 

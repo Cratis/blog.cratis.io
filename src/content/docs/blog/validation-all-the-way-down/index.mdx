@@ -31,6 +31,7 @@ That a name isn't empty and has at most 200 characters is true of an author name
 <TabItem label="C#">
 
 ```csharp
+[PII]
 public record AuthorName(string Value) : ConceptAs<string>(Value)
 {
     public static implicit operator AuthorName(string value) => new(value);
@@ -50,6 +51,7 @@ public class AuthorNameValidator : ConceptValidator<AuthorName>
 <TabItem label="Kotlin">
 
 ```kotlin
+@Pii
 data class AuthorName(private val name: String) : ArcConceptAs<String>, ChronicleConceptAs<String> {
     override fun value(): String = name
     override val value: String get() = name
@@ -71,6 +73,7 @@ class AuthorNameValidator : ConceptValidator<AuthorName> {
 <TabItem label="Java">
 
 ```java
+@Pii
 public record AuthorName(String value) implements ConceptAs<String>, io.cratis.chronicle.concepts.ConceptAs<String> {
     @Override
     public String getValue() {
@@ -105,6 +108,7 @@ public final class AuthorNameValidator implements ConceptValidator<AuthorName> {
 From Arc for TypeScript, an early source preview whose packages aren't on npm yet:
 
 ```typescript
+@pii()
 export class AuthorName extends ConceptAs<string> {
     static readonly valueType = String;
 }
@@ -127,6 +131,7 @@ Arc for Elixir doesn't exist, so there's no validator. The Chronicle Elixir clie
 ```elixir
 defmodule MyApp.AuthorName do
   use Chronicle.Concept, type: :string
+  pii()
 end
 ```
 
@@ -149,7 +154,7 @@ After a backend build, the proxy generator copies the rules it can express into 
 
 A .NET rule inside `When` or `Unless` can be copied without its condition, and the browser then applies it every time. With a .NET or TypeScript backend, both name rules reach the browser from the concept. On the JVM the concept validator above runs on the server only, and [browser rules](https://cratis.io/arc/backend/kotlin/guides/validation/) come from a `FluentModelValidator<T>` or Jakarta annotations on the command's members. Arc for TypeScript reports a diagnostic for each rule [it keeps on the server](https://cratis.io/arc/backend/typescript/proxy-generation/validation/).
 
-In the browser, Arc's `CommandForm` runs the generated validator and shows the message under the field, and the `cratis` template's dialog keeps its confirm button disabled while a rule fails. [*Cratis Components, the React layer*](/cratis-components-the-react-layer/) walks through that dialog. Anyone can call the route without the browser, so the server runs every rule again. [*Arc gotchas*](/arc-gotchas/) lists the other ways the copy can drift from the original.
+In the browser, Arc's `CommandForm` runs the generated validator and shows the message under the field. The `cratis` template, the starting application that `dotnet new cratis` or `cratis new` scaffolds and [*Getting started with Cratis, and the tools around it*](/getting-started-with-cratis/) sets up, comes with a register dialog that keeps its confirm button disabled while a rule fails. [*Cratis Components, the React layer*](/cratis-components-the-react-layer/) walks through that dialog. Anyone can call the route without the browser, so the server runs every rule again. [*Arc gotchas*](/arc-gotchas/) lists the other ways the copy can drift from the original.
 
 ## The server, in order
 

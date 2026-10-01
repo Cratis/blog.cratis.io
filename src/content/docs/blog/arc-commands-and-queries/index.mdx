@@ -122,7 +122,11 @@ public record AuthorName(string Value) : ConceptAs<string>(Value)
 
 public class AuthorNameValidator : ConceptValidator<AuthorName>
 {
-    public AuthorNameValidator() => RuleFor(name => name.Value).NotEmpty().MaximumLength(200);
+    public AuthorNameValidator()
+    {
+        RuleFor(name => name.Value).NotEmpty().WithMessage("An author needs a name.");
+        RuleFor(name => name.Value).MaximumLength(200).WithMessage("An author name is at most 200 characters.");
+    }
 }
 ```
 
@@ -151,8 +155,8 @@ class AuthorNameValidator : ConceptValidator<AuthorName> {
     override val conceptType: Class<AuthorName> = AuthorName::class.java
 
     override fun validate(concept: AuthorName): List<ValidationResult> = when {
-        concept.value().isBlank() -> listOf(ValidationResult.error("A name is required."))
-        concept.value().length > 200 -> listOf(ValidationResult.error("A name is at most 200 characters."))
+        concept.value().isBlank() -> listOf(ValidationResult.error("An author needs a name."))
+        concept.value().length > 200 -> listOf(ValidationResult.error("An author name is at most 200 characters."))
         else -> emptyList()
     }
 }
@@ -193,10 +197,10 @@ public final class AuthorNameValidator implements ConceptValidator<AuthorName> {
     @Override
     public List<ValidationResult> validate(AuthorName concept) {
         if (concept.value().isBlank()) {
-            return List.of(ValidationResult.error("A name is required."));
+            return List.of(ValidationResult.error("An author needs a name."));
         }
         if (concept.value().length() > 200) {
-            return List.of(ValidationResult.error("A name is at most 200 characters."));
+            return List.of(ValidationResult.error("An author name is at most 200 characters."));
         }
 
         return List.of();
@@ -227,7 +231,8 @@ export class AuthorName extends ConceptAs<string> {
 export class AuthorNameValidator extends ConceptValidator<AuthorName> {
     constructor() {
         super();
-        this.ruleFor(name => name.value).notEmpty().maxLength(200);
+        this.ruleFor(name => name.value).notEmpty().withMessage('An author needs a name.');
+        this.ruleFor(name => name.value).maxLength(200).withMessage('An author name is at most 200 characters.');
     }
 }
 ```
@@ -353,7 +358,7 @@ Then `Provide()`, then `Handle()`, then response handlers, command operations an
 
 The [HTTP contract](https://cratis.io/arc/http-contract/) fixes the status codes in the same order. Success is 200. An authorization failure is 403 (401 when authentication itself fails). A validation failure, a malformed body or a dependency Arc can't resolve is 400. A result that isn't ready yet is 202, and an exception is 500. A failed result never carries a response value. A malformed or wrongly typed body turns into a validation failure with the reason `malformedRequest`, and the parser's own message isn't echoed back. Outside the Development environment, exception messages and stack traces are replaced with a generic message, and the detail is logged on the server with the correlation id.
 
-Every command also gets a `POST <route>/validate` endpoint. It runs authorization and validation and stops before the handler, which is what the generated client calls for early feedback. A check that passes reserves nothing, so the real `POST` can still fail.
+Every command also gets a `POST <route>/validate` endpoint. It runs authorization and validation and stops before the handler, and a form can call it for early feedback. A check that passes reserves nothing, so the real `POST` can still fail.
 
 Exceptions thrown by a handler, a filter, a response handler or the execution scope are caught into the `CommandResult`. If a handler wrote to a service directly and a later step failed, Arc catches the exception but doesn't roll that write back.
 
@@ -612,7 +617,7 @@ class IdeaTitleValidator : ConceptValidator<IdeaTitle> {
     override val conceptType: Class<IdeaTitle> = IdeaTitle::class.java
 
     override fun validate(concept: IdeaTitle): List<ValidationResult> = buildList {
-        if (concept.value().isEmpty()) add(ValidationResult.error("A title is required."))
+        if (concept.value().isBlank()) add(ValidationResult.error("A title is required."))
         if (concept.value().length > 72) add(ValidationResult.error("A title can be at most 72 characters."))
     }
 }
@@ -644,7 +649,7 @@ public final class IdeaTitleValidator implements ConceptValidator<IdeaTitle> {
     @Override
     public List<ValidationResult> validate(IdeaTitle concept) {
         var results = new ArrayList<ValidationResult>();
-        if (concept.value().isEmpty()) results.add(ValidationResult.error("A title is required."));
+        if (concept.value().isBlank()) results.add(ValidationResult.error("A title is required."));
         if (concept.value().length() > 72) results.add(ValidationResult.error("A title can be at most 72 characters."));
         return results;
     }
