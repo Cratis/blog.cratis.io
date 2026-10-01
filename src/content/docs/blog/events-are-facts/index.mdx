@@ -346,6 +346,141 @@ end
 
 With two events, a projection that shows discounts listens for `DiscountApplied` and never has to ask whether a null meant "no discount" or "we forgot to send it". Chronicle's .NET [code analysis](https://cratis.io/chronicle/code-analysis/chr0012/) flags a nullable event property with rule CHR0012 as a warning, and a nullable property is still allowed. Data collection is the exception. When a form lets someone leave their middle name empty, the event records exactly what was collected, and null is the true value.
 
+In an Arc application, a command handler returns the events and Arc's Chronicle integration appends them together, with `DiscountApplied` included only when the order has a discount:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+using Cratis.Arc.Commands.ModelBound;
+using Cratis.Chronicle.Keys;
+
+[Command]
+public record PlaceOrder([Key] Guid Id, Money Total, Money? Discount)
+{
+    public IEnumerable<object> Handle()
+    {
+        var orderId = new OrderId(Id);
+        var events = new List<object> { new OrderPlaced(orderId, Total) };
+
+        if (Discount is { } discount)
+        {
+            events.Add(new DiscountApplied(orderId, discount));
+        }
+
+        return events;
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import io.cratis.arc.artifacts.Command
+import io.cratis.arc.artifacts.CommandKey
+import io.cratis.arc.commands.CommandResponseValues
+import java.util.UUID
+
+@Command
+data class PlaceOrder(
+    @CommandKey val id: UUID,
+    val total: Money,
+    val discount: Money?
+) {
+    fun handle(): CommandResponseValues {
+        val orderId = OrderId(id)
+        return CommandResponseValues(
+            listOfNotNull(
+                OrderPlaced(orderId, total),
+                discount?.let { DiscountApplied(orderId, it) }
+            )
+        )
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+import io.cratis.arc.artifacts.Command;
+import io.cratis.arc.artifacts.CommandKey;
+import io.cratis.arc.commands.CommandResponseValues;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.UUID;
+
+@Command
+public record PlaceOrder(@CommandKey UUID id, Money total, @Nullable Money discount) {
+    public CommandResponseValues handle() {
+        var orderId = new OrderId(id);
+        var response = CommandResponseValues.builder().add(new OrderPlaced(orderId, total));
+
+        if (discount != null) {
+            response.add(new DiscountApplied(orderId, discount));
+        }
+
+        return response.build();
+    }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+From Arc for TypeScript, an early source preview whose packages aren't on npm yet:
+
+```typescript
+import { command, key, optional } from '@cratis/arc.core';
+import { field, Guid } from '@cratis/fundamentals';
+
+@command()
+export class PlaceOrder {
+    @field(Guid) @key() id!: Guid;
+    @field(Money) total!: Money;
+    @field(Money) @optional() discount?: Money;
+
+    handle() {
+        const orderId = new OrderId(this.id);
+        const events: object[] = [new OrderPlaced(orderId, this.total)];
+
+        if (this.discount) {
+            events.push(new DiscountApplied(orderId, this.discount));
+        }
+
+        return events;
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
+
+```elixir
+defmodule MyApp.PlaceOrder do
+  alias MyApp.Events.{DiscountApplied, OrderPlaced}
+
+  def place_order(%MyApp.OrderId{} = order_id, total, discount) do
+    events = [%OrderPlaced{id: order_id, total: total}]
+
+    events =
+      if discount do
+        events ++ [%DiscountApplied{id: order_id, amount: discount}]
+      else
+        events
+      end
+
+    Chronicle.append_many(order_id.value, events)
+  end
+end
+```
+
+</TabItem>
+</Tabs>
+
 ## Carry what was true then
 
 An event holds the data that was true at the moment it occurred, captured by value. It doesn't point at mutable state that might change later, and it doesn't carry what a consumer can work out for itself. Read it in five years with no other context, and it should still make sense on its own. That five-year test is worth the minute it takes before an event type is committed, because the type will outlive the code that first appended it.
