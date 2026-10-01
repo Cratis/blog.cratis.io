@@ -1,6 +1,6 @@
 ---
-title: "From script to stage · Part 17: Stage and Scene: what happens after a model compiles"
-date: 2026-09-30T09:17:00Z
+title: "From script to stage · Part 21: Stage and Scene: what happens after a model compiles"
+date: 2026-09-30T09:21:00Z
 authors: sindre
 excerpt: "Stage renders a narrow slice of a Screenplay model into C# on Arc and Chronicle, boots a throwaway sandbox and runs the model's examples, and refuses with a code whatever it can't express. Scene is the UI model between a screen in the model and React."
 tags:
@@ -12,7 +12,7 @@ tags:
   - chronicle
 ---
 
-*[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 17 of 25*
+*[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 21 of 26*
 
 A Screenplay model in which one event declares two generations passes `cratis screenplay validate`. Hand the same model to `cratis render`, and it reports `STAGE-ESM-016`, explains it with `CLI-RENDER-003`, and publishes nothing. The model is valid, and the renderer can't turn it into code faithfully, so it doesn't turn it into code at all.
 
@@ -233,5 +233,5 @@ For the author feature, everything the sticky note asked for is inside Stage's v
 
 ---
 
-- Previous: [Part 16 — Screenplay: an event model you can compile](/screenplay-an-event-model-you-can-compile/)
-- Next: [Part 18 — Prologue: a first model of the system you already have](/prologue-a-first-model-of-an-existing-system/)
+- Previous: [Part 20 — Screenplay: an event model you can compile](/screenplay-an-event-model-you-can-compile/)
+- Next: [Part 22 — Prologue: a first model of the system you already have](/prologue-a-first-model-of-an-existing-system/)

@@ -1,6 +1,6 @@
 ---
-title: "From script to stage · Part 14: The Cratis CLI, from diagnose to llm-context"
-date: 2026-09-30T09:14:00Z
+title: "From script to stage · Part 17: The Cratis CLI, from diagnose to llm-context"
+date: 2026-09-30T09:17:00Z
 authors: sindre
 excerpt: "A diagnostic summary that fails on a failed partition and not on lag, a full-screen terminal workbench for the box you reached over SSH, and a command catalog that tells an agent which commands change the server."
 tags:
@@ -11,7 +11,7 @@ tags:
   - event-sourcing
 ---
 
-*[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 14 of 25*
+*[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 17 of 26*
 
 `cratis chronicle diagnose` exits nonzero when the server is unreachable or when a failed partition exists. An observer that's far behind the tail leaves the exit code at zero, and that's deliberate.
 
@@ -236,5 +236,5 @@ For the author who never showed up, the CLI part of the story is short. `diagnos
 
 ---
 
-- Previous: [Part 13 — Chronicle Workbench, screen by screen](/chronicle-workbench/)
-- Next: [Part 15 — Chronicle jobs, scale and performance](/chronicle-jobs-scale-and-performance/)
+- Previous: [Part 16 — Chronicle Workbench, screen by screen](/chronicle-workbench/)
+- Next: [Part 18 — Running Chronicle and a Cratis application in production](/running-chronicle-in-production/)

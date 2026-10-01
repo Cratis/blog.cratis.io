@@ -12,7 +12,7 @@ tags:
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-*[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 01 of 25*
+*[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 01 of 26*
 
 A table row holds the last thing that happened to it. Change an author's name in a row and the old name is gone, along with the request that changed it, the person who sent it and the reason. In an event-sourced system the change is a new fact at the end of a log. It gets a sequence number that never changes. The request, the identity behind it and the chain of causes are stored with it, and nothing recorded before it moves.
 
@@ -26,7 +26,7 @@ The fact has to hold up over time. In month three someone asks to be forgotten, 
 
 Three things in the author feature look alike and do different jobs. `RegisterAuthor` is a command, a request that can be refused because the name is taken or the user isn't allowed to make it. `AuthorRegistered` is an [event](https://cratis.io/chronicle/concepts/event/), the record that a registration did happen. The `Author` row that a list reads from is a read model, derived from the events and rebuildable from them. Because of that split, a wrong view gets fixed by correcting the [projection](https://cratis.io/chronicle/projections/) and replaying the events, and a side effect such as sending an email lives in a [reactor](https://cratis.io/chronicle/reactors/), outside the projection that a replay rebuilds.
 
-![A diagram titled Intent, fact and state, in two sections. The first, What each one is, has three cards joined by arrows: a command, UpdateAddress, an intent that may be refused; an event, AddressChanged, a fact that stays in the log; and a read model, Address row, derived and rebuildable. The second, A nullable property is two facts, shows an OrderPlaced card with an optional Discount, with arrows to two event rows: OrderPlaced with Id and Total, and DiscountApplied with Id and Amount. A note beside them reads: CHR0012 warns, still allowed.](./intent-fact-state.png)
+![A diagram titled Intent, fact and state, in two sections. The first, What each one is, has three cards joined by arrows: a command, UpdateAddress, an intent that may be refused; an event, AddressChanged, a fact that stays in the log; and a read model, Address row, derived and rebuildable. The second, A nullable property is two facts, shows an OrderPlaced card with an optional Discount, with arrows to two event rows: OrderPlaced with CustomerId and Total, and DiscountApplied with Amount. A note beside them reads: CHR0012 warns, still allowed.](./intent-fact-state.png)
 
 *A command asks, an event records, a read model is derived.*
 

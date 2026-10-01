@@ -1,6 +1,6 @@
 ---
-title: "From script to stage · Part 06: Personal data in an event log"
-date: 2026-09-30T09:06:00Z
+title: "From script to stage · Part 13: Personal data in an event log"
+date: 2026-09-30T09:13:00Z
 authors: sindre
 excerpt: "Chronicle erases a person by destroying their key. The events stay, their marked values read as empty, and the fence stops the key from coming back."
 tags:
@@ -13,7 +13,7 @@ tags:
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-*[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 06 of 25*
+*[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 13 of 26*
 
 Erasing a person in Chronicle is one call that deletes their key. Every event they appear in stays in the log at the same sequence number, and the values marked as personal data come back as empty strings. If something then tries to append new personal data for that person, the append fails on purpose instead of quietly starting a fresh key.
 
@@ -546,5 +546,5 @@ For the author feature, erasing an author is `DeleteEncryptionKeyFor` with the a
 
 ---
 
-- Previous: [Part 05 — Rules that hold when you write](/rules-that-hold-when-you-write/)
-- Next: [Part 07 — Year two](/four-changes-in-year-two/)
+- Previous: [Part 12 — Beyond .NET](/beyond-dotnet/)
+- Next: [Part 14 — Year two](/four-changes-in-year-two/)

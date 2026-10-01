@@ -1,6 +1,6 @@
 ---
-title: "From script to stage · Part 25: Cratis Components, the React layer"
-date: 2026-09-30T09:25:00Z
+title: "From script to stage · Part 09: Cratis Components, the React layer"
+date: 2026-09-30T09:09:00Z
 authors: sindre
 excerpt: "The author list and the register dialog from the cratis template, built with Cratis Components 4. Which parts come from Components and which from Arc, how a field binds to a generated command, how a taken name gets back to the Name field, theming and renderer adapters, and where the library stops."
 tags:
@@ -11,7 +11,7 @@ tags:
   - frontend
 ---
 
-*[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 25 of 25*
+*[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 09 of 26*
 
 The dialog that registers a name in the `cratis` template has one field and no event handlers. It still keeps its button disabled while validation fails, shows a spinner while the command runs, puts a server's rejection under the field it names and closes only when the command succeeds. Two packages share that work. Arc's React package runs the command and holds the form state, and [Cratis Components](https://cratis.io/components/) draws the dialog, the field and the buttons around it.
 
@@ -298,5 +298,5 @@ Components 3 to 4 is a breaking upgrade. Root namespace imports, rendered markup
 
 ---
 
-- Previous: [Part 24 — Running Chronicle and a Cratis application in production](/running-chronicle-in-production/)
-- Next: back to the start of the series, [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/)
+- Previous: [Part 08 — Live UIs](/live-uis-with-arc/)
+- Next: [Part 10 — Tenancy and identity end to end](/tenancy-and-identity-end-to-end/)

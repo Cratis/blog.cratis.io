@@ -1,6 +1,6 @@
 ---
-title: "From script to stage · Part 07: Year two"
-date: 2026-09-30T09:07:00Z
+title: "From script to stage · Part 14: Year two"
+date: 2026-09-30T09:14:00Z
 authors: sindre
 excerpt: "A new event shape, a new view over old events, a correction to a stored fact and an observer stuck on one stream look alike, and they aren't. What each one changes in Chronicle, what the kernel works out on its own, and what an operator still decides."
 tags:
@@ -13,7 +13,7 @@ tags:
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-*[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 07 of 25*
+*[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 14 of 26*
 
 When a Chronicle client appends an event in the old shape of its type, the kernel stores the new shape next to it. Append the new shape and the kernel stores the old one as well, translated back. Two services written a year apart can share an event type, each reading the generation it was built against, and nobody runs a migration script over the store.
 
@@ -423,5 +423,5 @@ Some decisions stay with whoever runs the system. A migration can't tell that a 
 
 ---
 
-- Previous: [Part 06 — Personal data in an event log](/personal-data-in-an-event-log/)
-- Next: [Part 08 — Arc: commands and queries without the plumbing](/arc-commands-and-queries/)
+- Previous: [Part 13 — Personal data in an event log](/personal-data-in-an-event-log/)
+- Next: [Part 15 — Arc gotchas: where a convention decides for you](/arc-gotchas/)
