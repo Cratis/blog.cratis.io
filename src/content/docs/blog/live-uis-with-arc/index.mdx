@@ -17,7 +17,7 @@ import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 In Arc, the difference between a query that loads a list once and a query that keeps pushing new results to a React screen is the return type of one C# method, as long as the data it returns comes from a source that notifies on change. Return a list and the browser gets a snapshot. Return an `ISubject` of that list and the generated hook subscribes, and the server pushes later results to it over Server-Sent Events or WebSocket. The C# record stays the same. The generator writes an observable query class instead of a plain one, and the component still calls `.use()`, whose tuple is `[result, setSorting]` instead of `[result, perform, setSorting]`.
 
-In [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/), a signed-in user registers an author, and author names are unique within the organization. The screen for that feature needs two things: a list of authors that shows a new one without a reload, and a form that registers one. Both sit on the TypeScript that Arc generates from the backend, and both are about the same question, which is what the browser knows and when it learns it.
+The author screen needs two things: a list of authors that shows a new one without a reload, and a form that registers one. Both sit on the TypeScript that Arc generates from the backend, and both are about the same question, which is what the browser knows and when it learns it.
 
 ## A live query is a return type
 
@@ -336,7 +336,7 @@ After each build, Arc's [proxy generator](https://cratis.io/arc/backend/csharp/p
 
 The field accessor is typed against the command. Rename `Name` in C#, rebuild, and that line stops compiling. That's why we generate the proxy at all, so drift between frontend and backend shows up as a compile error in your own build. **Add** stays disabled until the validation rules the backend shared with the proxy pass, and server messages land on their fields.
 
-Only a [supported subset of the rules](https://cratis.io/arc/backend/csharp/proxy-generation/validation/) makes it across. Custom predicates and dependency-backed checks aren't translated into browser logic, and conditions aren't reproduced either, so a recognized rule inside a condition can become unconditional on the client. Inspect and test the generated validation, and keep in mind the server remains authoritative. A full regeneration clears the proxy output folder, handwritten files included, so give the generator a folder of its own. [The proxy boundary](https://cratis.io/arc/understanding-the-proxy-boundary/) explains what crosses it.
+The generated validator is a partial copy, with the omissions and dropped conditions covered in [*Validation all the way down*](/validation-all-the-way-down/). Keep its output in a folder of its own; [*Arc gotchas*](/arc-gotchas/) covers what a full regeneration deletes.
 
 ### What CommandDialog does for you
 
@@ -362,13 +362,13 @@ export const CaptureIdeaDialog = () => (
 
 A generated proxy starts with every property unset, and a required `Guid` isn't filled in for you. A value that no field renders, such as the new idea's id, goes in `initialValues`, which counts toward validity. The sample calls `Guid.create()` inline, which makes a new id on every render. The `CommandDialog` guide recommends creating it once, for example with `useState(() => Guid.create())`. `onBeforeExecute` can transform values too, but it runs after confirm, which is too late to make an invalid command valid.
 
-With `autoServerValidate`, the dialog also calls the command's `/validate` route once local checks have settled, after 500 ms by default. The option has `Throttle` in its name and behaves as a debounce. The server runs its filters and validators, including rules that need a database, and skips the handler. A passing preflight reserves nothing, so a name that's free during typing can be taken by the time someone clicks **Add**, and the uniqueness constraint still decides.
+With `autoServerValidate`, the dialog also calls the command's `/validate` route once local checks have settled, after 500 ms by default. The option has `Throttle` in its name and behaves as a debounce. The preflight's limits, including the name race it can't prevent, are in [*Validation all the way down*](/validation-all-the-way-down/).
 
 The rule for choosing is in Components' own [guide](https://cratis.io/components/choosing-a-component/). If confirming the dialog executes a generated command, use `CommandDialog`. If the dialog only gathers values and hands them back, use `Dialog`.
 
 Arc also has [dialogs without Components](https://cratis.io/arc/frontend/react/dialogs/). `useDialog<TResponse, TInput>(Component)` returns three elements: the wrapper to render, a function that shows the dialog and the dialog's context. Showing it resolves to a `DialogResult` and an optional response. `DialogResult` has `None`, `Ok`, `Yes`, `No` and `Cancelled`. `useConfirmationDialog` resolves to a bare `DialogResult`. Arc draws no dialog itself, and `DialogComponents` is where you supply the confirmation and busy renderers. One dialog hook stores one pending result, so don't open the same one twice at once.
 
-## When a screen has behaviour
+## When a screen has behavior
 
 The board wraps its component in `withViewModel`. [Arc's MVVM support](https://cratis.io/arc/frontend/react/mvvm/using-view-model/) makes the view model an `@injectable()` class from tsyringe, observable through MobX, and the view re-renders when a property it read changes.
 
@@ -399,11 +399,11 @@ export class BoardViewModel {
 }
 ```
 
-Filtering the list that's already loaded is view behaviour, so it lives in the view model, and a spec in the sample tests the filter by title and summary without rendering anything. The live data still comes from the hook in the component.
+Filtering the list that's already loaded is view behavior, so it lives in the view model, and a spec in the sample tests the filter by title and summary without rendering anything. The live data still comes from the hook in the component.
 
 `withViewModel` observes only the render of the component it wraps. A child component that reads observable view-model state directly sits outside that boundary and won't re-render when the state changes. Pass plain values down as props, or wrap the child in `observer()` from `@cratis/arc.react.mvvm`.
 
-A view model can ask the user something through `IDialogs`, with `show`, `showConfirmation` and `showBusyIndicator`, and the view registers the dialogs it can show. The [MVVM `useDialog`](https://cratis.io/arc/frontend/react/mvvm/dialogs/) takes a request type and a component and returns two elements, the wrapper and the function that shows it, which is one fewer than the base hook. Arc's own advice is to stay with plain hooks unless a screen has substantial behaviour.
+A view model can ask the user something through `IDialogs`, with `show`, `showConfirmation` and `showBusyIndicator`, and the view registers the dialogs it can show. The [MVVM `useDialog`](https://cratis.io/arc/frontend/react/mvvm/dialogs/) takes a request type and a component and returns two elements, the wrapper and the function that shows it, which is one fewer than the base hook. Arc's own advice is to stay with plain hooks unless a screen has substantial behavior.
 
 ## Tables and pages
 

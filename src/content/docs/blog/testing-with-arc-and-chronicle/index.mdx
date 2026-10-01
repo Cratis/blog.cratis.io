@@ -19,8 +19,6 @@ A spec for "a second author with the same name is rejected" can pass without the
 
 That's one of a handful of ways a spec in an event-sourced application can go green and prove nothing, and they all come from losing track of what a given kind of test actually runs. Cratis offers several kinds, from calling a method to running a real Chronicle in Docker, and for most rules the cheapest one is enough.
 
-The feature is the one from [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/): a signed-in user registers an author, and author names are unique within the organization.
-
 ## Start with the function
 
 The decision in `RegisterAuthor` is a method. Call `Handle()`, compare the event it returns, and the rule is tested without starting a server or faking an event log. [Arc's testing guide](https://cratis.io/arc/backend/csharp/testing/) makes that direct call the first choice for a deterministic decision:
@@ -652,7 +650,7 @@ A `then` can also name a read model, a query result, an error or a denial. The e
 
 ## A real Chronicle and a running host
 
-Some behaviour only exists with a real host. Routing, authentication middleware, real storage writes, change streams, redelivery and tenant routing from AuthProxy's headers all sit outside one process with in-memory storage.
+Some behavior only exists with a real host. Routing, authentication middleware, real storage writes, change streams, redelivery and tenant routing from AuthProxy's headers all sit outside one process with in-memory storage.
 
 For .NET, `Cratis.Chronicle.XUnit.Integration` has two fixtures. `ChronicleInProcessFixture` runs the kernel inside the test process with MongoDB in a container through Testcontainers, and `ChronicleOutOfProcessFixture` runs the kernel in a container of its own. Both need Docker. A real kernel processes asynchronously, so [`IEventAppendCollection`](https://cratis.io/chronicle/testing/event-append-collection/) collects appends as they happen, and `WaitForCount` waits for the number you expect.
 
@@ -666,13 +664,13 @@ The generated proxies aren't something to test. They're output, and a change in 
 
 The convention Cratis recommends for application frontends mirrors the backend. Specs use Vitest, Sinon and Chai's `should`, and files follow `for_<Subject>/when_<context>/and_<extra>.ts`. View models are plain classes you can construct without React, pure helpers get tested first, and there are no snapshots.
 
-The one generated thing that does deserve attention is validation. The proxy generator carries a [supported subset](https://cratis.io/arc/backend/csharp/proxy-generation/validation/) of the backend's rules into the browser, and conditions don't come along, so a rule inside a condition can apply unconditionally on the client. Test the generated validation for the forms that depend on it. On the server side of TypeScript, Arc for TypeScript has a testing package, `@cratis/arc.testing`, and like the rest of Arc for TypeScript it's a source preview.
+Test generated validation for the forms that depend on it, especially the omissions and dropped conditions in [*Validation all the way down*](/validation-all-the-way-down/). On the server side of TypeScript, Arc for TypeScript has a testing package, `@cratis/arc.testing`, and like the rest of Arc for TypeScript it's a source preview.
 
 ## Specs that read as sentences
 
 Given, when and then map straight onto event sourcing. Given is the facts that already happened, or the read-model state that follows from them. When is the command, the append or the event under test. Then is the events that were appended, the command result, the read model or the side effect.
 
-Folder names carry the same structure. A spec at `for_RegisterAuthor/when_registering/and_the_name_is_taken.cs` reads as a sentence about the feature, and a folder of them reads as its behaviour. The word `when` appears only in `when_` folder names, and each `should_` fact finishes the sentence. One behaviour goes in each spec. Logging, trivial getters and plain delegation don't get specs of their own.
+Folder names carry the same structure. A spec at `for_RegisterAuthor/when_registering/and_the_name_is_taken.cs` reads as a sentence about the feature, and a folder of them reads as its behavior. The word `when` appears only in `when_` folder names, and each `should_` fact finishes the sentence. One behavior goes in each spec. Logging, trivial getters and plain delegation don't get specs of their own.
 
 Specifications gives that shape to .NET on xUnit or NUnit, in the style of Machine.Specifications: `Establish()` is the given, `Because()` the when, the facts the then, and `Destroy()` cleans up. The methods are optional, can return `void` or `Task`, and run across the inheritance chain. None of it is required. Chronicle's scenarios work with any test framework, and a plain xUnit test can call `Handle()` just as well.
 
@@ -682,7 +680,7 @@ Specifications gives that shape to .NET on xUnit or NUnit, in the style of Machi
 
 *Cheapest first. Most specs belong on the first two steps.*
 
-For the author feature, the suite comes out like this. Direct specs cover each branch of the `RegisterAuthor` decision. One `CommandScenario` spec shows the command still decides that way with validation and authorization in front of it and appends what it returned. A `ReadModelScenario` covers the `Author` projection, and an `EventScenario` covers the `[Unique]` constraint with the first author actually in the log. One hosted spec sends the same name twice through a running application.
+Start the author suite with direct specs for each branch of the `RegisterAuthor` decision. One `CommandScenario` spec shows the command still decides that way with validation and authorization in front of it and appends what it returned. A `ReadModelScenario` covers the `Author` projection, and an `EventScenario` covers the `[Unique]` constraint with the first author actually in the log. One hosted spec sends the same name twice through a running application.
 
 All but the last run in one process with nothing to start. The hosted spec is the only one that needs Docker, a kernel and a running application.
 

@@ -13,19 +13,17 @@ tags:
 
 *[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 25 of 26*
 
-Every command in the Cratis CLI declares what it can do to your system. [`cratis llm-context`](https://cratis.io/cli/reference/llm-context/) prints the command catalog as JSON, and each command carries an `effect` of `read-only`, `local`, `mutating` or `destructive`, and says whether it requires confirmation. An assistant reading the catalog can tell `observers list` from `observers replay` without keeping a list of its own.
+In Claude Code and Pi, the Cratis store-mutation guard can stop an assistant's `cratis chronicle observers replay` before the shell runs it, even with `--yes`. It reads the command text, so a call hidden in a script file or made through MCP is outside what it sees.
 
-That catalog is one of seven places an assistant meets the Cratis stack. The others run from the corpus in your repository to an MCP server on a running Chronicle. Most of them let an assistant read something, and a few let it propose or change something. The corpus states the principle behind all of them in one of its rules: "A tool grant is not authority. A configured token, an installed CLI, a writable branch, or an MCP server in the session says only that the action is mechanically possible."
-
-The examples below use the author feature from [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/): a signed-in user registers an author, and author names are unique within the organization.
+That guard is one of seven places an assistant meets the Cratis stack. The others run from the corpus in your repository to an MCP server on a running Chronicle. Most of them let an assistant read something, and a few let it propose or change something. The corpus states the principle behind all of them in one of its rules: "A tool grant is not authority. A configured token, an installed CLI, a writable branch, or an MCP server in the session says only that the action is mechanically possible."
 
 ![A diagram titled Seven places an assistant meets Cratis, drawn as four stages from top to bottom, joined by arrows. Build: AI corpus, cratis ai install; Hooks, run inside the assistant's tool. Model: Screenplay MCP, cratis screenplay mcp. Run and debug: CLI catalog, cratis llm-context; Chronicle MCP, connects to a running Chronicle. Learn: Prompter, in Discord; llms.txt, on cratis.io. A band along the bottom reads A tool grant is not authority.](./ai-six-touchpoints.png)
 
 *Seven touchpoints, from the repository to the running store.*
 
-## The slow part moved
+## A spec the compiler reads
 
-An agent can draft the `RegisterAuthor` command, its projection and its spec in a few minutes. Once that's true, typing is no longer the slow part of shipping the author feature. The slow parts sit on either side of it: saying precisely what should be built, and checking that what came back is that.
+[*Cratis Direct and our agentic development life cycle*](/cratis-direct-agentic-development-life-cycle/) covers deciding what an agent works on and checking what comes back. The event model gives that work an intent a compiler can read.
 
 The most useful critique we've read comes from the spec-driven development side. In her [look at three spec-driven tools](https://martinfowler.com/articles/exploring-gen-ai/sdd-3-tools.html) on martinfowler.com, Birgitta Böckeler separates three levels. Spec-first writes a spec to guide one change. Spec-anchored keeps the spec and evolves it with the feature. Spec-as-source makes the spec the only thing people edit. She finds the markdown these tools produce can be harder to review than the code, and she wonders whether spec-as-source, and even spec-anchored, could end up with the downsides of both model-driven development and language models: inflexibility and non-determinism.
 
@@ -89,27 +87,9 @@ The guard is there to stop an agent reaching for `--yes`, and it isn't a sandbox
 
 In Claude Code, when the assistant tries to finish and relevant files have changed, a quality gate runs one build and test pass, and a failure goes back to the assistant instead of letting it stop. In Pi the gate doesn't run on its own. It's a tool called at a verification checkpoint, it stops after 300 seconds by default, and a gate that times out or is cancelled reports that nothing was verified, never a pass. The gates are data a repository can override. Today the hooks are wired for Claude Code and Pi, and other assistants get the rules and skills without them.
 
-None of this proves the feature does what the sticky note asks. A green build says the code has the right shape, and a spec checks one example of the behavior, as [*Testing with Arc and Chronicle*](/testing-with-arc-and-chronicle/) goes into.
+None of this proves the author feature does what was asked. A green build says the code has the right shape, and a spec checks one example of the behavior, as [*Testing with Arc and Chronicle*](/testing-with-arc-and-chronicle/) goes into.
 
-## What each command does
-
-Once the feature runs, an assistant that helps operate it needs to know which of its actions change anything. This is one entry from the catalog `cratis llm-context` prints:
-
-```json
-{
-  "name": "remove",
-  "description": "Removes a user from the Chronicle server. Destructive — prompts for confirmation unless --yes is specified.",
-  "effect": "destructive",
-  "requiresConfirmation": true,
-  "arguments": [
-    { "name": "<USER_ID>", "type": "guid", "description": "The unique identifier of the user to remove (positional)" }
-  ]
-}
-```
-
-The effect is the strongest change the command can make. `--dry-run` can lower it for one run and never raises it, and a value the assistant doesn't recognize should be treated as a state change. A command that requires confirmation asks in a terminal, and without a terminal it fails unless `--yes` is passed.
-
-[`cratis init`](https://cratis.io/cli/getting-started/) writes the catalog into context files for the tools you use, and you refresh it after upgrading. When the CLI recognizes it's running under an agent tool, it defaults to compact JSON. Only the effect and confirmation fields are meant to stay stable between versions, so pin the CLI version if you rely on anything else. The CLI doesn't call a language model itself, and `cratis llm use` only stores a provider for tools such as Prologue.
+The CLI catalog is how an assistant learns which commands change state; [*The Cratis CLI, from diagnose to llm-context*](/the-cratis-cli/) covers effect labels, confirmation and the fields stable enough for scripts.
 
 ## Chronicle MCP: an assistant at a running store
 
@@ -167,7 +147,7 @@ The install never creates `.play` files, and it leaves MCP servers you added you
 
 ## Cratis Studio and Cratis Direct
 
-Two Cratis products, covered in [*Cratis Studio*](/cratis-studio-event-modeling-together/) and [*Cratis Direct and our agentic development life cycle*](/cratis-direct-agentic-development-life-cycle/), are applications you use in the browser, and assistants meet them as well. Cratis Studio has an MCP server that lets external AI agents read and change an organization's event models and brainstorming boards. Scope it like any tool that can write. Inside Studio, a slice of the author feature can be assigned to an AI agent and, where the application has code generation switched on, rendered through Stage into your connected Git repository. In Cratis Direct, intent arrives as an issue and waits in one queue until a person admits it with a ceiling. Each stage ends at a gate that evaluates versioned rules against recorded evidence. An inconclusive result goes to a person, and an LLM rule is judgment, not proof. We're building MCP access to Cratis Direct.
+Cratis Studio and Cratis Direct are applications you use in the browser, and assistants meet them as well. [*Cratis Studio*](/cratis-studio-event-modeling-together/) has an MCP server that lets external AI agents read and change an organization's event models and brainstorming boards. Scope it like any tool that can write. Inside Studio, a slice of the author feature can be assigned to an AI agent and, where the application has code generation switched on, rendered through Stage into your connected Git repository. Cratis Direct's issue admission, gates and MCP availability are covered in [*Cratis Direct and our agentic development life cycle*](/cratis-direct-agentic-development-life-cycle/).
 
 ## The docs, for an assistant that asks or reads
 
@@ -181,7 +161,7 @@ The Cratis pieces give the reviewer the intent as a diff of its own. A change to
 
 A proposal, a declared model, a passing specification and a recorded event each answer a different question, and a passing spec neither approves a proposal nor proves deployed behavior. An assistant's diff that stops two authors in tenant Acme registering under the same name is a proposal. The rule written into the event model is a declaration. A spec that registers the same name twice and expects a rejection checks one example. The event log in Acme's namespace shows what was actually recorded. Someone writes the first three, and the fourth is what happened. In a review, it helps to say which of the four you're looking at.
 
-With the public pieces, however a pull request was produced, whether it merges is a person's decision. The corpus's own pull-request rule lets an assistant take a change through to merge only when a person asks it to ship, and even then it stops before a major release until a person explicitly confirms the break. That rule is about an assistant working in your repository. In Cratis Direct, who merges is a per-repository setting: a person by default, or, for a repository that opts in, an agent once the change is classified as safe to merge, optionally limited to paths the repository allows.
+With the public pieces, however a pull request was produced, whether it merges is a person's decision. The corpus's own pull-request rule lets an assistant take a change through to merge only when a person asks it to ship, and even then it stops before a major release until a person explicitly confirms the break. That rule is about an assistant working in your repository. The separate repository merge policy is covered in [*Cratis Direct and our agentic development life cycle*](/cratis-direct-agentic-development-life-cycle/).
 
 ## Read, propose, change
 
@@ -195,7 +175,7 @@ Put side by side, the touchpoints form a ladder. On the lowest rung an assistant
 
 The loop closes at the event log. The model says what the system is meant to record, and the log says what it did record. An event type nothing consumes, a partition that keeps failing, or a causal trace that surprises someone is the input to the next change. None of the public tools here turns that finding into work on its own. An agent can read it, and a person decides what starts.
 
-Cratis Direct can deduplicate an alert from a running system, have an agent investigate it, and hand a person the findings or turn the alert into a tracked issue. Turning an alert into a full journey isn't built yet, and some watchdog checks are paused while we harden them. An issue made from an alert goes back to the start of the queue, where a person decides whether it starts.
+For the alert-to-backlog path and where it stops, see [*Cratis Direct and our agentic development life cycle*](/cratis-direct-agentic-development-life-cycle/).
 
 The rendered vertical is narrow, and taking a second model change through to a running application isn't proven yet, so the model anchors the code without replacing it. The hooks cover two assistants, and nothing here makes an agent's code correct. Whether agents working this loop ship faster or with fewer defects is unmeasured. The [AI assistant walkthrough](https://blog.cratis.io/from-zero-to-first-projection-with-an-ai-assistant/) shows one of these tools on a real task, including where the assistant was told not to use one.
 

@@ -17,7 +17,7 @@ import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 When a Chronicle client appends an event in the old shape of its type, the kernel stores the new shape next to it. Append the new shape and the kernel stores the old one as well, translated back. Two services written a year apart can share an event type, each reading the generation it was built against, and nobody runs a migration script over the store.
 
-That's one of four kinds of change a system meets after launch. In [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/), a signed-in user registers an author, and author names are unique within the organization. Take a made-up but ordinary year for that feature and the book catalog beside it. The catalog team wants each book's subtitle in a field of its own. Someone wants a new list of authors on a screen that didn't exist at launch. Support finds one author registered with a misspelled name. And the reactor that sends welcome mail has stopped on one author and stays stopped.
+That's one of four kinds of change a system meets after launch. Take a made-up but ordinary year for the author feature and the book catalog beside it. The catalog team wants each book's subtitle in a field of its own. Someone wants a new list of authors on a screen that didn't exist at launch. Support finds one author registered with a misspelled name. And the reactor that sends welcome mail has stopped on one author and stays stopped.
 
 ## Four kinds of change
 
@@ -138,7 +138,7 @@ end
 </TabItem>
 </Tabs>
 
-In the .NET client, the older record has no id of its own, and that's deliberate. Its event type id is resolved from the current type. A previous generation that simply leaves the id out would fall back to its CLR name and quietly become a different event type, which is the trap this shape closes. The older style, with the same explicit id string on every generation and a different `generation:` value, still works, and it's the style the other clients use. Give long-lived events an explicit ID. Otherwise event types take their identity from the type name, and renaming the class changes the identity.
+In the .NET client, the older record has no id of its own, and that's deliberate. Its event type id is resolved from the current type. A previous generation that simply leaves the id out would fall back to its CLR name and quietly become a different event type, which is the trap this shape closes. The older style, with the same explicit id string on every generation and a different `generation:` value, still works, and it's the style the other clients use. The naming rule behind that trap is covered in [*Events are facts*](/events-are-facts/).
 
 You [declare a migration](https://cratis.io/chronicle/migrations/) between adjacent generations. `Upcast` describes how the old shape becomes the new one, and `Downcast` describes the way back:
 
@@ -318,37 +318,23 @@ On the application side, nothing in the event mechanism depends on Arc, and Arc 
 
 ## A new view over old events
 
-When a projection is wrong, fix it and [rebuild the read model](https://cratis.io/chronicle/scenarios/rebuild-a-read-model/) from the retained history. Replay reads the events as they stand now, with any revisions and redaction markers that apply. What it rebuilds is derived state. It doesn't prove that an email went out, which is why side effects live in reactors and not in projections.
+When a projection is wrong, fix it and [rebuild the read model](https://cratis.io/chronicle/scenarios/rebuild-a-read-model/) from the retained history. Replay reads the events as they stand now, with any revisions and redaction markers that apply. The distinction between rebuilding state and delivering side effects is covered in [*From event to read model*](/from-event-to-read-model/).
 
-A changed view doesn't always need anyone to decide on a rebuild. On every connect, the client [registers its full set](https://cratis.io/chronicle/projections/registration-lifecycle/) of projections and reducers. The kernel compares each definition with the one it stored last time and picks the smallest operation it can prove correct:
-
-- **No action** when the only change adds event types and no events of those types exist yet.
-- **Partial replay** when a projection adds event types that are mapped independently, with explicit mappings that don't overlap the existing ones and every read model instance tied to one event source. For a reducer, the added event types have to occur only after the events it already consumed for each affected event source. Chronicle applies just those event types, to just the affected event sources.
-- **Full replay** for any change that can affect ordering, keys, joins, children, removals, existing mappings or a filter, and for a reducer whose implementation changed. It's also the fallback whenever independence can't be proved.
-
-Joins, children, custom keys, overlapping mappings, removals, auto-mapping and subscriptions to every event all push a change to a full replay. Reducer registrations carry a fingerprint of their methods, so changing a reducer's code triggers the comparison even when the events it subscribes to stay the same.
-
-Whether the kernel runs that work is [a setting](https://cratis.io/chronicle/hosting/configuration/observers/), `observers.definitionEvolution`. `Automatic` is the default and runs all three. `PartialOnly` runs the no-action and partial plans and turns a full replay into a recommendation for someone to accept. `Manual` turns any plan that can affect existing read models into a recommendation. A no-action plan never creates one. Reactors and webhooks sit outside this and use their own switch, `replayOnDefinitionChange`, which is false by default.
+[*From event to read model*](/from-event-to-read-model/) covers how Chronicle classifies a changed definition, when it can use a partial replay, and how `definitionEvolution` chooses between running the work and recommending it. Reactor and webhook definition changes use their separate replay switch, covered in [*Reacting to facts*](/reacting-to-facts/).
 
 A new projection, such as the list of authors on that new screen, is a different case. Registering it against a store that already holds events starts a catch-up job, and the registration call doesn't wait for it. Registered and caught up are two different states, and the gap between them shows in Chronicle Workbench's observer job view, which [*Workbench*](/chronicle-workbench/) walks through. The client retries a registration with exponential backoff, so a busy kernel doesn't fail the host. A kernel that keeps refusing still fails it once the attempts are spent, and a definition the kernel rejects fails on its own while the others still land.
-
-Retiring a projection unsubscribes it and leaves its old read-model data for you to remove. On the next full registration without it, Chronicle unsubscribes the observer in every namespace, deletes its jobs, clears its failed partitions and removes the definition. The sink container stays where it is, because Chronicle never deletes read-model data implicitly. A renamed read model that shares a container with the old one gets a replay recommendation for its successor.
 
 When you do want a replay by hand, `cratis chronicle observers replay <observer-id>` starts one from [the CLI](https://cratis.io/cli/chronicle/observers/). The CLI marks the command as destructive in its own effect metadata and asks for confirmation unless you pass `--yes`. Replays, catch-ups and event migrations run as [jobs](https://cratis.io/chronicle/jobs/) you can inspect, stop and resume, with a setting that caps how many steps run in parallel. A replay takes time in proportion to the history behind the observer, and [*Jobs, scale and performance*](/chronicle-jobs-scale-and-performance/) covers what that means on a large store.
 
 ## When a replay reaches a reactor
 
-For a projection, a replay rewrites derived data. For a reactor it can run handlers again, and a handler that sent mail sends it again. A replay can repeat a reactor's side effects, and [`[OnceOnly]`](https://cratis.io/chronicle/reactors/once-only/) keeps a reactor out of replays without stopping retries.
-
-`[OnceOnly]` on a handler skips it for every event that arrives as part of a replay, whether the replay came from rewinding the observer, from a redaction or from a revision. On the class, it registers the whole reactor as non-replayable. [`[Replay]`](https://cratis.io/chronicle/reactors/replay/) on a second handler for the same event type makes that handler run during a replay in place of the normal one.
-
-Recovering a failed partition is different. It delivers the event again as an ordinary observation, so `[OnceOnly]` doesn't stop that run. For that case the .NET client passes a reactor a [`ReactorDelivery`](https://cratis.io/chronicle/reactors/delivery-identity/), an identity for one delivery of one event to one reactor that stays the same across a replay and across recovery. A receipt keyed by it survives both. It's an identity, and delivery stays at-least-once. Chronicle stores no receipt and can't know whether the effect ran. TypeScript reactors have `@onceOnly()` and `@replay()` from `@cratis/chronicle` 6.9.0, and Elixir has neither. [*Reacting to facts*](/reacting-to-facts/) goes through receipts, the gap they leave and the clients one by one.
+Before replaying the welcome mailer, apply the replay markers and delivery-identity limits from [*Reacting to facts*](/reacting-to-facts/); replay and recovery need different treatment.
 
 Personal data puts one more limit on replay. A replay that covers an [erased subject](https://cratis.io/chronicle/compliance/erasing-a-subject/) is refused for that subject's partition, and a rebuild doesn't clear ciphertext that's already stored. [*Personal data in an event log*](/personal-data-in-an-event-log/) explains why, and what to do before such a rebuild.
 
 ## A correction to something recorded
 
-"Fix the data" is four different operations, and they answer different questions. A business reversal, such as a cancelled registration, is a new event, and nothing earlier changes. A mistaken value can be [revised](https://cratis.io/chronicle/events/revision/), keeping the original for audit. [Redaction](https://cratis.io/chronicle/events/redaction/) replaces an event's content with a marker at the same sequence number. Erasing a subject's key makes their marked values unreadable. Redaction doesn't clean up copies in other stores, backups or anything already read, and an observer only hears about it if it subscribes to the redaction event as well as the original.
+Choose a compensation, revision, redaction or key erasure by what needs correcting and what must remain, using the boundaries in [*Personal data in an event log*](/personal-data-in-an-event-log/).
 
 The misspelled author is a revision. The revised content has to use the same event type id as the original, consumers see the latest revision, and the original stays in the event's history.
 
@@ -358,9 +344,7 @@ Neither revision nor redaction is free for observers. Both rewind the affected e
 
 The fourth change doesn't touch anything stored. The welcome mailer threw on one author, and Chronicle has been holding that author's events ever since.
 
-Each observer keeps its state per partition, one partition per event source. When a subscriber fails on a batch, that partition pauses. It doesn't skip the event. It records the failure with a kind and retries with exponential backoff, and every other partition keeps going. `Handling` means the subscriber failed. `Timeout` means the kernel stopped waiting for an answer, and the events were never rejected. The other two kinds are `Disconnected` and `Unknown`.
-
-The [defaults](https://cratis.io/chronicle/hosting/configuration/observers/) are ten attempts, where 0 means retry forever, a first delay of one second that doubles up to 600 seconds, and a 30-second subscriber timeout, where 0 waits indefinitely. The thresholds for quarantining a whole observer, by count or by percentage of failed partitions, are 0 by default, which means an observer is never quarantined for that reason. A partition whose last attempt was a timeout doesn't count toward those thresholds. A partition that runs out of attempts is quarantined, and it doesn't resume by itself.
+The failed partition pauses without skipping the event while every other partition keeps going. [*Inside Chronicle*](/inside-chronicle/) covers the failure kinds, retry defaults and the quarantine that stops automatic attempts.
 
 A timeout ends the kernel's wait and nothing else. The subscriber keeps processing the batch it was handed while the kernel has already written it off. The events are delivered again on retry, so observers have to be idempotent.
 

@@ -17,7 +17,7 @@ import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 A Compose file that runs Chronicle happily on `cratis/chronicle:latest-development` stops at startup when you change the tag to `latest`. The development images generate their own TLS certificate and fall back to throwaway keys for the built-in OAuth authority, and `latest-development` bundles a database as well. The production image does none of that, and no environment variable changes it back, because the production code paths are chosen by a compile-time symbol that only the development builds define.
 
-That's the first thing the author feature from [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) meets on its first day in production. A signed-in user registers an author, and author names are unique within the organization. On a laptop, all of it ran on one development container. In production it runs on a kernel that someone configures and keeps running, next to an application that has to trust the right server and report what it does.
+On a laptop, the author feature ran on one development container. In production it runs on a kernel that someone configures and keeps running, next to an application that has to trust the right server and report what it does.
 
 ## What the production image won't start without
 

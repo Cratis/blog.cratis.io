@@ -15,7 +15,7 @@ tags:
 
 `cratis chronicle diagnose` exits nonzero when the server is unreachable or when a failed partition exists. An observer that's far behind the tail leaves the exit code at zero, and that's deliberate.
 
-The Cratis [CLI](https://cratis.io/cli/) inspects and diagnoses Chronicle from a terminal, full-screen workbench included, and it also hosts `cratis new`, `cratis ai`, `cratis screenplay` and `cratis render`. Most of it is about the running Chronicle, and the running example is the feature from [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/): a signed-in user registers an author, and author names are unique within the organization.
+The Cratis [CLI](https://cratis.io/cli/) inspects and diagnoses Chronicle from a terminal, full-screen workbench included, and it also hosts `cratis new`, `cratis ai`, `cratis screenplay` and `cratis render`.
 
 ## Installing it
 
@@ -32,10 +32,6 @@ Against a Chronicle on your own machine there's nothing to configure. The first 
 Completion asks the running server. `cratis completions install` sets it up for bash, zsh, fish or PowerShell, and pressing Tab after a command that takes an observer, a read model or an event type asks the live server what it has registered right now.
 
 ## When a view stops updating
-
-An observer that has stopped looks exactly like one with nothing to do. For the author feature, that shows up as an author who registered fine but never appears in the list. The command succeeded, the event is in the log, and the list is wrong.
-
-The read model has the current state and the log has the events behind it. Between them sits an observer that may be working, may be behind, or may have stopped a few events ago. Lag is ambiguous. A failed partition is not.
 
 We built the CLI so you can ask the running system instead of comparing sequence numbers by hand. Start with [`diagnose`](https://cratis.io/cli/chronicle/diagnose/). Run against a bookshop store (the sample is from an older server), it prints this:
 
@@ -101,10 +97,8 @@ Retry the partition before you replay anything. `observers replay` is the bigger
 The rest of the debugging kit depends on where you are:
 
 - **In a terminal on a server.** `cratis chronicle workbench` opens a full-screen terminal dashboard over the same connection. `Ctrl+P` searches observers, event types, projections, read models and failed partitions at once, which helps because "author" isn't a name in one list. It's a thread through five of them. Actions such as replaying an observer or retrying a partition sit in place, behind a confirmation dialog. Tab completion asks the live server for observer and read-model names.
-- **In a browser.** [Chronicle Workbench](https://cratis.io/chronicle/workbench/) ships with Chronicle and runs locally in your browser. Once you're authorized, it shows what the running Chronicle is doing, and previews how a projection will behave for the projection features it supports.
+- **In a browser.** [*Chronicle Workbench, screen by screen*](/chronicle-workbench/) covers the browser tool's views, projection preview and permissions.
 - **In your editor.** [Narrator](https://github.com/Cratis/Narrator), a [VS Code extension](https://cratis.io/tools/vscode-extension/) we still treat as experimental, browses event stores, event types, read models and observers, and pages through events. It only reads.
-
-Some CLI commands change state, replaying an observer and retrying a partition among them, and Workbench has screens for revising and redacting events. Being able to open a tool or run a command isn't permission to use it on a production system.
 
 ## Reading an observer row
 
@@ -137,9 +131,9 @@ cratis chronicle failed-partitions show <OBSERVER_ID> <PARTITION> --detailed
 cratis chronicle observers retry-partition <OBSERVER_ID> <PARTITION>
 ```
 
-Chronicle also records a kind with each attempt. `Handling` means your code threw, `Timeout` means the kernel stopped waiting because the system was congested, and `Disconnected` means the client was gone when the events arrived. A partition whose last attempt timed out doesn't count toward the observer's quarantine thresholds. `failed-partitions show` in CLI 3.21.0 prints the messages and stack trace, not the kind. [*Workbench*](/chronicle-workbench/) shows the same failed partitions from the browser.
+[*Inside Chronicle*](/inside-chronicle/) explains failure kinds, retry defaults and quarantine thresholds. `failed-partitions show` in CLI 3.21.0 prints the messages and stack trace, not the kind. [*Workbench*](/chronicle-workbench/) shows the same failed partitions from the browser.
 
-By default a partition is retried 10 times, with a backoff that starts at one second and doubles up to 600 seconds, and then that partition is quarantined. Quarantining a whole observer once too many of its partitions fail is a setting, and it's off unless you set a threshold. A quarantined observer needs `observers clear-quarantine`, or Clear quarantine on the browser Workbench's Observers page. The terminal workbench has no key for it.
+A quarantined observer needs `observers clear-quarantine`, or Clear quarantine on the browser Workbench's Observers page. The terminal workbench has no key for it.
 
 When the partition's state is wrong and not merely stuck, `observers replay-partition` discards that partition's state and rebuilds it, and leaves every other partition alone. It's the step between one retry and a full replay.
 
@@ -153,7 +147,7 @@ Every command that asks for confirmation defaults to **No**. In a script or anot
 
 ## After changing a projection
 
-Change the `Author` projection and deploy it, and Chronicle compares the new definition with the stored one when it registers. It lands on no action, a partial replay for newly added event types it can prove are independent, or a full replay when a mapping, a key, a join or another order-dependent part changed. The `definitionEvolution` setting in the [observer configuration](https://cratis.io/chronicle/hosting/configuration/observers/) decides whether Chronicle runs that work itself or files a recommendation for a person.
+A deployment can leave a replay recommendation, depending on the definition change and policy described in [*From event to read model*](/from-event-to-read-model/).
 
 A filed recommendation appears in `recommendations list`, in the Recommendations row of `diagnose` and on the Workbench's Recommendations page. [`recommendations perform`](https://cratis.io/cli/chronicle/recommendations/) carries it out, which means replaying the observer, and `recommendations ignore` drops it. You can also replay directly, following [Replay a projection](https://cratis.io/cli/scenarios/replay-a-projection/):
 
@@ -193,7 +187,7 @@ Each action opens a confirmation dialog that shows only its target. The event st
 
 The CLI picks its output format from where it's running. An interactive terminal gets a table, redirected output gets JSON, and `NO_COLOR` gets tab-separated plain text. `-o table|plain|json|json-compact` chooses explicitly, and `-q` prints only identifiers, for piping into the next command.
 
-For anything automated, pick the format with `-o` and pin the CLI version the script was written against. The [output formats](https://cratis.io/cli/reference/output-formats/) are current behaviour, and they aren't declared as a stable machine contract between versions.
+For anything automated, pick the format with `-o` and pin the CLI version the script was written against. The [output formats](https://cratis.io/cli/reference/output-formats/) are current behavior, and they aren't declared as a stable machine contract between versions.
 
 ## A command catalog for agents
 
@@ -228,11 +222,11 @@ The label informs an agent, and it enforces nothing. An agent that can run `crat
 
 The profile is the choice that matters. `cratis/application/*` is for building an application on Cratis, and `cratis/engineering/*` is for working on a Cratis framework repository itself. `install` and `update` never touch a file you own, and they leave a managed file you've edited alone unless you pass `--force`. `cratis ai status` exits nonzero when managed files were modified locally, which makes it usable as a CI check. [Getting started](https://cratis.io/ai/getting-started/) has the full selection.
 
-`cratis llm use` stores model-provider settings, for Anthropic, OpenAI or a local model, that tools such as Prologue read.
+The CLI doesn't call a language model itself. `cratis llm use` stores model-provider settings, for Anthropic, OpenAI or a local model, that tools such as Prologue read.
 
 Several other groups live in the same binary. `cratis new` scaffolds a project from the Cratis templates, in C#, Kotlin or Java, without a .NET SDK installed, and [*Getting started with Cratis, and the tools around it*](/getting-started-with-cratis/) walks through it. `cratis screenplay`, `cratis render` and `cratis run` work on `.play` models and belong to the modeling tools in [*Screenplay*](/screenplay-an-event-model-you-can-compile/) and [*Stage and Scene*](/stage-and-scene-after-a-model-compiles/), which are experimental. `cratis prologue` belongs to Prologue, experimental as well. `cratis arc` inspects the commands and queries a running Arc application has registered, and it doesn't need Chronicle.
 
-For the author who never showed up, the CLI part of the story is short. `diagnose` names the failed partition, `failed-partitions show --detailed` gives the exception under the author's ID, and after the fix, `retry-partition` asks for one more attempt. The catalog decides nothing about who runs that last command. It tells a person or an agent, before they run it, that it changes the server.
+After fixing the missing author's partition, use `retry-partition` for one more attempt and inspect the result. The catalog decides nothing about who runs that command. It tells a person or an agent, before they run it, that it changes the server.
 
 ---
 

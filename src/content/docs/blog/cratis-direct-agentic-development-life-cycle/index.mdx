@@ -19,7 +19,7 @@ Cratis Direct is a control plane for agentic engineering. It turns repository si
 
 Cratis runs its own engineering on Cratis Direct today. For everyone else it's coming soon: access opens in stages at [cratis.direct](https://cratis.direct). The login there admits only accounts we've enabled.
 
-The author feature from [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/), where a signed-in user registers an author and author names are unique within the organization, arrives in Cratis Direct as an issue: two authors in one organization ended up with the same name.
+The author feature arrives in Cratis Direct as an issue: two authors in one organization ended up with the same name.
 
 ## The hard part moved
 
@@ -123,17 +123,11 @@ Alerts are deduplicated by their fingerprint, and production access is opt-in. A
 
 The same machinery runs content. A blog journey goes Brief, Draft, Editorial review, Publish, with editorial gates, and publishing is a button a person presses. Cratis Direct's page describes the whole as five loops: deliver, assure, operate, publish and steer. The first, the issue journey, is what we mean by an agentic development life cycle.
 
-## What it's built around
-
-Issue work starts one way. A person admits it, with a ceiling, and nothing starts it but that admission. Gates decide from evidence and versioned rules, and the verdict, evidence and rule version stay on the journey. The application owns state, sequencing and capacity, and the agent is a replaceable worker doing one unit of work at a time. It also reaches past code, into alerts, content and the roadmap. Open any of its pull requests, and the plan, each gate's verdict and the evidence it read are on the journey behind it.
-
 ## Where it stops
 
 It works only with GitHub. Agents are only as good as the rules the gates hold them to, and an LLM rule is judgment, not proof. Production access is opt-in. Some watchdog checks are paused while we harden them. It isn't generally available, and access opens in stages. We're building MCP access to Cratis Direct.
 
 Nothing else in Cratis needs it. It isn't in a request's path. Cratis Direct works on the issues, pull requests and alerts around the application. It earns its place when agent work outgrows what one person can watch. For one repository and one assistant, the AI corpus and the checks in [*AI across the stack*](/ai-across-the-cratis-stack/), plus your CI, may well be enough.
-
-We run our own engineering on it today. For everyone else it's coming soon at [cratis.direct](https://cratis.direct).
 
 ---
 

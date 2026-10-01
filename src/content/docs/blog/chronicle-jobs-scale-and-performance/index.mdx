@@ -15,11 +15,11 @@ tags:
 
 Replaying a projection in Chronicle runs as a job, and a job can be stopped halfway and resumed later from where it stopped, as long as the application that owns the observer is connected. If the server crashes instead, the replay picks up from its last checkpoint, and the batches it processed since that checkpoint are delivered a second time.
 
-The running example is the feature from [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/): a signed-in user registers an author, and author names are unique within the organization. Change the projection behind the `Author` read model and deploy it, and Chronicle decides whether the change needs a replay. Replays, catch-ups and event migrations run as [jobs](https://cratis.io/chronicle/jobs/) you can inspect, stop and resume, with a setting that caps how many steps run in parallel. A replay can also repeat a reactor's side effects, and [`[OnceOnly]`](https://cratis.io/chronicle/reactors/once-only/) keeps a reactor out of replays without stopping retries.
+Change the projection behind the `Author` read model and deploy it, and Chronicle decides whether the change needs a replay. The job's progress and the cost of restarting it matter once that author list has a long history.
 
 ## What runs as a job
 
-A job is long-running work the kernel does in the background, split into steps. These are the kinds Chronicle 19.23.1 runs:
+A job is long-running work the kernel does in the background, split into steps. These are the kinds it runs as of Chronicle 19.23.1:
 
 | Job | What it does |
 | --- | --- |
@@ -88,15 +88,13 @@ cratis chronicle jobs stop <JOB_ID>      # progress is preserved; needs --yes no
 
 ## Replays Chronicle recommends instead of running
 
-When a projection or reducer definition changes, the kernel classifies the change as needing no replay, a partial replay or a full replay. A partial replay covers newly added event types whose history can be replayed on its own. A changed mapping, filter, key, join or child structure, or anything else that depends on order, needs a full replay. A reducer's registration includes a fingerprint of its code, so changing the reducer's code counts as a change even when the events it reads stay the same.
-
-The `definitionEvolution` setting in the [observer configuration](https://cratis.io/chronicle/hosting/configuration/observers/) decides what Chronicle does with the result. `Automatic`, the default, applies every classification. `PartialOnly` applies partial replays and files a recommendation when a full replay is needed. `Manual` files a recommendation for both. A change that needs no replay never files one.
+The classification and `definitionEvolution` policy in [*From event to read model*](/from-event-to-read-model/) determine whether a changed definition starts a job or leaves a recommendation. To let partial replays run while reserving full ones for a person:
 
 ```json
 { "observers": { "maxRetryAttempts": 10, "definitionEvolution": "PartialOnly" } }
 ```
 
-A recommendation in Chronicle 19.23.1 is always a replay candidate. It's filed for a projection or reducer definition change the policy didn't apply, for a reactor or webhook definition change when `replayOnDefinitionChange` is off, and for a retired projection that wrote to the same container as the one replacing it. Performing a recommendation replays the observer server-side and removes the recommendation when the replay succeeds. Ignoring it drops it.
+As of Chronicle 19.23.1, a recommendation is always a replay candidate. It's filed for a projection or reducer definition change the policy didn't apply, for a reactor or webhook definition change when `replayOnDefinitionChange` is off, and for a retired projection that wrote to the same container as the one replacing it. Performing a recommendation replays the observer server-side and removes the recommendation when the replay succeeds. Ignoring it drops it.
 
 We'd set `PartialOnly` or `Manual` on a store where a full replay of a large projection is expensive, so that a deploy doesn't start one on its own and a person decides when it runs.
 
@@ -124,7 +122,7 @@ A read model is [materialized by default](https://cratis.io/chronicle/read-model
 
 ## Running more than one node
 
-Chronicle's kernel is a .NET service built on Orleans and reached over gRPC and HTTP. It supports several event stores, each split into namespaces, and an event store is a natural boundary for one service's data. [Persistent subscriptions](https://cratis.io/chronicle/subscriptions/) carry events from one store's [outbox to another store's inbox](https://cratis.io/chronicle/subscriptions/outbox-inbox/), named after the source. The [architecture overview](https://cratis.io/chronicle/architecture/) shows how the parts fit, and it makes no scale or throughput guarantee. If you run more than one server, watch the default [localhost clustering](https://cratis.io/chronicle/hosting/configuration/clustering/): two servers pointed at the same database each form their own single-node cluster, and nothing errors at startup.
+[*Inside Chronicle*](/inside-chronicle/) covers the kernel architecture and why two servers on default clustering don't form one cluster. That architecture makes no scale or throughput guarantee.
 
 The server logs a warning when it sees localhost clustering against storage that isn't local, and it starts anyway. Every node in a multi-node deployment has to set the clustering type to `MongoDB`, with the same cluster ID and service ID:
 
@@ -160,19 +158,13 @@ One `AppendMany` of ten events takes 12.9 ms, against 8.98 ms for a single appen
 
 The limits are as specific as the numbers. It's one runner type on shared hosted hardware, and per-commit numbers from hosted runners are noisy. The observer benchmarks, projecting, reducing and reacting to events, append everything to one event source, so they never exercise partitions running in parallel, and their window includes the append and a completion poll that puts a floor of roughly 60 to 70 ms under every result. None of it is an events-per-second figure, and there are no benchmarks for comparing storage providers, for job step parallelism, or for what happens when a queue fills up.
 
-## Before production
+## Tuning a production deployment
 
-- Pin an image version instead of `latest`.
-- Run MongoDB as a replica set, and handle its authentication and TLS yourself.
-- Give the production image its two certificates, TLS and encryption, and probe `/health` from outside the container, since the image has no shell or curl.
-- For more than one node, set the MongoDB clustering type, the same IDs, shared certificates and storage, and open the Orleans ports between the nodes.
-- Back up the encryption-certificate ring, the storage and the compliance key store, when one is configured, and restore them in that order.
-- Set `OTEL_EXPORTER_OTLP_ENDPOINT` to export [OpenTelemetry](https://cratis.io/chronicle/hosting/configuration/open-telemetry/) metrics, traces and logs. Nothing is exported without it.
-- Make every observer idempotent.
+Start with the deployment and restore requirements in [*Running Chronicle and a Cratis application in production*](/running-chronicle-in-production/), and make every observer idempotent before tuning delivery.
 
 The tuning knobs are `observers.subscriberTimeout`, `observers.maxRetryAttempts`, `events.queues` and `jobs.maxParallelSteps`. None of them comes with a sizing rule. Chronicle's configuration examples show 8 queues and a 5-second subscriber timeout as illustrations, and the right values for a given system come from measuring that system.
 
-For the author feature, the operational picture is small. A change to the `Author` projection becomes a job you can watch and stop, a crash in the middle of it repeats a stretch of batches that the read model absorbs and a reactor has to tolerate, and a second server is a configuration change whose effect on throughput you'd have to measure yourself.
+Watch the `Author` replay as a job, allow for the batches a crash can repeat, and measure what a second server adds before relying on it.
 
 ---
 

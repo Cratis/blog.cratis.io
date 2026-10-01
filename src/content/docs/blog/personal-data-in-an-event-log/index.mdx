@@ -17,7 +17,7 @@ import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 Erasing a person in Chronicle is one call that deletes their key. Every event they appear in stays in the log at the same sequence number, and the values marked as personal data come back as empty strings. If something then tries to append new personal data for that person, the append fails on purpose instead of quietly starting a fresh key.
 
-In [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/), a signed-in user registers an author, and names are unique within the organization. The name travels further than the event: into the command's audit trail, into read models, into other event stores and into backups.
+The author's name travels further than the event: into the command's audit trail, into read models, into other event stores and into backups.
 
 ## Personal data, marked once
 
@@ -98,9 +98,7 @@ end
 
 Projection-backed read models track the protected value's subject through their mappings. Reducer read models need [their own PII marking](https://cratis.io/chronicle/compliance/read-models/), because the kernel can't infer arbitrary transformations.
 
-Then there's the audit trail. With Arc's Chronicle integration in .NET and TypeScript, a command's property values are recorded in the causation of every event it appends, so an unmarked password or token lands in the log in clear text and stays there. Arc leaves `[PII]` values out of that record, and [`[NotAudited]`](https://cratis.io/arc/backend/csharp/attributes/) does the same for secrets without encrypting them. For an operational secret you must store, Chronicle has [`[Encrypted]`](https://cratis.io/chronicle/security/encrypted-values/). It uses a separate key. Erasing a subject's `[PII]` key leaves an `[Encrypted]` value readable, and Chronicle's subject-erasure operation refuses to delete its key.
-
-Pick the attribute by what the value is. Personal data you may have to erase gets `[PII]`. A value that should never reach the causation record gets `[NotAudited]`, and an operational secret you have to keep gets `[Encrypted]`.
+Pick the attribute by what the value is. Personal data you may have to erase gets `[PII]`. A value that should never reach the causation record gets `[NotAudited]`, which excludes it without encrypting it, and an operational secret you have to keep gets `[Encrypted]`, whose separate key erasure doesn't touch, as [what a command leaves behind](#what-a-command-leaves-behind) explains.
 
 [Erasure](https://cratis.io/chronicle/compliance/erasing-a-subject/) is one call:
 
@@ -148,11 +146,9 @@ Erasure stops at these points:
 
 - The key belongs to a subject within a namespace. A person who exists in two tenants needs two erasures.
 - Values that were never marked stay readable, and so do causation values recorded in clear before anyone marked them.
-- A rebuild of a stored read model that covers an erased subject is refused for that subject's partition. Before such a rebuild, authorize a new key for anyone you intend to keep protecting.
-- Restoring a backup from before the erasure brings the key back.
 - Copies outside Chronicle, including exported keys, messages sent to another system and values already shown in a browser, need separate handling.
 
-By default Chronicle stores keys with the events. It can keep them in a dedicated store instead, such as HashiCorp Vault or Azure Key Vault. A restore then has to line up events, keys and certificates to the same point in time, or it can undo an erasure you already reported.
+[*Erasure, step by step*](/personal-data-in-an-event-log/#erasure-step-by-step) covers the rebuild limit, and [*Where the keys live, and how they come back*](/personal-data-in-an-event-log/#where-the-keys-live-and-how-they-come-back) covers the restore that can undo an erasure.
 
 ![A diagram titled What deleting a key reaches. A panel labeled Inside Chronicle, namespace Acme holds two cards. Event log: the encrypted value is unreadable; the record remains. Managed read model: the protected field reads empty. A second panel, Deleting the key doesn't reach, holds three cards: backups taken before erasure, copies sent elsewhere, and values already shown. A bottom card, Another namespace, reads: The same person in another tenant needs their own erasure.](./erasure-boundary.png)
 
@@ -419,7 +415,7 @@ Causation values aren't encrypted under the subject's key, so deleting the key d
 
 `[PII]` on an Arc command keeps a value out of causation and encrypts nothing. The event you build from the command needs its own marker, on the property or on the concept.
 
-`[Encrypted]` keys are scoped to the subject by default, or to the namespace or globally, and no operation deletes one. Combining `[Encrypted]` with `[PII]` on one property makes the schema pass throw, and analyzer CHR0053 catches the direct cases.
+For an operational secret you must store, Chronicle has [`[Encrypted]`](https://cratis.io/chronicle/security/encrypted-values/), which uses a separate key. Erasing a subject's `[PII]` key leaves an `[Encrypted]` value readable, and Chronicle's subject-erasure operation refuses to delete its key. `[Encrypted]` keys are scoped to the subject by default, or to the namespace or globally, and no operation deletes one. Combining `[Encrypted]` with `[PII]` on one property makes the schema pass throw, and analyzer CHR0053 catches the direct cases.
 
 ## Four ways to change the record of an event
 
@@ -518,7 +514,7 @@ The fence is a record kept beside the keys, with three fields. `ErasedThrough` i
 - Appending a `[PII]` value for an erased subject fails with `EncryptionKeyErased`. It doesn't mint a key and doesn't blank the value.
 - `AllowNewEncryptionKeyFor(subject)` sets `NewKeyAllowed` in every store of the namespace and creates no key. The next protected append mints one at `ErasedThrough + 1`. That key decrypts nothing written before the erasure, and the destroyed material is still refused.
 - A forwarded event carrying `[PII]` for an erased subject fails to append in the target store, and that event source's partition fails while the rest of the subscription keeps flowing.
-- Replaying a projection or reducer into a stored read model applies protection again, so the replay is refused for the erased subject's partition. A rebuild doesn't remove ciphertext already in the read model store.
+- Replaying a projection or reducer into a stored read model applies protection again, so the replay is refused for the erased subject's partition. A rebuild doesn't remove ciphertext already in the read model store. Before such a rebuild, authorize a new key for anyone you intend to keep protecting.
 
 Erasure doesn't touch the constraint index. A `[Unique]` constraint over a `[PII]` value keeps a SHA-256 hash of the plaintext, and `DeleteEncryptionKeyFor` removes keys and caches, not that entry. The erased author's name therefore stays taken in that namespace, and because the hash isn't salted, anyone who can read the index can still confirm a guessed name. The entry goes when an event marked `[RemoveConstraint]` with the constraint's name is appended for the same event source, so give the author feature a removal event that carries no personal data, such as `AuthorForgotten(AuthorId)`, and append it as part of the erasure. A constraint reindex, which runs when a constraint's definition changes, also drops entries whose value now reads as empty. A fix is tracked in [Chronicle issue #4389](https://github.com/Cratis/Chronicle/issues/4389).
 
@@ -542,7 +538,7 @@ A backup has three parts: the encryption-certificate ring, the storage backend a
 
 The C# client validates the most. The Kotlin/Java, TypeScript and Elixir clients accept the markers without the same checks. Every client takes a subject as an append option, but only C# reads it from an event's `[Subject]` property. The other clients' subject markers only pick the key a read model is released under. Elixir can't mark a whole multi-field struct `[PII]`, and the TypeScript decorator doesn't read constructor parameters. `[Encrypted]` exists in all four. Every client can delete a subject's key, and only .NET and TypeScript can authorize a new one afterward. [Where the clients differ](https://cratis.io/chronicle/clients/where-the-clients-differ/) has the full list.
 
-For the author feature, erasing an author is `DeleteEncryptionKeyFor` with the author's subject, once in each namespace the author appears in, and because the name is `[Unique]`, the erasure also appends a removal event so the name's hash leaves the constraint index. The name then reads as empty in the log and in the author list, `AuthorRegistered` keeps its sequence number, and whatever the application already sent elsewhere is still the application's to clean up.
+Erasing an author takes `DeleteEncryptionKeyFor` with the author's subject, once in each namespace the author appears in, and because the name is `[Unique]`, the erasure also appends a removal event so the name's hash leaves the constraint index. The name then reads as empty in the log and in the author list, `AuthorRegistered` keeps its sequence number, and whatever the application already sent elsewhere is still the application's to clean up.
 
 ---
 

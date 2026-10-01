@@ -14,9 +14,9 @@ tags:
 
 Chronicle Workbench has nothing to install. The Chronicle server serves it on port 35000, the same TLS port your clients connect to, so starting Chronicle starts the Workbench with it.
 
-[Chronicle](https://cratis.io/chronicle/) is an event-sourcing database and processing runtime with a first-class .NET SDK, and [clients](https://cratis.io/chronicle-clients/) for TypeScript, Kotlin/Java (JVM) and Elixir. Storage is pluggable, with providers for MongoDB (the default), PostgreSQL, SQL Server and SQLite. [Chronicle Workbench](https://cratis.io/chronicle/workbench/) ships with Chronicle and runs locally in your browser. Once you're authorized, it shows what the running Chronicle is doing, and previews how a projection will behave for the projection features it supports.
+[Chronicle Workbench](https://cratis.io/chronicle/workbench/) ships with Chronicle and runs locally in your browser. Once you're authorized, it shows what the running Chronicle is doing, and previews how a projection will behave for the projection features it supports.
 
-The running example is the feature from [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/): a signed-in user registers an author, and author names are unique within the organization. Say an author registers without an error and never appears in the list of authors. The command succeeded, so the event should be in the log, and the interesting part is what happened after the append. Most of the Workbench's screens answer a piece of that.
+Say an author registers without an error and never appears in the list of authors. The command succeeded, so the event should be in the log, and the interesting part is what happened after the append. Most of the Workbench's screens answer a piece of that.
 
 ## Starting one locally
 
@@ -76,16 +76,7 @@ When a [partition](https://cratis.io/chronicle/concepts/observers/) fails, Chron
 
 The Failed partitions page lists each one with its status, the partition, the number of attempts and the last attempt, and it has a detail panel per partition. Status says whether the partition has been quarantined. When the status value is missing, the page shows **Unknown**, and that's a gap in what the page knows about the partition. It doesn't mean the partition is fine.
 
-Every recorded attempt carries a kind, and the kind is what separates a bug from a busy system:
-
-| Kind | What it says |
-| --- | --- |
-| `Handling` | The subscriber failed while handling the events. Something is wrong. |
-| `Timeout` | The subscriber didn't answer in time. The events weren't rejected, and the system was congested. |
-| `Disconnected` | The subscriber was gone by the time the events reached it. |
-| `Unknown` | Nothing classified the failure. Attempts recorded before failures carried a kind read back as this. |
-
-The detail panel lists each attempt's time, sequence number, messages and stack trace. In Chronicle 19.23.1 it doesn't show the kind.
+[*Inside Chronicle*](/inside-chronicle/) explains the failure kinds that separate a handler bug from congestion. The detail panel lists each attempt's time, sequence number, messages and stack trace. As of Chronicle 19.23.1 it doesn't show the kind.
 
 ![The Failed partitions page for the acme namespace with one failed partition selected. The detail panel shows the observer Authors.AuthorWelcomeMail, the status Failed and 6 attempts. Each attempt lists its time, sequence number 3, its messages, including Welcome mail could not be sent: smtp.authors.local: connection refused, and a stack trace.](./workbench-09-failed-partition-detail.png)
 
@@ -95,9 +86,7 @@ The detail panel lists each attempt's time, sequence number, messages and stack 
 
 *The kind of an attempt separates a bug from congestion.*
 
-A partition whose last attempt was a `Timeout` doesn't count toward the observer's quarantine thresholds. Quarantine stops retries and needs a person to undo it, which suits an observer that's wrong and doesn't suit one that was waiting on a busy kernel.
-
-By default a failing partition is retried up to 10 times, with a backoff that starts at one second and doubles up to 600 seconds, and it's then quarantined until someone looks. You can also have a whole observer quarantined once too many of its partitions have failed, by count or by percentage. Both thresholds are off by default. The settings are in the [observer configuration](https://cratis.io/chronicle/hosting/configuration/observers/).
+The retry policy and the timeout exception to observer quarantine are covered in [*Inside Chronicle*](/inside-chronicle/).
 
 The page itself has one action, Retry, which asks for one more attempt at that partition. Fixing the cause comes first, because a retry against the same bug fails the same way.
 
@@ -151,7 +140,7 @@ The CLI's `cratis chronicle diagnose` reports failed partitions in one summary a
 
 From VS Code, [Narrator](https://github.com/Cratis/Narrator), which we still treat as experimental, browses the same stores and only reads.
 
-For the author who never showed up, the route through the Workbench runs from the event on the Sequences page to the observers listed on its event type, then to the failed partition labelled with the author's ID and the error its attempts recorded. The `Author` instance on the Read models page shows what the list was actually reading. The fix goes into the code, and whether anyone presses Retry afterwards, on a production system, is a decision for whoever runs that system.
+Follow the missing author from the event on the Sequences page to the observers listed on its event type, then to the failed partition labeled with the author's ID and the error its attempts recorded. The `Author` instance on the Read models page shows what the list was actually reading. The fix goes into the code, and whether anyone presses Retry afterwards, on a production system, is a decision for whoever runs that system.
 
 ---
 

@@ -18,10 +18,6 @@ import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 `dotnet new cratis -n MyStore` writes a command that registers a name, a projection that lists the names, a reactor that logs each one and a React page for all of it, before you've written a line of your own. Three more commands start Chronicle, the backend and the frontend. The name you register on that page is an event you can open in the Workbench.
 
-This part covers the template because it's the first thing to run once you've decided to try Cratis, and it leans on smaller tools that earlier parts only mention in passing.
-
-The feature from [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) has almost the same shape as the template's sample slice. A signed-in user registers an author, and author names are unique within the organization.
-
 ## The first hour
 
 The C# path needs the .NET 10 SDK, because every .NET template targets `net10.0` and nothing else. It also needs Docker with the Compose plugin, and Node.js `^20.19.0` or `>=22.12.0` with yarn, pnpm or npm. The Kotlin and Java variants build with JDK 17 instead of the .NET SDK. The [getting started guide](https://cratis.io/templates/getting-started/) goes from an empty folder to the first event:
@@ -613,7 +609,7 @@ Earlier posts on the blog go deeper on single decisions. [Choosing an event sour
 11. [Testing with Arc and Chronicle](/testing-with-arc-and-chronicle/). The ladder from a direct method call to a real Chronicle, and the ways a green spec proves nothing.
 12. [Beyond .NET](/beyond-dotnet/). Arc and Chronicle in other languages, four storage providers, and where each still differs from .NET.
 13. [Personal data in an event log](/personal-data-in-an-event-log/). Making a person's data unreadable in an append-only log, and exactly where that stops.
-14. [Year two](/four-changes-in-year-two/). Why a new event shape, a new view and a correction are three different operations, none of them a script against the store.
+14. [Year two](/four-changes-in-year-two/). Why a new event shape, a new view, a correction and a stopped processor are four kinds of change, none of them a script against the store.
 15. [Arc gotchas: where a convention decides for you](/arc-gotchas/). Validation that runs in two places, a proxy folder that gets cleared, and names that do the mapping for you until they don't.
 16. [Chronicle Workbench, screen by screen](/chronicle-workbench/). The browser tool that ships with Chronicle.
 17. [The Cratis CLI, from diagnose to llm-context](/the-cratis-cli/). From `diagnose` to a full-screen terminal workbench, and a command catalog that tells an agent which commands change the server.
@@ -623,7 +619,7 @@ Earlier posts on the blog go deeper on single decisions. [Choosing an event sour
 21. [Stage and Scene: what happens after a model compiles](/stage-and-scene-after-a-model-compiles/). A model rendered into an Arc and Chronicle application by a renderer that refuses what it can't express.
 22. [Prologue: a first model of the system you already have](/prologue-a-first-model-of-an-existing-system/). A first model drafted from a running system that nobody ever modeled.
 23. [Cratis Studio: one event model for the whole team](/cratis-studio-event-modeling-together/). A team and its AI agents on one event model, and a slice's code generated into your repository.
-24. [Cratis Direct and our agentic development life cycle](/cratis-direct-agentic-development-life-cycle/). How a person admits agent work, what each gate records and who merges. We run our own engineering on it today. For everyone else it's coming soon at cratis.direct.
+24. [Cratis Direct and our agentic development life cycle](/cratis-direct-agentic-development-life-cycle/). How a person admits agent work, what each gate records and who merges.
 25. [AI across the Cratis stack](/ai-across-the-cratis-stack/). The AI corpus, its hooks and the MCP servers, what each lets an assistant read or change, and the checks that run whether it listened or not.
 26. Getting started with Cratis, and the tools around it. `cratis new`, the samples, and the supporting pieces, from Fundamentals and Specifications to Synopsis and Narrator.
 
