@@ -240,7 +240,7 @@ class BookCatalogedMigration implements IEventTypeMigration<BookCataloged, BookC
 </TabItem>
 <TabItem label="Elixir">
 
-The Elixir client takes property names as atoms or strings and writes a snake_case name in camelCase.
+The Elixir client takes property names as atoms or strings and writes a snake_case name in camelCase. Migrations need `cratis_chronicle` 3.8.1 or later when the event modules compile separately; on an earlier version, `require` both event modules at the top of the migration.
 
 ```elixir
 defmodule MyApp.Migrations.BookCatalogedMigration do
