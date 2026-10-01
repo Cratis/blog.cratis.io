@@ -292,7 +292,7 @@ The client needs Node.js 22.19 or later, because it's built on `undici`, and it 
 defmodule MyApp.Events.OrderPlaced do
   use Chronicle.Events.EventType, id: "order-placed"
 
-  defstruct [:customer_id, :total]
+  defstruct customer_id: %MyApp.CustomerId{}, total: %MyApp.Money{}
 end
 
 case Chronicle.append(order_id, %MyApp.Events.OrderPlaced{

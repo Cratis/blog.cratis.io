@@ -52,7 +52,7 @@ Chronicle has pluggable [storage providers](https://cratis.io/chronicle/hosting/
 | `MongoDB` | Must run as a replica set, a single-node one included, because appends use transactions. Read models are documents. The only storage that multi-node clustering keeps its membership in. |
 | `PostgreSql` | Read models become tables, one per read model type, with a typed column per scalar property and a `jsonb` column for each collection or nested object. |
 | `MsSql` | The same table layout, with `nvarchar(max)` for the JSON columns. |
-| `Sqlite` | One database file, written in WAL mode with a 30-second busy timeout because many grains write to it at once. The JSON columns are `TEXT`. |
+| `Sqlite` | Separate database files for stores and namespaces, with read models in their own files. Each uses WAL mode with a 30-second busy timeout because many grains write to it at once. The JSON columns are `TEXT`. |
 | `InMemory` | Not durable, and scoped to one process. For tests and throwaway environments. |
 
 The MongoDB in the production guide's Compose file has no authentication and is published on loopback only. Authentication and TLS for the database, or a managed replica set, are yours to add.

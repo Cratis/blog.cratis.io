@@ -76,13 +76,13 @@ Attempts:        5
 
 The partition is a book's ISBN, because that's the event source ID the application uses. For us it would be the author's ID. Failures are addressed by your own keys, so you can go straight from "this author is missing" to "this author's partition failed, and here's why".
 
-Behind that is Chronicle's failure model. When one partition fails, it stops and is retried with backoff while every other partition keeps going. After the configured number of attempts it's quarantined until someone looks. Fix the cause, then ask the [observer commands](https://cratis.io/cli/chronicle/observers/) for exactly one more attempt:
+Behind that is Chronicle's failure model. When one partition fails, it stops and is retried with backoff while every other partition keeps going. After the configured number of attempts it's quarantined until someone looks. For a failed partition that isn't quarantined, fix the cause, then ask the [observer commands](https://cratis.io/cli/chronicle/observers/) for exactly one more attempt:
 
 ```bash
 cratis chronicle observers retry-partition Bookshop.OverdueNotices 978-0131177055 -y
 ```
 
-The kernel can refuse a retry, for example on a quarantined observer, and the CLI then exits nonzero with a suggestion. Even a success only says the retry started, so run `diagnose` again.
+A quarantined partition refuses an ordinary retry, as [*Year two*](/four-changes-in-year-two/) explains. A quarantined observer also blocks retries, and the CLI exits nonzero with a suggestion when the kernel refuses. Even a success only says the retry started, so run `diagnose` again.
 
 Retry the partition before you replay anything. `observers replay` is the bigger hammer. It reprocesses the observer from sequence zero and rebuilds its read model, and on a large store that takes time and costs something.
 
