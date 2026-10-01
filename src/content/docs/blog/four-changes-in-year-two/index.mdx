@@ -17,7 +17,7 @@ import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 When a Chronicle client appends an event in the old shape of its type, the kernel stores the new shape next to it. Append the new shape and the kernel stores the old one as well, translated back. Two services written a year apart can share an event type, each reading the generation it was built against, and nobody runs a migration script over the store.
 
-That's one of four kinds of change a system meets after launch. In [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/), a signed-in user registers an author, and author names are unique within the organization. Take a made-up but ordinary year for that feature. The business wants the name split into a first and a last name. Someone wants a new list of authors on a screen that didn't exist at launch. Support finds one author registered with a misspelled name. And the reactor that sends welcome mail has stopped on one author and stays stopped.
+That's one of four kinds of change a system meets after launch. In [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/), a signed-in user registers an author, and author names are unique within the organization. Take a made-up but ordinary year for that feature and the book catalog beside it. The catalog team wants each book's subtitle in a field of its own. Someone wants a new list of authors on a screen that didn't exist at launch. Support finds one author registered with a misspelled name. And the reactor that sends welcome mail has stopped on one author and stays stopped.
 
 ## Four kinds of change
 
@@ -39,14 +39,14 @@ Chronicle keeps [generations of an event type](https://cratis.io/chronicle/under
 ```csharp
 using Cratis.Chronicle.Events;
 
-// Generation 2 (current) — Name has been split into FirstName and LastName
-[EventType("author-registered", generation: 2)]
-public record AuthorRegistered(AuthorName FirstName, AuthorName LastName);
+// Generation 2 (current) — the subtitle has a property of its own
+[EventType("book-cataloged", generation: 2)]
+public record BookCataloged(BookTitle Title, BookSubtitle Subtitle);
 
 // Generation 1 (original) — marked as a previous generation of the current record above,
 // instead of carrying its own [EventType]
-[EventTypeGenerationFor<AuthorRegistered>(1)]
-public record AuthorRegisteredV1(AuthorName Name);
+[EventTypeGenerationFor<BookCataloged>(1)]
+public record BookCatalogedV1(BookTitle Title);
 ```
 
 </TabItem>
@@ -57,13 +57,13 @@ The Kotlin client repeats the explicit id on every generation.
 ```kotlin
 import io.cratis.chronicle.events.EventType
 
-// Generation 2 (current) - Name has been split into firstName and lastName
-@EventType(id = "author-registered", generation = 2)
-data class AuthorRegistered(val firstName: AuthorName, val lastName: AuthorName)
+// Generation 2 (current) - the subtitle has a property of its own
+@EventType(id = "book-cataloged", generation = 2)
+data class BookCataloged(val title: BookTitle, val subtitle: BookSubtitle)
 
 // Generation 1 (original) - same explicit id as the current generation, only the generation differs
-@EventType(id = "author-registered", generation = 1)
-data class AuthorRegisteredV1(val name: AuthorName)
+@EventType(id = "book-cataloged", generation = 1)
+data class BookCatalogedV1(val title: BookTitle)
 ```
 
 </TabItem>
@@ -74,13 +74,13 @@ The Java client repeats the explicit id on every generation.
 ```java
 import io.cratis.chronicle.events.EventType;
 
-// Generation 2 (current) - name has been split into firstName and lastName
-@EventType(id = "author-registered", generation = 2)
-record AuthorRegistered(AuthorName firstName, AuthorName lastName) {}
+// Generation 2 (current) - the subtitle has a property of its own
+@EventType(id = "book-cataloged", generation = 2)
+record BookCataloged(BookTitle title, BookSubtitle subtitle) {}
 
 // Generation 1 (original) - same explicit id as the current generation, only the generation differs
-@EventType(id = "author-registered", generation = 1)
-record AuthorRegisteredV1(AuthorName name) {}
+@EventType(id = "book-cataloged", generation = 1)
+record BookCatalogedV1(BookTitle title) {}
 ```
 
 </TabItem>
@@ -92,26 +92,26 @@ The TypeScript client repeats the explicit id on every generation.
 import { eventType } from '@cratis/chronicle';
 import { field } from '@cratis/fundamentals';
 
-// Generation 2 (current) — Name has been split into FirstName and LastName
-@eventType('author-registered', 2)
-class AuthorRegistered {
-    @field(AuthorName) readonly firstName: AuthorName;
-    @field(AuthorName) readonly lastName: AuthorName;
+// Generation 2 (current) — the subtitle has a property of its own
+@eventType('book-cataloged', 2)
+class BookCataloged {
+    @field(BookTitle) readonly title: BookTitle;
+    @field(BookSubtitle) readonly subtitle: BookSubtitle;
 
-    constructor(firstName: AuthorName, lastName: AuthorName) {
-        this.firstName = firstName;
-        this.lastName = lastName;
+    constructor(title: BookTitle, subtitle: BookSubtitle) {
+        this.title = title;
+        this.subtitle = subtitle;
     }
 }
 
 // Generation 1 (original) — same id, generation 1, kept only so the migration below can
 // upcast from it. It is not the "current" shape of the event any more.
-@eventType('author-registered', 1)
-class AuthorRegisteredV1 {
-    @field(AuthorName) readonly name: AuthorName;
+@eventType('book-cataloged', 1)
+class BookCatalogedV1 {
+    @field(BookTitle) readonly title: BookTitle;
 
-    constructor(name: AuthorName) {
-        this.name = name;
+    constructor(title: BookTitle) {
+        this.title = title;
     }
 }
 ```
@@ -122,16 +122,16 @@ class AuthorRegisteredV1 {
 The Elixir client repeats the explicit id on every generation.
 
 ```elixir
-defmodule MyApp.Events.AuthorRegistered do
-  use Chronicle.Events.EventType, id: "author-registered", generation: 2
+defmodule MyApp.Events.BookCataloged do
+  use Chronicle.Events.EventType, id: "book-cataloged", generation: 2
 
-  defstruct first_name: %MyApp.AuthorName{}, last_name: %MyApp.AuthorName{}
+  defstruct title: %MyApp.BookTitle{}, subtitle: %MyApp.BookSubtitle{}
 end
 
-defmodule MyApp.Events.AuthorRegisteredV1 do
-  use Chronicle.Events.EventType, id: "author-registered", generation: 1
+defmodule MyApp.Events.BookCatalogedV1 do
+  use Chronicle.Events.EventType, id: "book-cataloged", generation: 1
 
-  defstruct name: %MyApp.AuthorName{}
+  defstruct title: %MyApp.BookTitle{}
 end
 ```
 
@@ -146,16 +146,16 @@ You [declare a migration](https://cratis.io/chronicle/migrations/) between adjac
 <TabItem label="C#">
 
 ```csharp
-public class AuthorRegisteredMigration : EventTypeMigration<AuthorRegistered, AuthorRegisteredV1>
+public class BookCatalogedMigration : EventTypeMigration<BookCataloged, BookCatalogedV1>
 {
-    public override void Upcast(IEventMigrationBuilder<AuthorRegistered, AuthorRegisteredV1> builder) =>
+    public override void Upcast(IEventMigrationBuilder<BookCataloged, BookCatalogedV1> builder) =>
         builder.Properties(pb => pb
-            .Split(m => m.FirstName, e => e.Name, PropertySeparator.Space, SplitPartIndex.First)
-            .Split(m => m.LastName, e => e.Name, PropertySeparator.Space, SplitPartIndex.Second));
+            .Split(m => m.Title, e => e.Title, ": ", SplitPartIndex.First)
+            .Split(m => m.Subtitle, e => e.Title, ": ", SplitPartIndex.Second));
 
-    public override void Downcast(IEventMigrationBuilder<AuthorRegisteredV1, AuthorRegistered> builder) =>
+    public override void Downcast(IEventMigrationBuilder<BookCatalogedV1, BookCataloged> builder) =>
         builder.Properties(pb => pb
-            .Combine(m => m.Name, PropertySeparator.Space, e => e.FirstName, e => e.LastName));
+            .Combine(m => m.Title, ": ", e => e.Title, e => e.Subtitle));
 }
 ```
 
@@ -165,23 +165,23 @@ public class AuthorRegisteredMigration : EventTypeMigration<AuthorRegistered, Au
 The Kotlin client takes property references and records their names as written.
 
 ```kotlin
-class AuthorRegisteredMigration :
-    EventTypeMigration<AuthorRegistered, AuthorRegisteredV1>(
-        AuthorRegistered::class,
-        AuthorRegisteredV1::class
+class BookCatalogedMigration :
+    EventTypeMigration<BookCataloged, BookCatalogedV1>(
+        BookCataloged::class,
+        BookCatalogedV1::class
     ) {
-    override fun upcast(builder: EventTypeMigrationBuilder<AuthorRegistered, AuthorRegisteredV1>) {
+    override fun upcast(builder: EventTypeMigrationBuilder<BookCataloged, BookCatalogedV1>) {
         builder
-            .split(AuthorRegistered::firstName, AuthorRegisteredV1::name, " ", 0)
-            .split(AuthorRegistered::lastName, AuthorRegisteredV1::name, " ", 1)
+            .split(BookCataloged::title, BookCatalogedV1::title, ": ", 0)
+            .split(BookCataloged::subtitle, BookCatalogedV1::title, ": ", 1)
     }
 
-    override fun downcast(builder: EventTypeMigrationBuilder<AuthorRegisteredV1, AuthorRegistered>) {
+    override fun downcast(builder: EventTypeMigrationBuilder<BookCatalogedV1, BookCataloged>) {
         builder.combine(
-            AuthorRegisteredV1::name,
-            " ",
-            AuthorRegistered::firstName,
-            AuthorRegistered::lastName
+            BookCatalogedV1::title,
+            ": ",
+            BookCataloged::title,
+            BookCataloged::subtitle
         )
     }
 }
@@ -193,25 +193,25 @@ class AuthorRegisteredMigration :
 The Java client takes property names as strings and records them as written.
 
 ```java
-class AuthorRegisteredMigration
-        extends EventTypeMigration<AuthorRegistered,
-                                   AuthorRegisteredV1> {
-    AuthorRegisteredMigration() {
-        super(AuthorRegistered.class, AuthorRegisteredV1.class);
+class BookCatalogedMigration
+        extends EventTypeMigration<BookCataloged,
+                                   BookCatalogedV1> {
+    BookCatalogedMigration() {
+        super(BookCataloged.class, BookCatalogedV1.class);
     }
 
     @Override
-    public void upcast(EventTypeMigrationBuilder<AuthorRegistered,
-                                                 AuthorRegisteredV1> builder) {
+    public void upcast(EventTypeMigrationBuilder<BookCataloged,
+                                                 BookCatalogedV1> builder) {
         builder
-            .split("firstName", "name", " ", 0)
-            .split("lastName", "name", " ", 1);
+            .split("title", "title", ": ", 0)
+            .split("subtitle", "title", ": ", 1);
     }
 
     @Override
-    public void downcast(EventTypeMigrationBuilder<AuthorRegisteredV1,
-                                                   AuthorRegistered> builder) {
-        builder.combine("name", " ", "firstName", "lastName");
+    public void downcast(EventTypeMigrationBuilder<BookCatalogedV1,
+                                                   BookCataloged> builder) {
+        builder.combine("title", ": ", "title", "subtitle");
     }
 }
 ```
@@ -222,17 +222,17 @@ class AuthorRegisteredMigration
 The TypeScript client takes property names as strings, typed as keys of the event class.
 
 ```typescript
-@eventTypeMigration(AuthorRegistered, AuthorRegisteredV1)
-class AuthorRegisteredMigration implements IEventTypeMigration<AuthorRegistered, AuthorRegisteredV1> {
-    upcast(builder: IEventMigrationBuilder<AuthorRegistered, AuthorRegisteredV1>): void {
+@eventTypeMigration(BookCataloged, BookCatalogedV1)
+class BookCatalogedMigration implements IEventTypeMigration<BookCataloged, BookCatalogedV1> {
+    upcast(builder: IEventMigrationBuilder<BookCataloged, BookCatalogedV1>): void {
         builder.properties(propertyBuilder => propertyBuilder
-            .split('firstName', 'name', ' ', 0)
-            .split('lastName', 'name', ' ', 1));
+            .split('title', 'title', ': ', 0)
+            .split('subtitle', 'title', ': ', 1));
     }
 
-    downcast(builder: IEventMigrationBuilder<AuthorRegisteredV1, AuthorRegistered>): void {
+    downcast(builder: IEventMigrationBuilder<BookCatalogedV1, BookCataloged>): void {
         builder.properties(propertyBuilder => propertyBuilder
-            .combine('name', ' ', 'firstName', 'lastName'));
+            .combine('title', ': ', 'title', 'subtitle'));
     }
 }
 ```
@@ -243,27 +243,27 @@ class AuthorRegisteredMigration implements IEventTypeMigration<AuthorRegistered,
 The Elixir client takes property names as atoms or strings and writes a snake_case name in camelCase.
 
 ```elixir
-defmodule MyApp.Migrations.AuthorRegisteredMigration do
+defmodule MyApp.Migrations.BookCatalogedMigration do
   # Needed until Cratis/Chronicle.Elixir#90 is fixed.
-  require MyApp.Events.AuthorRegisteredV1
-  require MyApp.Events.AuthorRegistered
+  require MyApp.Events.BookCatalogedV1
+  require MyApp.Events.BookCataloged
 
   use Chronicle.Events.Migration,
-    from: {MyApp.Events.AuthorRegisteredV1, generation: 1},
-    to: {MyApp.Events.AuthorRegistered, generation: 2}
+    from: {MyApp.Events.BookCatalogedV1, generation: 1},
+    to: {MyApp.Events.BookCataloged, generation: 2}
 
   alias Chronicle.Events.MigrationBuilder
 
   @impl true
   def upcast(builder) do
     builder
-    |> MigrationBuilder.split_property(:name, :first_name, " ", 0)
-    |> MigrationBuilder.split_property(:name, :last_name, " ", 1)
+    |> MigrationBuilder.split_property(:title, :title, ": ", 0)
+    |> MigrationBuilder.split_property(:title, :subtitle, ": ", 1)
   end
 
   @impl true
   def downcast(builder) do
-    MigrationBuilder.combine_properties(builder, [:first_name, :last_name], :name, " ")
+    MigrationBuilder.combine_properties(builder, [:title, :subtitle], :title, ": ")
   end
 end
 ```
@@ -271,7 +271,7 @@ end
 </TabItem>
 </Tabs>
 
-The builder has a small vocabulary. `Split` and `Combine` handle the name, `RenamedFrom` covers a renamed property and `DefaultValue` fills a new one. `MapValues` translates values, applies the map forward and inverts it on the way back. Values the map doesn't mention pass through. If two old values collapse onto one new value, the way back takes the first pair you declared, so a map like that forces you to choose what the reverse means. `MapValues` exists in the C# client only.
+The builder has a small vocabulary. `Split` and `Combine` handle the title, `RenamedFrom` covers a renamed property and `DefaultValue` fills a new one. `MapValues` translates values, applies the map forward and inverts it on the way back. Values the map doesn't mention pass through. If two old values collapse onto one new value, the way back takes the first pair you declared, so a map like that forces you to choose what the reverse means. `MapValues` exists in the C# client only. Migrations run on the content after Chronicle has encrypted personal data, so a migration that splits, combines or maps a value marked `[PII]` works on its ciphertext ([Cratis/Chronicle#4456](https://github.com/Cratis/Chronicle/issues/4456)).
 
 In the .NET client, the property expressions are typed, and they resolve to the JSON names Chronicle stores, `[JsonPropertyName]` first and then the client's naming policy. An expression that points at nothing is rejected at registration with `InvalidMigrationPropertyForEventType`. The other clients don't check the names at registration. Adding or removing an optional property still needs a migration class, with no operations inside, so that the chain from generation 1 to the current one has no holes.
 
@@ -304,13 +304,13 @@ The kernel [validates the chain again](https://cratis.io/chronicle/migrations/va
 
 At registration the client sends the whole event type to the kernel, every generation and every migration, with the migrations expressed as JmesPath. From then on the kernel applies them on every append. Append generation 1 and Chronicle stores generations 1 and 2. Append generation 2 and it stores generation 2 plus the downcast generation 1. Chains of three or more generations extend the same way. Chronicle produces upcast and downcast representations while keeping the originally stored generation, so old and new code can each read the shape they expect.
 
-![A diagram titled One event, every generation. At the top, two cards: Append generation 1 stores 1, and 2 by upcast; Append generation 2 stores 2, and 1 by downcast. Both lead to one stored AuthorRegistered event whose content is keyed by generation, 1 and 2. Beside it, a background job fills in generation 2 for older events in the default namespace's event log, with an arrow into the stored event. From the stored event, arrows lead down to a service on generation 1, which reads Name, and a service on generation 2, which reads FirstName and LastName. A band at the bottom reads: A migration changes representation. It can't change meaning or fix a wrong value.](./generation-map.png)
+![A diagram titled One event, every generation. At the top, two cards: Append generation 1 stores 1, and 2 by upcast; Append generation 2 stores 2, and 1 by downcast. Both lead to one stored BookCataloged event whose content is keyed by generation, 1 and 2. Beside it, a background job fills in generation 2 for older events in the default namespace's event log, with an arrow into the stored event. From the stored event, arrows lead down to a service on generation 1, which reads Title, and a service on generation 2, which reads Title and Subtitle. A band at the bottom reads: A migration changes representation. It can't change meaning or fix a wrong value.](./generation-map.png)
 
 *One stored event, readable in every generation of its type.*
 
 Events stored before the new generation existed get the same treatment later. Registering a new generation makes the kernel append an `EventTypeGenerationAdded` event to its system sequence. A built-in reactor observes it and starts a job that walks the default namespace's event log for events of that type still stored in the older generation, computes every generation for each one and writes the result back into the stored event. The job covers the default namespace's event log only. The application stays usable while the job runs, and a consumer reading the new generation sees the events migrated so far.
 
-A migration changes representation. It can split a name that was stored as "Jane Austen" into two fields, and it has no way to know that the business meant something else by "name" all along. If what the event *means* has changed, that's a new event, and a migration is the wrong tool. A migration can't fix a wrong value either. The misspelled author gets a correction, further down.
+A migration changes representation. It can split a title that was stored as "Persuasion: A Novel" into two fields, and it has no way to know that the colon in some other title was never meant as a separator. If what the event *means* has changed, that's a new event, and a migration is the wrong tool. A migration can't fix a wrong value either. The misspelled author gets a correction, further down.
 
 Upgrading Chronicle itself is a separate matter. A package or server upgrade doesn't rewrite, reshape or reinterpret stored events, and event schema evolution only happens through the mechanism above. [Wire compatibility](https://cratis.io/chronicle/upgrading/) is checked within a major version, across every released minor of it, and crossing a major is where a protocol change is allowed.
 
@@ -413,9 +413,9 @@ Only `Started` exits successfully, and even that message says the retry *started
 
 A retry isn't a replay. `retry-partition` asks for one more attempt from where the partition failed. `replay-partition` replays the partition from the start, for when its derived state is wrong. A typed reactor can also list its own failed partitions and retry one from application code. The [troubleshooting guide](https://cratis.io/chronicle/troubleshooting/) walks the loop end to end, and [*The Cratis CLI*](/the-cratis-cli/) follows it from `diagnose` onwards.
 
-## Four changes to the author feature
+## The four changes
 
-Back to the made-up year. The name split is a second generation of `AuthorRegistered` and one migrator, and existing registrations in the default namespace's event log get their second generation from a background job. The new screen is a new projection that catches up from the log. The misspelled name is a revision, which rewinds that one author's partition in the observers that care. The stuck welcome mailer is a failed partition, a fixed mail configuration and one retry, followed by a look at whether the partition is current.
+Back to the made-up year. The subtitle is a second generation of `BookCataloged` and one migrator, and books already cataloged in the default namespace's event log get their second generation from a background job. The new screen is a new projection that catches up from the log. The misspelled name is a revision, which rewinds that one author's partition in the observers that care. The stuck welcome mailer is a failed partition, a fixed mail configuration and one retry, followed by a look at whether the partition is current.
 
 Chronicle checks the chain of generations, translates on every append and classifies a changed projection before it replays anything. It also refuses a retry it can't start, and says so.
 

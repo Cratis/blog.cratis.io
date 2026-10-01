@@ -21,7 +21,7 @@ In [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-
 
 ## A live query is a return type
 
-A C# [model-bound query](https://cratis.io/arc/backend/csharp/queries/model-bound/) is a static method on a `[ReadModel]` record. Returning `ISubject<IEnumerable<T>>`, or `ISubject<T>` for one item, makes it an [observable query](https://cratis.io/arc/backend/csharp/queries/model-bound/observable-queries/). The Ideas board in the Cratis Samples repository keeps its ideas in memory and observes them:
+A C# [model-bound query](https://cratis.io/arc/backend/csharp/queries/model-bound/) is a static method on a `[ReadModel]` record. Returning `ISubject<IEnumerable<T>>`, or `ISubject<T>` for one item, makes it an [observable query](https://cratis.io/arc/backend/csharp/queries/model-bound/observable-queries/). The Ideas board in the Cratis Samples repository keeps its ideas in memory, in one store for the whole process and not one per tenant, and observes them:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
@@ -277,7 +277,7 @@ For collection subscriptions on the hub, each item needs a stable, unique `Id` f
 
 ## One hook and its states
 
-The board's React component is short. Adapted from the sample, with plain elements in place of its toolbar and inputs, it reads:
+The board's React component is short. Adapted from the sample, without its header and styling, it reads:
 
 ```tsx
 export const Board = withViewModel(BoardViewModel, ({ viewModel }) => {
@@ -287,7 +287,7 @@ export const Board = withViewModel(BoardViewModel, ({ viewModel }) => {
 
     return (
         <main>
-            <button onClick={() => { void showCaptureDialog(); }}>Capture idea</button>
+            <Button label='Capture idea' onClick={() => { void showCaptureDialog(); }} />
             <input value={viewModel.searchTerm}
                    onChange={event => viewModel.setSearchTerm(event.target.value)} />
             {ideasResult.isPerforming && !ideasResult.hasData && <p>Connecting to the live board…</p>}
@@ -325,7 +325,6 @@ After each build, Arc's [proxy generator](https://cratis.io/arc/backend/csharp/p
     okLabel='Add'
     initialValues={{ id }}
     validateOn='change'
-    onSuccess={() => console.info('Author registered')}
 >
     <InputTextField<RegisterAuthor>
         value={(command) => command.name}

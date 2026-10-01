@@ -172,23 +172,25 @@ Nullable properties are where the rule gets strict. An event records what was tr
 
 ```csharp
 using Cratis.Chronicle.Events;
+using Cratis.Concepts;
 
 public record OrderId(Guid Value) : EventSourceId<Guid>(Value);
+public record CustomerId(Guid Value) : ConceptAs<Guid>(Value);
 public record Money(decimal Amount, string Currency);
 
 // Nullable smell — "sometimes there's a discount, sometimes not"
 [EventType]
 public record OrderPlacedWithNullableDiscount(
-    OrderId Id,
+    CustomerId CustomerId,
     Money Total,
     Money? Discount);
 
 // Two facts
 [EventType]
-public record OrderPlaced(OrderId Id, Money Total);
+public record OrderPlaced(CustomerId CustomerId, Money Total);
 
 [EventType]
-public record DiscountApplied(OrderId Id, Money Amount);
+public record DiscountApplied(Money Amount);
 ```
 
 </TabItem>
@@ -206,22 +208,27 @@ data class OrderId(private val id: UUID) : ArcConceptAs<UUID>, ChronicleConceptA
     override val value: UUID get() = id
 }
 
+data class CustomerId(private val id: UUID) : ArcConceptAs<UUID>, ChronicleConceptAs<UUID> {
+    override fun value(): UUID = id
+    override val value: UUID get() = id
+}
+
 data class Money(val amount: BigDecimal, val currency: String)
 
 // Nullable smell — "sometimes there's a discount, sometimes not"
 @EventType
 data class OrderPlacedWithNullableDiscount(
-    val id: OrderId,
+    val customerId: CustomerId,
     val total: Money,
     val discount: Money?
 )
 
 // Two facts
 @EventType
-data class OrderPlaced(val id: OrderId, val total: Money)
+data class OrderPlaced(val customerId: CustomerId, val total: Money)
 
 @EventType
-data class DiscountApplied(val id: OrderId, val amount: Money)
+data class DiscountApplied(val amount: Money)
 ```
 
 </TabItem>
@@ -241,21 +248,28 @@ record OrderId(UUID value) implements ConceptAs<UUID>, io.cratis.chronicle.conce
     }
 }
 
+record CustomerId(UUID value) implements ConceptAs<UUID>, io.cratis.chronicle.concepts.ConceptAs<UUID> {
+    @Override
+    public UUID getValue() {
+        return value;
+    }
+}
+
 record Money(BigDecimal amount, String currency) {}
 
 // Nullable smell — "sometimes there's a discount, sometimes not"
 @EventType
 record OrderPlacedWithNullableDiscount(
-    OrderId id,
+    CustomerId customerId,
     Money total,
     Money discount) {}
 
 // Two facts
 @EventType
-record OrderPlaced(OrderId id, Money total) {}
+record OrderPlaced(CustomerId customerId, Money total) {}
 
 @EventType
-record DiscountApplied(OrderId id, Money amount) {}
+record DiscountApplied(Money amount) {}
 ```
 
 </TabItem>
@@ -266,6 +280,14 @@ import { eventType } from '@cratis/chronicle';
 import { ConceptAs, field, Guid } from '@cratis/fundamentals';
 
 class OrderId extends ConceptAs<Guid> {
+    static readonly valueType = Guid;
+
+    constructor(value: Guid) {
+        super(value);
+    }
+}
+
+class CustomerId extends ConceptAs<Guid> {
     static readonly valueType = Guid;
 
     constructor(value: Guid) {
@@ -286,12 +308,12 @@ class Money {
 // Nullable smell — "sometimes there's a discount, sometimes not"
 @eventType()
 class OrderPlacedWithNullableDiscount {
-    @field(OrderId) readonly id: OrderId;
+    @field(CustomerId) readonly customerId: CustomerId;
     @field(Money) readonly total: Money;
     @field(Money) readonly discount?: Money;
 
-    constructor(id: OrderId, total: Money, discount?: Money) {
-        this.id = id;
+    constructor(customerId: CustomerId, total: Money, discount?: Money) {
+        this.customerId = customerId;
         this.total = total;
         this.discount = discount;
     }
@@ -300,22 +322,20 @@ class OrderPlacedWithNullableDiscount {
 // Two facts
 @eventType()
 class OrderPlaced {
-    @field(OrderId) readonly id: OrderId;
+    @field(CustomerId) readonly customerId: CustomerId;
     @field(Money) readonly total: Money;
 
-    constructor(id: OrderId, total: Money) {
-        this.id = id;
+    constructor(customerId: CustomerId, total: Money) {
+        this.customerId = customerId;
         this.total = total;
     }
 }
 
 @eventType()
 class DiscountApplied {
-    @field(OrderId) readonly id: OrderId;
     @field(Money) readonly amount: Money;
 
-    constructor(id: OrderId, amount: Money) {
-        this.id = id;
+    constructor(amount: Money) {
         this.amount = amount;
     }
 }
@@ -329,6 +349,10 @@ defmodule MyApp.OrderId do
   use Chronicle.Concept, type: :uuid, event_source_id: true
 end
 
+defmodule MyApp.CustomerId do
+  use Chronicle.Concept, type: :uuid
+end
+
 defmodule MyApp.Money do
   defstruct [:amount, :currency]
 end
@@ -337,20 +361,20 @@ end
 defmodule MyApp.Events.OrderPlacedWithNullableDiscount do
   use Chronicle.Events.EventType, id: "order-placed-with-nullable-discount"
 
-  defstruct id: %MyApp.OrderId{}, total: %MyApp.Money{}, discount: nil
+  defstruct customer_id: %MyApp.CustomerId{}, total: %MyApp.Money{}, discount: nil
 end
 
 # Two facts
 defmodule MyApp.Events.OrderPlaced do
   use Chronicle.Events.EventType, id: "order-placed"
 
-  defstruct id: %MyApp.OrderId{}, total: %MyApp.Money{}
+  defstruct customer_id: %MyApp.CustomerId{}, total: %MyApp.Money{}
 end
 
 defmodule MyApp.Events.DiscountApplied do
   use Chronicle.Events.EventType, id: "discount-applied"
 
-  defstruct id: %MyApp.OrderId{}, amount: %MyApp.Money{}
+  defstruct amount: %MyApp.Money{}
 end
 ```
 
@@ -368,15 +392,15 @@ In an Arc application, a command handler returns the events and Arc's Chronicle 
 using Cratis.Arc.Commands.ModelBound;
 
 [Command]
-public record PlaceOrder(OrderId Id, Money Total, Money? Discount)
+public record PlaceOrder(OrderId Id, CustomerId CustomerId, Money Total, Money? Discount)
 {
     public IEnumerable<object> Handle()
     {
-        var events = new List<object> { new OrderPlaced(Id, Total) };
+        var events = new List<object> { new OrderPlaced(CustomerId, Total) };
 
         if (Discount is { } discount)
         {
-            events.Add(new DiscountApplied(Id, discount));
+            events.Add(new DiscountApplied(discount));
         }
 
         return events;
@@ -395,14 +419,15 @@ import io.cratis.arc.commands.CommandResponseValues
 @Command
 data class PlaceOrder(
     @CommandKey val id: OrderId,
+    val customerId: CustomerId,
     val total: Money,
     val discount: Money?
 ) {
     fun handle(): CommandResponseValues =
         CommandResponseValues(
             listOfNotNull(
-                OrderPlaced(id, total),
-                discount?.let { DiscountApplied(id, it) }
+                OrderPlaced(customerId, total),
+                discount?.let { DiscountApplied(it) }
             )
         )
 }
@@ -418,12 +443,12 @@ import io.cratis.arc.commands.CommandResponseValues;
 import org.jetbrains.annotations.Nullable;
 
 @Command
-public record PlaceOrder(@CommandKey OrderId id, Money total, @Nullable Money discount) {
+public record PlaceOrder(@CommandKey OrderId id, CustomerId customerId, Money total, @Nullable Money discount) {
     public CommandResponseValues handle() {
-        var response = CommandResponseValues.builder().add(new OrderPlaced(id, total));
+        var response = CommandResponseValues.builder().add(new OrderPlaced(customerId, total));
 
         if (discount != null) {
-            response.add(new DiscountApplied(id, discount));
+            response.add(new DiscountApplied(discount));
         }
 
         return response.build();
@@ -443,14 +468,15 @@ import { field } from '@cratis/fundamentals';
 @command()
 export class PlaceOrder {
     @field(OrderId) @key() id!: OrderId;
+    @field(CustomerId) customerId!: CustomerId;
     @field(Money) total!: Money;
     @field(Money) @optional() discount?: Money;
 
     handle() {
-        const events: object[] = [new OrderPlaced(this.id, this.total)];
+        const events: object[] = [new OrderPlaced(this.customerId, this.total)];
 
         if (this.discount) {
-            events.push(new DiscountApplied(this.id, this.discount));
+            events.push(new DiscountApplied(this.discount));
         }
 
         return events;
@@ -467,12 +493,12 @@ Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
 defmodule MyApp.PlaceOrder do
   alias MyApp.Events.{DiscountApplied, OrderPlaced}
 
-  def place_order(%MyApp.OrderId{} = order_id, total, discount) do
-    events = [%OrderPlaced{id: order_id, total: total}]
+  def place_order(%MyApp.OrderId{} = order_id, customer_id, total, discount) do
+    events = [%OrderPlaced{customer_id: customer_id, total: total}]
 
     events =
       if discount do
-        events ++ [%DiscountApplied{id: order_id, amount: discount}]
+        events ++ [%DiscountApplied{amount: discount}]
       else
         events
       end
@@ -509,35 +535,18 @@ Anything that processes events remembers how far it has come, and that position 
 
 *Each event source has its own facts, and every fact has one number in the log.*
 
-Appending is one call on the event log. The appending docs use a simpler `OrderPlaced`, shown here with `CustomerId` and `Money` in place of a string and a number:
+Appending is one call on the event log, here with the `OrderPlaced` from above:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
 
 ```csharp
-using Cratis.Chronicle.Events;
 using Cratis.Chronicle.EventSequences;
-using Cratis.Concepts;
 
-public record CustomerId(Guid Value) : ConceptAs<Guid>(Value);
-
-[EventType]
-public record OrderPlaced(CustomerId CustomerId, Money Total);
-
-public class CheckoutService(IEventLog eventLog)
+public class Checkout(IEventLog eventLog)
 {
-    public async Task PlaceOrder(OrderId orderId, CustomerId customerId, Money total)
-    {
-        var result = await eventLog.Append(
-            orderId,
-            new OrderPlaced(customerId, total)
-        );
-
-        if (!result.IsSuccess)
-        {
-            // Decide whether to retry or surface a conflict to the caller.
-        }
-    }
+    public Task<AppendResult> PlaceOrder(OrderId orderId, CustomerId customerId, Money total) =>
+        eventLog.Append(orderId, new OrderPlaced(customerId, total));
 }
 ```
 
@@ -545,34 +554,12 @@ public class CheckoutService(IEventLog eventLog)
 <TabItem label="Kotlin">
 
 ```kotlin
-import io.cratis.arc.concepts.ConceptAs as ArcConceptAs
-import io.cratis.chronicle.concepts.ConceptAs as ChronicleConceptAs
+import io.cratis.chronicle.eventSequences.AppendResult
 import io.cratis.chronicle.eventSequences.IEventLog
-import io.cratis.chronicle.events.EventType
-import java.util.UUID
 
-data class CustomerId(private val id: UUID) : ArcConceptAs<UUID>, ChronicleConceptAs<UUID> {
-    override fun value(): UUID = id
-    override val value: UUID get() = id
-}
-
-@EventType
-data class OrderPlaced(
-    val customerId: CustomerId,
-    val total: Money
-)
-
-class CheckoutService(private val eventLog: IEventLog) {
-    suspend fun placeOrder(orderId: OrderId, customerId: CustomerId, total: Money) {
-        val result = eventLog.append(
-            orderId.value.toString(),
-            OrderPlaced(customerId, total)
-        )
-
-        if (!result.isSuccess) {
-            // Decide whether to retry or surface a conflict to the caller.
-        }
-    }
+class Checkout(private val eventLog: IEventLog) {
+    suspend fun placeOrder(orderId: OrderId, customerId: CustomerId, total: Money): AppendResult =
+        eventLog.append(orderId.value.toString(), OrderPlaced(customerId, total))
 }
 ```
 
@@ -580,36 +567,19 @@ class CheckoutService(private val eventLog: IEventLog) {
 <TabItem label="Java">
 
 ```java
-import io.cratis.arc.concepts.ConceptAs;
+import io.cratis.chronicle.eventSequences.AppendResult;
 import io.cratis.chronicle.eventSequences.IEventLog;
-import io.cratis.chronicle.events.EventType;
 import io.cratis.chronicle.java.BlockingEventSequence;
 
-import java.util.UUID;
-
-record CustomerId(UUID value) implements ConceptAs<UUID>, io.cratis.chronicle.concepts.ConceptAs<UUID> {
-    @Override
-    public UUID getValue() {
-        return value;
-    }
-}
-
-@EventType
-record OrderPlaced(CustomerId customerId, Money total) {}
-
-class CheckoutService {
+class Checkout {
     private final BlockingEventSequence eventLog;
 
-    CheckoutService(IEventLog eventLog) {
+    Checkout(IEventLog eventLog) {
         this.eventLog = new BlockingEventSequence(eventLog);
     }
 
-    void placeOrder(OrderId orderId, CustomerId customerId, Money total) {
-        var result = eventLog.append(orderId.value().toString(), new OrderPlaced(customerId, total));
-
-        if (!result.isSuccess()) {
-            // Decide whether to retry or surface a conflict to the caller.
-        }
+    AppendResult placeOrder(OrderId orderId, CustomerId customerId, Money total) {
+        return eventLog.append(orderId.value().toString(), new OrderPlaced(customerId, total));
     }
 }
 ```
@@ -618,40 +588,13 @@ class CheckoutService {
 <TabItem label="TypeScript">
 
 ```typescript
-import { eventType, IEventLog } from '@cratis/chronicle';
-import { ConceptAs, field, Guid } from '@cratis/fundamentals';
+import { AppendResult, IEventLog } from '@cratis/chronicle';
 
-class CustomerId extends ConceptAs<Guid> {
-    static readonly valueType = Guid;
-
-    constructor(value: Guid) {
-        super(value);
-    }
-}
-
-@eventType()
-class OrderPlaced {
-    @field(CustomerId) customerId: CustomerId;
-    @field(Money) total: Money;
-
-    constructor(customerId: CustomerId, total: Money) {
-        this.customerId = customerId;
-        this.total = total;
-    }
-}
-
-class CheckoutService {
+class Checkout {
     constructor(private readonly eventLog: IEventLog) {}
 
-    async placeOrder(orderId: OrderId, customerId: CustomerId, total: Money): Promise<void> {
-        const result = await this.eventLog.append(
-            orderId.toString(),
-            new OrderPlaced(customerId, total)
-        );
-
-        if (!result.isSuccess) {
-            // Decide whether to retry or surface a conflict to the caller.
-        }
+    placeOrder(orderId: OrderId, customerId: CustomerId, total: Money): Promise<AppendResult> {
+        return this.eventLog.append(orderId.toString(), new OrderPlaced(customerId, total));
     }
 }
 ```
@@ -660,29 +603,9 @@ class CheckoutService {
 <TabItem label="Elixir">
 
 ```elixir
-defmodule MyApp.CustomerId do
-  use Chronicle.Concept, type: :uuid
-end
-
-defmodule MyApp.Events.OrderPlaced do
-  use Chronicle.Events.EventType, id: "order-placed"
-
-  defstruct customer_id: %MyApp.CustomerId{}, total: %MyApp.Money{}
-end
-
-defmodule MyApp.CheckoutService do
+defmodule MyApp.Checkout do
   def place_order(%MyApp.OrderId{} = order_id, customer_id, total) do
-    case Chronicle.append(order_id.value, %MyApp.Events.OrderPlaced{
-           customer_id: customer_id,
-           total: total
-         }) do
-      :ok ->
-        :ok
-
-      {:error, _reason} = error ->
-        # Decide whether to retry or surface a conflict to the caller.
-        error
-    end
+    Chronicle.append(order_id.value, %MyApp.Events.OrderPlaced{customer_id: customer_id, total: total})
   end
 end
 ```
@@ -702,7 +625,7 @@ Metadata you leave out gets a stored default: event source type `Default`, event
 
 [Cross-cutting properties](https://cratis.io/chronicle/events/cross-cutting-properties/) cover data that belongs on every event and in no domain method. A class implementing `ICanProvideAdditionalEventInformation` is discovered automatically, and it can add a tenant id to each append without the code that appends ever touching it. In .NET, the client adds cross-cutting properties before the event is sent.
 
-The result deserves the `if` in the example. An append that reports a schema, constraint or concurrency violation was rejected, and the event wasn't stored. An append that reports an infrastructure error, or that fails on a timeout or a dropped connection, has an unknown outcome, and appending again can store the event twice. A retry becomes safe when the append carries an expected sequence number or when a constraint would reject the duplicate. The `[Unique]` rule on an author's name is one such constraint, and [*Rules that hold when you write*](/rules-that-hold-when-you-write/) covers the rest. [*Inside Chronicle*](/inside-chronicle/) follows the same append through the kernel.
+The result deserves a check by the caller, which is why `PlaceOrder` returns it. An append that reports a schema, constraint or concurrency violation was rejected, and the event wasn't stored. An append that reports an infrastructure error, or that fails on a timeout or a dropped connection, has an unknown outcome, and appending again can store the event twice. A retry becomes safe when the append carries an expected sequence number or when a constraint would reject the duplicate. The `[Unique]` rule on an author's name is one such constraint, and [*Rules that hold when you write*](/rules-that-hold-when-you-write/) covers the rest. [*Inside Chronicle*](/inside-chronicle/) follows the same append through the kernel.
 
 ## What travels with every event
 

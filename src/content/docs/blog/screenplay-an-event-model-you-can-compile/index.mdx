@@ -40,28 +40,25 @@ The slice is the smallest thing a model is made of, and its four types follow ev
 | `Automation` | a reaction or a reducer that runs when something happens |
 | `Translate` | external data captured as events |
 
-The author feature is one `StateChange` slice and one `StateView` slice. In the lending version from [Getting started](https://cratis.io/screenplay/getting-started/), a member borrows a book:
+The author feature is one `StateChange` slice and one `StateView` slice. In a lending version adapted from [Getting started](https://cratis.io/screenplay/getting-started/), a member borrows a book:
 
 ```screenplay
     slice StateChange BorrowBook
       command BorrowBook
-        bookId     BookId
+        bookId     BookId identifier
         borrowedBy MemberId
         authorize  IsMember
         validate
           bookId not empty  message "A book is required"
         produces BookBorrowed
-          bookId       = bookId
+          for bookId
           borrowedBy   = borrowedBy
-          borrowedAt   = $context.occurred
 
       event BookBorrowed
-        bookId     BookId
         borrowedBy MemberId
-        borrowedAt DateTime
 ```
 
-A reviewer sees the whole write in one diff. `authorize IsMember` names the policy that decides who may run the command. The `validate` block holds the rules, each with the message a user gets back. `produces` maps the command's values onto the event, and `$context.occurred` fills in when it happened. An event never carries its event source ID, so marking one of its properties as the `identifier` is a compile error (`PLAY0019`). `bookId` here is ordinary data on the event.
+A reviewer sees the whole write in one diff. `authorize IsMember` names the policy that decides who may run the command. The `validate` block holds the rules, each with the message a user gets back. `identifier` makes the book the command's event source, `produces` appends the event to it with `for bookId` and maps the command's values onto the event. An event never carries its event source ID, so `bookId` isn't on `BookBorrowed`, and marking one of an event's properties as the `identifier` is a compile error (`PLAY0019`). When it happened travels in the event's context.
 
 For the author feature, `RegisterAuthor` sits where `BorrowBook` is. The rule that names are unique goes in a `constraint`, another construct a slice can hold:
 
@@ -84,15 +81,15 @@ The same page adds the read side of lending to the file:
       query BooksOnLoan => OnLoanReadModel[]
 
       projection OnLoan => OnLoanReadModel
-        from BookBorrowed key bookId
+        from BookBorrowed
           borrowedBy = borrowedBy
-          borrowedAt = borrowedAt
+          borrowedAt = $eventContext.occurred
 
       screen OnLoan
         data OnLoanReadModel[] via query BooksOnLoan
 ```
 
-`BooksOnLoan` returns a list of `OnLoanReadModel`. The `projection` block is written in PDL, the projection language, embedded in the model: for each `BookBorrowed`, keyed by `bookId`, copy two values onto the read model. The `screen` names the data it shows and where that data comes from, and says nothing about how it looks. [*Stage and Scene*](/stage-and-scene-after-a-model-compiles/) picks up from that screen, and [*From event to read model*](/from-event-to-read-model/) goes deeper on projections. PDL and CDL, a language for change data capture, are both built in and can be used on their own.
+`BooksOnLoan` returns a list of `OnLoanReadModel`. The `projection` block is written in PDL, the projection language, embedded in the model: for each `BookBorrowed`, keyed by the book it happened to, copy who borrowed it and when onto the read model. The `screen` names the data it shows and where that data comes from, and says nothing about how it looks. [*Stage and Scene*](/stage-and-scene-after-a-model-compiles/) picks up from that screen, and [*From event to read model*](/from-event-to-read-model/) goes deeper on projections. PDL and CDL, a language for change data capture, are both built in and can be used on their own.
 
 A model means something without any code in it. A few points in the language accept a short inline block in `csharp`, `typescript`, `react`, `html` or `sql`, or a `file` reference to one, and Screenplay treats that as realization metadata. None of it is required. The construct keywords themselves are a closed set. An editor extension can highlight a keyword of its own, and the compiler discards it.
 
