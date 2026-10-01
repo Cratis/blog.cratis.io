@@ -253,8 +253,8 @@ In Arc for TypeScript the tenant is the `tenantId` of the execution context pass
 export class TenantCartJob {
     constructor(private readonly app: ArcApplication) {}
 
-    add(tenant: string, sku: string, quantity: number, principal: Principal, signal: AbortSignal): Promise<CommandResult> {
-        return this.app.server.executeCommand('AddItemToCart', { sku, quantity }, {
+    add(tenant: string, sku: Sku, quantity: Quantity, principal: Principal, signal: AbortSignal): Promise<CommandResult> {
+        return this.app.server.executeCommand('AddItemToCart', { sku: sku.value, quantity: quantity.value }, {
             correlationId: randomUUID(),
             principal,
             tenantId: tenant,

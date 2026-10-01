@@ -39,7 +39,7 @@ using Cratis.Chronicle.Events;
 using Cratis.Chronicle.Events.Constraints;
 
 [EventType]
-public record ConstraintsModelBoundUniqueProjectCreated([property: Unique] string Name, string Description);
+public record ConstraintsModelBoundUniqueProjectCreated([property: Unique] ProjectName Name, ProjectDescription Description);
 ```
 
 </TabItem>
@@ -50,7 +50,7 @@ import io.cratis.chronicle.constraints.Unique
 import io.cratis.chronicle.events.EventType
 
 @EventType
-data class ConstraintsModelBoundUniqueProjectCreated(@Unique val name: String, val description: String)
+data class ConstraintsModelBoundUniqueProjectCreated(@Unique val name: ProjectName, val description: ProjectDescription)
 ```
 
 </TabItem>
@@ -61,7 +61,7 @@ import io.cratis.chronicle.constraints.Unique;
 import io.cratis.chronicle.events.EventType;
 
 @EventType
-record ConstraintsModelBoundUniqueProjectCreated(@Unique String name, String description) {}
+record ConstraintsModelBoundUniqueProjectCreated(@Unique ProjectName name, ProjectDescription description) {}
 ```
 
 </TabItem>
@@ -69,11 +69,12 @@ record ConstraintsModelBoundUniqueProjectCreated(@Unique String name, String des
 
 ```typescript
 import { eventType, unique } from '@cratis/chronicle';
+import { field } from '@cratis/fundamentals';
 
 @eventType()
 class ConstraintsModelBoundUniqueProjectCreated {
-    @unique() name = '';
-    description = '';
+    @unique() @field(ProjectName) name = new ProjectName('');
+    @field(ProjectDescription) description = new ProjectDescription('');
 }
 ```
 
@@ -84,7 +85,7 @@ class ConstraintsModelBoundUniqueProjectCreated {
 defmodule MyApp.Events.ConstraintsModelBoundUniqueProjectCreated do
   use Chronicle.Events.EventType, id: "constraints-model-bound-unique-project-created"
 
-  defstruct [:name, :description]
+  defstruct name: %MyApp.ProjectName{}, description: %MyApp.ProjectDescription{}
 
   unique(:name)
 end
@@ -112,7 +113,7 @@ using Cratis.Chronicle.Events.Constraints;
 using Cratis.Concepts;
 
 [EventType]
-public record UserRegistered([property: Unique(name: "UniqueEmail")] string Email, string DisplayName);
+public record UserRegistered([property: Unique(name: "UniqueEmail")] EmailAddress Email, DisplayName DisplayName);
 
 public record UserId(Guid Value) : ConceptAs<Guid>(Value);
 
@@ -133,8 +134,8 @@ import java.util.UUID
 
 @EventType
 data class UserRegistered(
-    @Unique(id = "UniqueEmail") val email: String,
-    val displayName: String
+    @Unique(id = "UniqueEmail") val email: EmailAddress,
+    val displayName: DisplayName
 )
 
 data class UserId(override val value: UUID) : ConceptAs<UUID>
@@ -156,7 +157,7 @@ import io.cratis.chronicle.events.EventType;
 import java.util.UUID;
 
 @EventType
-record UserRegistered(@Unique(id = "UniqueEmail") String email, String displayName) {}
+record UserRegistered(@Unique(id = "UniqueEmail") EmailAddress email, DisplayName displayName) {}
 
 record UserId(UUID value) implements ConceptAs<UUID> {
     @Override
@@ -179,8 +180,8 @@ import { ConceptAs, field, Guid } from '@cratis/fundamentals';
 
 @eventType()
 class UserRegistered {
-    @unique('UniqueEmail') email = '';
-    displayName = '';
+    @unique('UniqueEmail') @field(EmailAddress) email = new EmailAddress('');
+    @field(DisplayName) displayName = new DisplayName('');
 }
 
 class UserId extends ConceptAs<Guid> {
@@ -205,7 +206,7 @@ class UserRemoved {
 defmodule MyApp.Events.UserRegistered do
   use Chronicle.Events.EventType, id: "user-registered"
 
-  defstruct [:email, :display_name]
+  defstruct email: %MyApp.EmailAddress{}, display_name: %MyApp.DisplayName{}
 
   unique(:email, name: "UniqueEmail")
 end
@@ -298,7 +299,7 @@ It's an optimistic guard, so it doesn't lock and it doesn't retry. The read mode
 
 ```csharp
 [Command]
-public record WithdrawFunds([Key] Guid AccountId, decimal Amount)
+public record WithdrawFunds(AccountId AccountId, Amount Amount)
 {
     public async Task<AggregateRootCommitResult> Handle(Account account)
     {
@@ -350,11 +351,11 @@ The expected position is a sequence number, or `EventSequenceNumber.BeforeFirst`
 
 ```csharp
 [EventType]
-public record AccountOpened(string AccountName);
+public record AccountOpened(AccountName AccountName);
 
 public class AccountService(IEventLog eventLog)
 {
-    public async Task<bool> TryOpenAccount(EventSourceId accountId, string accountName)
+    public async Task<bool> TryOpenAccount(AccountId accountId, AccountName accountName)
     {
         var concurrencyScope = new ConcurrencyScope(
             SequenceNumber: EventSequenceNumber.BeforeFirst, // expect no event for this account yet
@@ -380,17 +381,17 @@ public class AccountService(IEventLog eventLog)
 
 ```kotlin
 @EventType
-data class AccountOpened(val accountName: String)
+data class AccountOpened(val accountName: AccountName)
 
 class AccountService(private val eventLog: IEventLog) {
-    suspend fun tryOpenAccount(accountId: String, accountName: String): Boolean {
+    suspend fun tryOpenAccount(accountId: AccountId, accountName: AccountName): Boolean {
         val concurrencyScope = ConcurrencyScopeBuilder()
             .withExpectsNoMatchingEvent() // expect no event for this account yet
             .withEventSourceId()
             .build()
 
         val result = eventLog.append(
-            accountId,
+            accountId.value.toString(),
             AccountOpened(accountName),
             AppendOptions(concurrencyScope = concurrencyScope)
         )
@@ -409,7 +410,7 @@ class AccountService(private val eventLog: IEventLog) {
 
 ```java
 @EventType
-record AccountOpened(String accountName) {}
+record AccountOpened(AccountName accountName) {}
 
 class AccountService {
     private final BlockingEventSequence eventLog;
@@ -418,14 +419,14 @@ class AccountService {
         this.eventLog = new BlockingEventSequence(eventLog);
     }
 
-    boolean tryOpenAccount(String accountId, String accountName) {
+    boolean tryOpenAccount(AccountId accountId, AccountName accountName) {
         var concurrencyScope = new ConcurrencyScopeBuilder()
             .withExpectsNoMatchingEvent() // expect no event for this account yet
             .withEventSourceId()
             .build();
 
         var options = new AppendOptionsBuilder().concurrencyScope(concurrencyScope).build();
-        var result = eventLog.append(accountId, new AccountOpened(accountName), options);
+        var result = eventLog.append(accountId.value().toString(), new AccountOpened(accountName), options);
 
         if (result.getConcurrencyViolation() != null) {
             return false;
@@ -442,9 +443,9 @@ class AccountService {
 ```typescript
 @eventType()
 class AccountOpened {
-    @field(String) readonly accountName: string;
+    @field(AccountName) readonly accountName: AccountName;
 
-    constructor(accountName: string) {
+    constructor(accountName: AccountName) {
         this.accountName = accountName;
     }
 }
@@ -452,8 +453,8 @@ class AccountOpened {
 class AccountService {
     constructor(private readonly eventLog: IEventLog) {}
 
-    async tryOpenAccount(accountId: string, accountName: string): Promise<boolean> {
-        const result = await this.eventLog.append(accountId, new AccountOpened(accountName), {
+    async tryOpenAccount(accountId: AccountId, accountName: AccountName): Promise<boolean> {
+        const result = await this.eventLog.append(accountId.toString(), new AccountOpened(accountName), {
             concurrencyScope: {
                 sequenceNumber: EventSequenceNumber.beforeFirst.value, // expect no event for this account yet
                 eventSourceId: true
@@ -487,7 +488,7 @@ With nothing matching a scope yet, there's no tail to read, so the strategy repo
 <TabItem label="C#">
 
 ```csharp
-public async Task<bool> TryOpenPartition(EventSourceId accountId, string name)
+public async Task<bool> TryOpenPartition(AccountId accountId, PartitionName name)
 {
     var concurrencyScope = new ConcurrencyScopeBuilder()
         .ExpectingNoMatchingEvent()
@@ -508,7 +509,7 @@ public async Task<bool> TryOpenPartition(EventSourceId accountId, string name)
 <TabItem label="Kotlin">
 
 ```kotlin
-suspend fun tryOpenPartition(accountId: String, name: String): Boolean {
+suspend fun tryOpenPartition(accountId: AccountId, name: PartitionName): Boolean {
     val concurrencyScope = ConcurrencyScopeBuilder()
         .withExpectsNoMatchingEvent()
         .withEventSourceId()
@@ -516,7 +517,7 @@ suspend fun tryOpenPartition(accountId: String, name: String): Boolean {
         .build()
 
     val result = eventLog.append(
-        accountId,
+        accountId.value.toString(),
         PartitionOpened(name),
         AppendOptions(concurrencyScope = concurrencyScope)
     )
@@ -529,7 +530,7 @@ suspend fun tryOpenPartition(accountId: String, name: String): Boolean {
 <TabItem label="Java">
 
 ```java
-boolean tryOpenPartition(String accountId, String name) {
+boolean tryOpenPartition(AccountId accountId, PartitionName name) {
     var concurrencyScope = new ConcurrencyScopeBuilder()
         .withExpectsNoMatchingEvent()
         .withEventSourceId()
@@ -537,7 +538,7 @@ boolean tryOpenPartition(String accountId, String name) {
         .build();
 
     var options = new AppendOptionsBuilder().concurrencyScope(concurrencyScope).build();
-    var result = eventLog.append(accountId, new PartitionOpened(name), options);
+    var result = eventLog.append(accountId.value().toString(), new PartitionOpened(name), options);
 
     return result.isSuccess();
 }
@@ -547,8 +548,8 @@ boolean tryOpenPartition(String accountId, String name) {
 <TabItem label="TypeScript">
 
 ```typescript
-async tryOpenPartition(accountId: string, name: string): Promise<boolean> {
-    const result = await this.eventLog.append(accountId, new PartitionOpened(name), {
+async tryOpenPartition(accountId: AccountId, name: PartitionName): Promise<boolean> {
+    const result = await this.eventLog.append(accountId.toString(), new PartitionOpened(name), {
         concurrencyScope: {
             sequenceNumber: EventSequenceNumber.beforeFirst.value,
             eventSourceId: true,
@@ -609,7 +610,7 @@ On a returned `EventForEventSourceId`, C# keeps only `Occurred` and `Tags`. The 
 [Command]
 [EventSourceType("Account", concurrency: true)]
 [EventStreamType("Transactions", concurrency: true)]
-public record TransferFunds(EventSourceId FromAccountId, EventSourceId ToAccountId, decimal Amount)
+public record TransferFunds(AccountId FromAccountId, AccountId ToAccountId, Amount Amount)
 {
     public IEnumerable<EventForEventSourceId> Handle() =>
     [
@@ -628,10 +629,10 @@ The JVM annotations tag the events, and a value set on a wrapper wins. They add 
 @Command
 @CommandEventSourceType("Account")
 @CommandEventStreamType("Transactions")
-data class TransferFunds(val fromAccountId: String, val toAccountId: String, val amount: BigDecimal) {
+data class TransferFunds(val fromAccountId: AccountId, val toAccountId: AccountId, val amount: Amount) {
     fun handle(): List<EventForEventSourceId> = listOf(
-        EventForEventSourceId(fromAccountId, FundsDebited(amount)),
-        EventForEventSourceId(toAccountId, FundsCredited(amount))
+        EventForEventSourceId(fromAccountId.value.toString(), FundsDebited(amount)),
+        EventForEventSourceId(toAccountId.value.toString(), FundsCredited(amount))
     )
 }
 ```
@@ -645,11 +646,11 @@ The JVM annotations tag the events, and a value set on a wrapper wins. They add 
 @Command
 @CommandEventSourceType("Account")
 @CommandEventStreamType("Transactions")
-public record TransferFunds(String fromAccountId, String toAccountId, BigDecimal amount) {
+public record TransferFunds(AccountId fromAccountId, AccountId toAccountId, Amount amount) {
     public List<EventForEventSourceId> handle() {
         return List.of(
-            new EventForEventSourceId(fromAccountId, new FundsDebited(amount)),
-            new EventForEventSourceId(toAccountId, new FundsCredited(amount)));
+            new EventForEventSourceId(fromAccountId.value().toString(), new FundsDebited(amount)),
+            new EventForEventSourceId(toAccountId.value().toString(), new FundsCredited(amount)));
     }
 }
 ```
@@ -664,14 +665,14 @@ From Arc for TypeScript, an early source preview whose packages aren't on npm ye
 @eventSourceType('Account', { concurrency: true })
 @eventStreamType('Transactions', { concurrency: true })
 export class TransferFunds {
-    @field(String) fromAccountId = '';
-    @field(String) toAccountId = '';
-    @field(Number) amount = 0;
+    @field(AccountId) fromAccountId!: AccountId;
+    @field(AccountId) toAccountId!: AccountId;
+    @field(Amount) amount!: Amount;
 
     handle() {
         return [
-            eventForEventSourceId({ eventSourceId: this.fromAccountId, event: new FundsDebited(this.amount) }),
-            eventForEventSourceId({ eventSourceId: this.toAccountId, event: new FundsCredited(this.amount) })
+            eventForEventSourceId({ eventSourceId: this.fromAccountId.toString(), event: new FundsDebited(this.amount) }),
+            eventForEventSourceId({ eventSourceId: this.toAccountId.toString(), event: new FundsCredited(this.amount) })
         ];
     }
 }
@@ -708,7 +709,7 @@ Opening an account only once is the `BeforeFirst` case:
 
 ```csharp
 [Command]
-public record OpenAccount(EventSourceId AccountId, string AccountName)
+public record OpenAccount(AccountId AccountId, AccountName AccountName)
 {
     public EventsWithConcurrencyScopes Handle() =>
         new(
@@ -722,10 +723,10 @@ public record OpenAccount(EventSourceId AccountId, string AccountName)
 
 ```kotlin
 @Command
-data class OpenAccount(@CommandKey val accountId: String, val accountName: String) {
+data class OpenAccount(@CommandKey val accountId: AccountId, val accountName: AccountName) {
     fun handle(): EventsWithConcurrencyScopes = eventsWithConcurrencyScopes {
-        event(accountId, AccountOpened(accountName))
-        concurrencyScope(accountId) {
+        event(accountId.value.toString(), AccountOpened(accountName))
+        concurrencyScope(accountId.value.toString()) {
             withExpectsNoMatchingEvent()
             withEventSourceId()
         }
@@ -738,7 +739,7 @@ data class OpenAccount(@CommandKey val accountId: String, val accountName: Strin
 
 ```java
 @Command
-public record OpenAccount(@CommandKey String accountId, String accountName) {
+public record OpenAccount(@CommandKey AccountId accountId, AccountName accountName) {
     public EventsWithConcurrencyScopes handle() {
         var scope = new ConcurrencyScopeBuilder()
             .withExpectsNoMatchingEvent()
@@ -746,8 +747,8 @@ public record OpenAccount(@CommandKey String accountId, String accountName) {
             .build();
 
         return EventsWithConcurrencyScopes.builder()
-            .event(accountId, new AccountOpened(accountName))
-            .concurrencyScope(accountId, scope)
+            .event(accountId.value().toString(), new AccountOpened(accountName))
+            .concurrencyScope(accountId.value().toString(), scope)
             .build();
     }
 }
@@ -761,12 +762,12 @@ From Arc for TypeScript, an early source preview whose packages aren't on npm ye
 ```typescript
 @command()
 export class OpenAccount {
-    @field(String) @key() accountId = '';
-    @field(String) accountName = '';
+    @field(AccountId) @key() accountId!: AccountId;
+    @field(AccountName) accountName!: AccountName;
 
     handle() {
         return eventsWithConcurrencyScopes([new AccountOpened(this.accountName)], {
-            [this.accountId]: { eventSourceId: true, sequenceNumber: EventSequenceNumber.beforeFirst.value }
+            [this.accountId.toString()]: { eventSourceId: true, sequenceNumber: EventSequenceNumber.beforeFirst.value }
         });
     }
 }
@@ -787,7 +788,7 @@ Arc for Elixir doesn't exist, and the Chronicle Elixir client can't express an e
 
 ```csharp
 [Command]
-public record WithdrawFunds([Key] Guid AccountId, decimal Amount)
+public record WithdrawFunds(AccountId AccountId, Amount Amount)
 {
     // Required on purpose: a missing balance rejects the command before Handle runs.
 #pragma warning disable ARC0006
@@ -802,9 +803,9 @@ public record WithdrawFunds([Key] Guid AccountId, decimal Amount)
 
 ```kotlin
 @Command
-data class WithdrawFunds(@CommandKey val accountId: UUID, val amount: BigDecimal) {
+data class WithdrawFunds(@CommandKey val accountId: AccountId, val amount: Amount) {
     fun handle(balance: AccountBalance): FundsWithdrawn =
-        FundsWithdrawn(amount, balance.balance - amount)
+        FundsWithdrawn(amount, Amount(balance.balance.value - amount.value))
 }
 ```
 
@@ -813,9 +814,9 @@ data class WithdrawFunds(@CommandKey val accountId: UUID, val amount: BigDecimal
 
 ```java
 @Command
-public record WithdrawFunds(@CommandKey UUID accountId, BigDecimal amount) {
+public record WithdrawFunds(@CommandKey AccountId accountId, Amount amount) {
     public FundsWithdrawn handle(AccountBalance balance) {
-        return new FundsWithdrawn(amount, balance.balance().subtract(amount));
+        return new FundsWithdrawn(amount, new Amount(balance.balance().value().subtract(amount.value())));
     }
 }
 ```
@@ -828,12 +829,12 @@ From Arc for TypeScript, an early source preview whose packages aren't on npm ye
 ```typescript
 @command()
 export class WithdrawFunds {
-    @field(String) @key() accountId = '';
-    @field(Number) amount = 0;
+    @field(AccountId) @key() accountId!: AccountId;
+    @field(Amount) amount!: Amount;
 
     @inject(commandReadModel(AccountBalance))
     handle(balance: AccountBalance): FundsWithdrawn {
-        return new FundsWithdrawn(this.amount, balance.balance - this.amount);
+        return new FundsWithdrawn(this.amount, new Amount(balance.balance.value - this.amount.value));
     }
 }
 ```

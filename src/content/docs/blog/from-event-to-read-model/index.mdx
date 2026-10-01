@@ -104,7 +104,7 @@ defmodule MyApp.ReadModels.Author do
 
   alias MyApp.Events.AuthorRegistered
 
-  defstruct [:id, :name]
+  defstruct id: %MyApp.AuthorId{}, name: %MyApp.AuthorName{}
 
   from AuthorRegistered, set: [id: :event_source_id, name: :name]
 end
@@ -140,18 +140,17 @@ The [model-bound](https://cratis.io/chronicle/projections/model-bound/) form put
 
 ```csharp
 using Cratis.Chronicle.Events;
-using Cratis.Chronicle.Keys;
 using Cratis.Chronicle.Projections.ModelBound;
 
 [EventType]
-public record AccountOpened(string Name, decimal InitialBalance);
+public record AccountOpened(AccountName Name, Amount InitialBalance);
 
 [FromEvent<AccountOpened>]
 public record AccountInfo(
-    [Key] Guid Id,
-    string Name,                                   // AutoMap: same name as event property
+    AccountId Id,
+    AccountName Name,                              // AutoMap: same name as event property
     [SetFrom<AccountOpened>(nameof(AccountOpened.InitialBalance))]
-    decimal Balance);
+    Amount Balance);
 ```
 
 </TabItem>
@@ -168,20 +167,20 @@ import java.util.UUID
 
 @EventType
 data class AccountOpened(
-    val name: String,
-    val initialBalance: BigDecimal
+    val name: AccountName,
+    val initialBalance: Amount
 )
 
 @ReadModel
 @FromEvent(AccountOpened::class)
 data class AccountInfo(
     @FromEventSourceId
-    val id: UUID = UUID(0, 0),
+    val id: AccountId = AccountId(UUID(0, 0)),
 
-    val name: String = "",                         // AutoMap: same name as event property
+    val name: AccountName = AccountName(""),       // AutoMap: same name as event property
 
     @SetFrom("initialBalance")
-    val balance: BigDecimal = BigDecimal.ZERO
+    val balance: Amount = Amount(BigDecimal.ZERO)
 )
 ```
 
@@ -199,18 +198,18 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 @EventType
-record AccountOpened(String name, BigDecimal initialBalance) {}
+record AccountOpened(AccountName name, Amount initialBalance) {}
 
 @ReadModel
 @FromEvent(eventType = AccountOpened.class)
 class AccountInfo {
     @FromEventSourceId
-    public UUID id = new UUID(0, 0);
+    public AccountId id = new AccountId(new UUID(0, 0));
 
-    public String name = "";                       // AutoMap: same name as event property
+    public AccountName name = new AccountName(""); // AutoMap: same name as event property
 
     @SetFrom(propertyPath = "initialBalance")
-    public BigDecimal balance = BigDecimal.ZERO;
+    public Amount balance = new Amount(BigDecimal.ZERO);
 }
 ```
 
@@ -223,17 +222,17 @@ import { field } from '@cratis/fundamentals';
 
 @eventType()
 export class AccountOpened {
-    name = '';
-    initialBalance = 0;
+    @field(AccountName) name = new AccountName('');
+    @field(Amount) initialBalance = new Amount(0);
 }
 
 @fromEvent(AccountOpened)
 export class AccountInfo {
-    id: Guid = Guid.empty;
-    @field(String) name = '';                      // AutoMap: same name as event property
+    @field(AccountId) id = new AccountId(Guid.empty);
+    @field(AccountName) name = new AccountName(''); // AutoMap: same name as event property
 
     @setFrom(AccountOpened, 'initialBalance')
-    balance = 0;
+    @field(Amount) balance = new Amount(0);
 }
 ```
 
@@ -244,7 +243,7 @@ export class AccountInfo {
 defmodule MyApp.Events.AccountOpened do
   use Chronicle.Events.EventType, id: "account-opened"
 
-  defstruct [:name, :initial_balance]
+  defstruct name: %MyApp.AccountName{}, initial_balance: nil
 end
 
 defmodule MyApp.ReadModels.AccountInfo do
@@ -252,7 +251,7 @@ defmodule MyApp.ReadModels.AccountInfo do
 
   alias MyApp.Events.AccountOpened
 
-  defstruct [:id, :name, balance: 0]
+  defstruct id: %MyApp.AccountId{}, name: %MyApp.AccountName{}, balance: 0
 
   from AccountOpened,
     set: [id: :event_source_id, name: :name, balance: :initial_balance]
@@ -269,14 +268,14 @@ A read model with a collection inside it uses [children](https://cratis.io/chron
 
 ```csharp
 public record OrderLine(
-    [Key] Guid Id,
-    [SetFrom<LineItemAdded>(nameof(LineItemAdded.ProductName))] string Product,
+    [Key] LineItemId Id,
+    [SetFrom<LineItemAdded>(nameof(LineItemAdded.ProductName))] ProductName Product,
     [SetFrom<LineItemAdded>(nameof(LineItemAdded.InitialQuantity))]
-    [SetFrom<QuantityAdjusted>(nameof(QuantityAdjusted.NewQuantity))] int Quantity);
+    [SetFrom<QuantityAdjusted>(nameof(QuantityAdjusted.NewQuantity))] Quantity Quantity);
 
 public record Order(
-    [Key] Guid Id,
-    [SetFrom<OrderCreated>(nameof(OrderCreated.CustomerName))] string Customer,
+    OrderId Id,
+    [SetFrom<OrderCreated>(nameof(OrderCreated.CustomerName))] CustomerName Customer,
     [ChildrenFrom<LineItemAdded>(key: nameof(LineItemAdded.ItemId))]
     [RemovedWith<LineItemRemoved>(key: nameof(LineItemRemoved.ItemId))]
     IEnumerable<OrderLine> Lines);
@@ -287,24 +286,24 @@ public record Order(
 
 ```kotlin
 data class OrderLine(
-    val id: UUID = UUID(0, 0),
+    val id: LineItemId = LineItemId(UUID(0, 0)),
 
     @SetFrom("productName", LineItemAdded::class)
-    val product: String = "",
+    val product: ProductName = ProductName(""),
 
     @SetFrom("initialQuantity", LineItemAdded::class)
     @SetFrom("newQuantity", QuantityAdjusted::class)
-    val quantity: Int = 0
+    val quantity: Quantity = Quantity(0)
 )
 
 @ReadModel
 @FromEvent(OrderCreated::class)
 data class Order(
     @FromEventSourceId
-    val id: UUID = UUID(0, 0),
+    val id: OrderId = OrderId(UUID(0, 0)),
 
     @SetFrom("customerName", OrderCreated::class)
-    val customer: String = "",
+    val customer: CustomerName = CustomerName(""),
 
     @ChildrenFrom(LineItemAdded::class, key = "itemId", identifiedBy = "id")
     @ChildrenFrom(QuantityAdjusted::class, key = "itemId", identifiedBy = "id")
@@ -318,24 +317,24 @@ data class Order(
 
 ```java
 class OrderLine {
-    public UUID id = new UUID(0, 0);
+    public LineItemId id = new LineItemId(new UUID(0, 0));
 
     @SetFrom(propertyPath = "productName", eventType = LineItemAdded.class)
-    public String product = "";
+    public ProductName product = new ProductName("");
 
     @SetFrom(propertyPath = "initialQuantity", eventType = LineItemAdded.class)
     @SetFrom(propertyPath = "newQuantity", eventType = QuantityAdjusted.class)
-    public int quantity = 0;
+    public Quantity quantity = new Quantity(0);
 }
 
 @ReadModel
 @FromEvent(eventType = OrderCreated.class)
 class Order {
     @FromEventSourceId
-    public UUID id = new UUID(0, 0);
+    public OrderId id = new OrderId(new UUID(0, 0));
 
     @SetFrom(propertyPath = "customerName", eventType = OrderCreated.class)
-    public String customer = "";
+    public CustomerName customer = new CustomerName("");
 
     @ChildrenFrom(eventType = LineItemAdded.class, key = "itemId", identifiedBy = "id")
     @ChildrenFrom(eventType = QuantityAdjusted.class, key = "itemId", identifiedBy = "id")
@@ -349,21 +348,21 @@ class Order {
 
 ```typescript
 export class OrderLine {
-    id: Guid = Guid.empty;
+    @field(LineItemId) id = new LineItemId(Guid.empty);
 
     @setFrom(LineItemAdded, 'productName')
-    product = '';
+    @field(ProductName) product = new ProductName('');
 
     @setFrom(LineItemAdded, 'initialQuantity')
     @setFrom(QuantityAdjusted, 'newQuantity')
-    quantity = 0;
+    @field(Quantity) quantity = new Quantity(0);
 }
 
 export class Order {
-    id: Guid = Guid.empty;
+    @field(OrderId) id = new OrderId(Guid.empty);
 
     @setFrom(OrderCreated, 'customerName')
-    customer = '';
+    @field(CustomerName) customer = new CustomerName('');
 
     @childrenFrom(LineItemAdded, 'itemId')
     @removedWith(LineItemRemoved, 'itemId')

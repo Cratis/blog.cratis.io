@@ -44,18 +44,23 @@ The smallest reactor sends a confirmation when an email address is confirmed:
 <TabItem label="C#">
 
 ```csharp
+using Cratis.Chronicle.Compliance.GDPR;
 using Cratis.Chronicle.Events;
 using Cratis.Chronicle.Reactors;
+using Cratis.Concepts;
+
+[PII]
+public record EmailAddress(string Value) : ConceptAs<string>(Value);
 
 [EventType]
-public record EmailConfirmed(string Email);
+public record EmailConfirmed(EmailAddress Email);
 
 public class EmailNotifications : IReactor
 {
     public Task Confirmed(EmailConfirmed @event, EventContext context) =>
         SendConfirmationAsync(@event.Email, context.Occurred);
 
-    Task SendConfirmationAsync(string email, DateTimeOffset occurred) => Task.CompletedTask;
+    Task SendConfirmationAsync(EmailAddress email, DateTimeOffset occurred) => Task.CompletedTask;
 }
 ```
 
@@ -63,12 +68,17 @@ public class EmailNotifications : IReactor
 <TabItem label="Kotlin">
 
 ```kotlin
+import io.cratis.chronicle.compliance.Pii
+import io.cratis.chronicle.concepts.ConceptAs
 import io.cratis.chronicle.events.EventContext
 import io.cratis.chronicle.events.EventType
 import io.cratis.chronicle.observation.Reactor
 
+@Pii
+data class EmailAddress(override val value: String) : ConceptAs<String>
+
 @EventType
-data class EmailConfirmed(val email: String)
+data class EmailConfirmed(val email: EmailAddress)
 
 @Reactor
 class EmailNotifications {
@@ -76,7 +86,7 @@ class EmailNotifications {
         sendConfirmation(event.email, context.occurred)
     }
 
-    private fun sendConfirmation(email: String, occurred: java.time.Instant) {}
+    private fun sendConfirmation(email: EmailAddress, occurred: java.time.Instant) {}
 }
 ```
 
@@ -84,13 +94,23 @@ class EmailNotifications {
 <TabItem label="Java">
 
 ```java
+import io.cratis.chronicle.compliance.Pii;
+import io.cratis.chronicle.concepts.ConceptAs;
 import io.cratis.chronicle.events.EventContext;
 import io.cratis.chronicle.events.EventType;
 import io.cratis.chronicle.observation.Reactor;
 import java.time.Instant;
 
+@Pii
+record EmailAddress(String value) implements ConceptAs<String> {
+    @Override
+    public String getValue() {
+        return value;
+    }
+}
+
 @EventType
-record EmailConfirmed(String email) {}
+record EmailConfirmed(EmailAddress email) {}
 
 @Reactor
 class EmailNotifications {
@@ -98,7 +118,7 @@ class EmailNotifications {
         sendConfirmation(event.email(), context.getOccurred());
     }
 
-    private void sendConfirmation(String email, Instant occurred) {}
+    private void sendConfirmation(EmailAddress email, Instant occurred) {}
 }
 ```
 
@@ -108,14 +128,23 @@ class EmailNotifications {
 The TypeScript client finds a handler by name: the method is the camelCase of the event's class name, here `emailConfirmed` for `EmailConfirmed`.
 
 ```typescript
-import { EventContext, eventType, reactor } from '@cratis/chronicle';
-import { field } from '@cratis/fundamentals';
+import { EventContext, eventType, pii, reactor } from '@cratis/chronicle';
+import { ConceptAs, field } from '@cratis/fundamentals';
+
+@pii()
+class EmailAddress extends ConceptAs<string> {
+    static readonly valueType = String;
+
+    constructor(value: string) {
+        super(value);
+    }
+}
 
 @eventType()
 class EmailConfirmed {
-    @field(String) readonly email: string;
+    @field(EmailAddress) readonly email: EmailAddress;
 
-    constructor(email: string) {
+    constructor(email: EmailAddress) {
         this.email = email;
     }
 }
@@ -126,7 +155,7 @@ class EmailNotifications {
         await this.sendConfirmation(event.email, context.occurred);
     }
 
-    private async sendConfirmation(email: string, occurred: Date): Promise<void> {}
+    private async sendConfirmation(email: EmailAddress, occurred: Date): Promise<void> {}
 }
 ```
 
@@ -136,10 +165,15 @@ class EmailNotifications {
 The Elixir client calls a fixed `handle/2` for each event type listed in `@handles`.
 
 ```elixir
+defmodule MyApp.EmailAddress do
+  use Chronicle.Concept, type: :string
+  pii()
+end
+
 defmodule MyApp.Events.EmailConfirmed do
   use Chronicle.Events.EventType, id: "email-confirmed"
 
-  defstruct [:email]
+  defstruct email: %MyApp.EmailAddress{}
 end
 
 defmodule MyApp.EmailNotifications do
@@ -324,7 +358,7 @@ For that case the .NET client has [delivery identity](https://cratis.io/chronicl
 
 ```csharp
 [EventType]
-public record CustomerWelcomed(string CustomerId);
+public record CustomerWelcomed(CustomerId CustomerId);
 
 public class WelcomeMailer(IWelcomeMail mail, IDeliveryReceipts receipts) : IReactor
 {

@@ -41,12 +41,12 @@ using Cratis.Chronicle.Events;
 
 // Generation 2 (current) — Name has been split into FirstName and LastName
 [EventType("author-registered", generation: 2)]
-public record AuthorRegistered(string FirstName, string LastName);
+public record AuthorRegistered(AuthorName FirstName, AuthorName LastName);
 
 // Generation 1 (original) — marked as a previous generation of the current record above,
 // instead of carrying its own [EventType]
 [EventTypeGenerationFor<AuthorRegistered>(1)]
-public record AuthorRegisteredV1(string Name);
+public record AuthorRegisteredV1(AuthorName Name);
 ```
 
 </TabItem>
@@ -59,11 +59,11 @@ import io.cratis.chronicle.events.EventType
 
 // Generation 2 (current) - Name has been split into firstName and lastName
 @EventType(id = "author-registered", generation = 2)
-data class AuthorRegistered(val firstName: String, val lastName: String)
+data class AuthorRegistered(val firstName: AuthorName, val lastName: AuthorName)
 
 // Generation 1 (original) - same explicit id as the current generation, only the generation differs
 @EventType(id = "author-registered", generation = 1)
-data class AuthorRegisteredV1(val name: String)
+data class AuthorRegisteredV1(val name: AuthorName)
 ```
 
 </TabItem>
@@ -76,11 +76,11 @@ import io.cratis.chronicle.events.EventType;
 
 // Generation 2 (current) - name has been split into firstName and lastName
 @EventType(id = "author-registered", generation = 2)
-record AuthorRegistered(String firstName, String lastName) {}
+record AuthorRegistered(AuthorName firstName, AuthorName lastName) {}
 
 // Generation 1 (original) - same explicit id as the current generation, only the generation differs
 @EventType(id = "author-registered", generation = 1)
-record AuthorRegisteredV1(String name) {}
+record AuthorRegisteredV1(AuthorName name) {}
 ```
 
 </TabItem>
@@ -95,10 +95,10 @@ import { field } from '@cratis/fundamentals';
 // Generation 2 (current) — Name has been split into FirstName and LastName
 @eventType('author-registered', 2)
 class AuthorRegistered {
-    @field(String) readonly firstName: string;
-    @field(String) readonly lastName: string;
+    @field(AuthorName) readonly firstName: AuthorName;
+    @field(AuthorName) readonly lastName: AuthorName;
 
-    constructor(firstName: string, lastName: string) {
+    constructor(firstName: AuthorName, lastName: AuthorName) {
         this.firstName = firstName;
         this.lastName = lastName;
     }
@@ -108,9 +108,9 @@ class AuthorRegistered {
 // upcast from it. It is not the "current" shape of the event any more.
 @eventType('author-registered', 1)
 class AuthorRegisteredV1 {
-    @field(String) readonly name: string;
+    @field(AuthorName) readonly name: AuthorName;
 
-    constructor(name: string) {
+    constructor(name: AuthorName) {
         this.name = name;
     }
 }
@@ -125,13 +125,13 @@ The Elixir client repeats the explicit id on every generation.
 defmodule MyApp.Events.AuthorRegistered do
   use Chronicle.Events.EventType, id: "author-registered", generation: 2
 
-  defstruct [:first_name, :last_name]
+  defstruct first_name: %MyApp.AuthorName{}, last_name: %MyApp.AuthorName{}
 end
 
 defmodule MyApp.Events.AuthorRegisteredV1 do
   use Chronicle.Events.EventType, id: "author-registered", generation: 1
 
-  defstruct [:name]
+  defstruct name: %MyApp.AuthorName{}
 end
 ```
 

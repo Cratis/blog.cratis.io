@@ -248,11 +248,11 @@ The same fold against a Kotlin reducer, which takes the event, the current state
 
 ```kotlin
 val reducer = WorkItemProgressReducer()
-result = reducer.opened(WorkItemOpened("Prepare release", 10), null, contextFor(0))
-result = reducer.recorded(ProgressRecorded(4), result, contextFor(1))
-result = reducer.recorded(ProgressRecorded(5), result, contextFor(2))
-result = reducer.recorded(ProgressRecorded(3), result, contextFor(3))
-// then: assertEquals(WorkItemProgress(workItemId, 10, 10, WorkPoints.NOT_SET, 3), result)
+result = reducer.opened(WorkItemOpened(WorkItemTitle("Prepare release"), WorkPoints(10)), null, contextFor(0))
+result = reducer.recorded(ProgressRecorded(WorkPoints(4)), result, contextFor(1))
+result = reducer.recorded(ProgressRecorded(WorkPoints(5)), result, contextFor(2))
+result = reducer.recorded(ProgressRecorded(WorkPoints(3)), result, contextFor(3))
+// then: assertEquals(WorkItemProgress(workItemId, WorkPoints(10), WorkPoints(10), WorkPoints.NOT_SET, 3), result)
 ```
 
 </TabItem>
@@ -262,11 +262,11 @@ The same fold against a Java reducer class.
 
 ```java
 var reducer = new WorkItemProgressReducer();
-result = reducer.opened(new WorkItemOpened("Prepare release", 10), null, contextFor(0));
-result = reducer.recorded(new ProgressRecorded(4), result, contextFor(1));
-result = reducer.recorded(new ProgressRecorded(5), result, contextFor(2));
-result = reducer.recorded(new ProgressRecorded(3), result, contextFor(3));
-// then: assertEquals(new WorkItemProgress(workItemId, 10, 10, WorkPoints.NOT_SET, 3), result);
+result = reducer.opened(new WorkItemOpened(new WorkItemTitle("Prepare release"), new WorkPoints(10)), null, contextFor(0));
+result = reducer.recorded(new ProgressRecorded(new WorkPoints(4)), result, contextFor(1));
+result = reducer.recorded(new ProgressRecorded(new WorkPoints(5)), result, contextFor(2));
+result = reducer.recorded(new ProgressRecorded(new WorkPoints(3)), result, contextFor(3));
+// then: assertEquals(new WorkItemProgress(workItemId, new WorkPoints(10), new WorkPoints(10), WorkPoints.NOT_SET, 3), result);
 ```
 
 </TabItem>
@@ -276,11 +276,11 @@ The same fold against a TypeScript reducer, whose method is named for its event 
 
 ```typescript
 const reducer = new WorkItemProgressReducer();
-result = reducer.workItemOpened(new WorkItemOpened('Prepare release', 10), undefined, contextFor(0));
-result = reducer.progressRecorded(new ProgressRecorded(4), result, contextFor(1));
-result = reducer.progressRecorded(new ProgressRecorded(5), result, contextFor(2));
-result = reducer.progressRecorded(new ProgressRecorded(3), result, contextFor(3));
-// then: expect(result).toEqual(new WorkItemProgress(workItemId, 10, 10, WorkPoints.notSet, 3))
+result = reducer.workItemOpened(new WorkItemOpened(new WorkItemTitle('Prepare release'), new WorkPoints(10)), undefined, contextFor(0));
+result = reducer.progressRecorded(new ProgressRecorded(new WorkPoints(4)), result, contextFor(1));
+result = reducer.progressRecorded(new ProgressRecorded(new WorkPoints(5)), result, contextFor(2));
+result = reducer.progressRecorded(new ProgressRecorded(new WorkPoints(3)), result, contextFor(3));
+// then: expect(result).toEqual(new WorkItemProgress(workItemId, new WorkPoints(10), new WorkPoints(10), WorkPoints.notSet, 3))
 ```
 
 </TabItem>
@@ -305,7 +305,7 @@ Projections are the exception. A projection is attributes or a fluent definition
 
 ## One process, the real pipeline
 
-A [spec](https://cratis.io/arc/backend/csharp/testing/chronicle/) for registering an author looks like this. Here `RegisterAuthor` takes an event source ID and a string:
+A [spec](https://cratis.io/arc/backend/csharp/testing/chronicle/) for registering an author looks like this. Here `RegisterAuthor` takes the author's id and name:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
@@ -313,7 +313,7 @@ A [spec](https://cratis.io/arc/backend/csharp/testing/chronicle/) for registerin
 ```csharp
 public class when_registering_author : Specification
 {
-    readonly EventSourceId _authorId = EventSourceId.New();
+    readonly AuthorId _authorId = AuthorId.New();
     readonly CommandScenario<RegisterAuthor> _scenario = new();
     CommandResult _result = default!;
 
@@ -335,16 +335,16 @@ In Arc for Kotlin and Java, `CommandScenario` from `io.cratis:arc-testing` runs 
 
 ```kotlin
 class WhenRegisteringAuthor {
-    private val authorId = UUID.randomUUID().toString()
+    private val authorId = AuthorId.new()
 
     @Test
     fun `registers the author`() = runBlocking {
         val scenario = CommandScenario(module, RegisterAuthor::class.java)
 
-        val result = scenario.execute(RegisterAuthor(authorId, "Jane Austen"))
+        val result = scenario.execute(RegisterAuthor(authorId, AuthorName("Jane Austen")))
 
         result.shouldSucceed()
-        scenario.chronicle().shouldHaveAppendedEvent(authorId, AuthorRegistered::class.java)
+        scenario.chronicle().shouldHaveAppendedEvent(authorId.value.toString(), AuthorRegistered::class.java)
     }
 }
 ```
@@ -356,7 +356,7 @@ In Arc for Kotlin and Java, `CommandScenario` from `io.cratis:arc-testing` runs 
 
 ```java
 class WhenRegisteringAuthor {
-    private final String authorId = UUID.randomUUID().toString();
+    private final AuthorId authorId = AuthorId.newId();
 
     @Test
     void registersTheAuthor() {
@@ -364,10 +364,10 @@ class WhenRegisteringAuthor {
         ChronicleCommandScenario chronicle = ChronicleCommandScenarios.chronicle(configured);
 
         try (BlockingCommandScenario<RegisterAuthor> scenario = new BlockingCommandScenario<>(configured)) {
-            scenario.execute(new RegisterAuthor(authorId, "Jane Austen")).shouldSucceed();
+            scenario.execute(new RegisterAuthor(authorId, new AuthorName("Jane Austen"))).shouldSucceed();
         }
 
-        chronicle.shouldHaveAppendedEvent(authorId, AuthorRegistered.class);
+        chronicle.shouldHaveAppendedEvent(authorId.value().toString(), AuthorRegistered.class);
     }
 }
 ```
@@ -379,12 +379,13 @@ In Arc for TypeScript, `ChronicleCommandScenario` from `@cratis/arc.chronicle/te
 
 ```typescript
 describe('when registering author', () => {
+    const authorId = AuthorId.create();
     let scenario: ChronicleCommandScenario<RegisterAuthor>;
     let result: Awaited<ReturnType<typeof scenario.execute>>;
 
     beforeEach(async () => {
         scenario = ChronicleCommandScenario.for(RegisterAuthor, AuthorRegistered);
-        result = await scenario.execute({ authorId: 'author-1', name: 'Jane Austen' });
+        result = await scenario.execute({ id: authorId, name: new AuthorName('Jane Austen') });
     });
 
     afterEach(async () => { await scenario.dispose(); });
@@ -392,7 +393,7 @@ describe('when registering author', () => {
     it('should succeed', () => { result.shouldBeSuccessful(); });
 
     it('should have appended registered event', () => {
-        result.shouldHaveAppendedEvent(AuthorRegistered, 'author-1');
+        result.shouldHaveAppendedEvent(AuthorRegistered, authorId.toString());
     });
 });
 ```
@@ -429,7 +430,7 @@ In .NET, the `Author` read model from the hub declares its projection with `[Fro
 ```csharp
 public class when_an_author_is_registered : Specification
 {
-    readonly EventSourceId _authorId = EventSourceId.New();
+    readonly AuthorId _authorId = AuthorId.New();
     readonly AuthorName _name = "Jane Austen";
     readonly ReadModelScenario<Author> _scenario = new();
 
@@ -447,14 +448,14 @@ The Kotlin client's `ReadModelScenario` folds a reducer.
 
 ```kotlin
 class WhenAnAuthorIsRegistered {
-    private val authorId = "author-1"
+    private val authorId = AuthorId.new()
     private val name = AuthorName("Jane Austen")
 
     @Test
     fun `the author has the name`() = runBlocking {
         val scenario = ReadModelScenario<Author>(AuthorReducer())
 
-        val author = scenario.fold(authorId, AuthorRegistered(name))
+        val author = scenario.fold(authorId.value.toString(), AuthorRegistered(name))
 
         assertEquals(name, author!!.name)
     }
@@ -488,12 +489,12 @@ The TypeScript client's `ReadModelScenario` evaluates a `@fromEvent` model-bound
 
 ```typescript
 describe('when an author is registered', () => {
-    const authorId = 'author-1';
+    const authorId = AuthorId.create();
     const name = new AuthorName('Jane Austen');
     const scenario = new ReadModelScenario(Author);
 
     beforeEach(async () => {
-        await scenario.given.forEventSource(authorId).events(new AuthorRegistered(name));
+        await scenario.given.forEventSource(authorId.toString()).events(new AuthorRegistered(name));
     });
 
     it('should have the name', async () => {
@@ -552,7 +553,7 @@ The Java client has no in-memory scenario that checks constraints.
 </TabItem>
 <TabItem label="TypeScript">
 
-This spec uses Vitest. The in-process scenario accepts only flat scalar content, so the name is a plain string here.
+This spec uses Vitest. The in-process scenario accepts only flat scalar content (Chronicle.TypeScript#170), so the name is a plain string here.
 
 ```typescript
 @eventType()
@@ -562,12 +563,12 @@ class AuthorRegistered {
 }
 
 describe('when registering a taken author name', () => {
-    const scenario = new EventScenario({ artifacts: { eventTypes: [AuthorRegistered] } });
     let result: AppendResult;
 
     beforeEach(async () => {
-        await scenario.given.forEventSource('author-1').events(new AuthorRegistered('Jane Austen'));
-        result = await scenario.when.forEventSource('author-2').event(new AuthorRegistered('Jane Austen'));
+        const scenario = new EventScenario({ artifacts: { eventTypes: [AuthorRegistered] } });
+        await scenario.given.forEventSource(AuthorId.create().toString()).events(new AuthorRegistered('Jane Austen'));
+        result = await scenario.when.forEventSource(AuthorId.create().toString()).event(new AuthorRegistered('Jane Austen'));
     });
 
     it('should be rejected', () => { expect(result.isSuccess).toBe(false); });

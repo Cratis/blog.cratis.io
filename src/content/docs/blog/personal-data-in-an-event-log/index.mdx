@@ -183,7 +183,7 @@ using Cratis.Chronicle;
 using Cratis.Chronicle.Events;
 
 [Command]
-public record PlaceOrder(EventSourceId OrderId, CustomerId CustomerId, decimal Amount)
+public record PlaceOrder(OrderId OrderId, CustomerId CustomerId, Money Amount)
     : ICanProvideEventSourceId
 {
     public EventSourceId GetEventSourceId() => OrderId;
@@ -193,7 +193,7 @@ public record PlaceOrder(EventSourceId OrderId, CustomerId CustomerId, decimal A
 }
 
 [EventType]
-public record OrderPlaced(CustomerId CustomerId, decimal Amount);
+public record OrderPlaced(CustomerId CustomerId, Money Amount);
 ```
 
 </TabItem>
@@ -206,21 +206,20 @@ import io.cratis.arc.artifacts.Command
 import io.cratis.arc.artifacts.CommandEventSubjectProvider
 import io.cratis.arc.artifacts.CommandKey
 import io.cratis.chronicle.events.EventType
-import java.math.BigDecimal
 
 @Command
 data class PlaceOrder(
-    @CommandKey val orderId: String,
-    val customerId: String,
-    val amount: BigDecimal
+    @CommandKey val orderId: OrderId,
+    val customerId: CustomerId,
+    val amount: Money
 ) : CommandEventSubjectProvider {
-    override fun eventSubject(): String = customerId
+    override fun eventSubject(): String = customerId.value.toString()
 
     fun handle(): OrderPlaced = OrderPlaced(customerId, amount)
 }
 
 @EventType
-data class OrderPlaced(val customerId: String, val amount: BigDecimal)
+data class OrderPlaced(val customerId: CustomerId, val amount: Money)
 ```
 
 </TabItem>
@@ -234,14 +233,12 @@ import io.cratis.arc.artifacts.CommandEventSubjectProvider;
 import io.cratis.arc.artifacts.CommandKey;
 import io.cratis.chronicle.events.EventType;
 
-import java.math.BigDecimal;
-
 @Command
-public record PlaceOrder(@CommandKey String orderId, String customerId, BigDecimal amount)
+public record PlaceOrder(@CommandKey OrderId orderId, CustomerId customerId, Money amount)
     implements CommandEventSubjectProvider {
     @Override
     public String eventSubject() {
-        return customerId;
+        return customerId.value().toString();
     }
 
     public OrderPlaced handle() {
@@ -250,7 +247,7 @@ public record PlaceOrder(@CommandKey String orderId, String customerId, BigDecim
 }
 
 @EventType
-record OrderPlaced(String customerId, BigDecimal amount) {}
+record OrderPlaced(CustomerId customerId, Money amount) {}
 ```
 
 </TabItem>
@@ -259,26 +256,26 @@ record OrderPlaced(String customerId, BigDecimal amount) {}
 In Arc for TypeScript the command computes the subject in `getSubject()` instead of returning it next to the event.
 
 ```typescript
-import { field } from '@cratis/fundamentals';
+import { field, Guid } from '@cratis/fundamentals';
 import { eventType } from '@cratis/chronicle/events';
 import { command, key } from '@cratis/arc.core';
 
 @command()
 export class PlaceOrder {
-    @field(String) @key() orderId = '';
-    @field(String) customerId = '';
-    @field(Number) amount = 0;
+    @field(OrderId) @key() orderId!: OrderId;
+    @field(CustomerId) customerId!: CustomerId;
+    @field(Money) amount!: Money;
 
-    getSubject(): string { return this.customerId; }
+    getSubject(): string { return this.customerId.toString(); }
 
     handle(): OrderPlaced { return new OrderPlaced(this.customerId, this.amount); }
 }
 
 @eventType()
 export class OrderPlaced {
-    @field(String) customerId: string;
-    @field(Number) amount: number;
-    constructor(customerId = '', amount = 0) { this.customerId = customerId; this.amount = amount; }
+    @field(CustomerId) customerId: CustomerId;
+    @field(Money) amount: Money;
+    constructor(customerId = new CustomerId(Guid.empty), amount = new Money(0, '')) { this.customerId = customerId; this.amount = amount; }
 }
 ```
 
@@ -291,15 +288,15 @@ Arc for Elixir doesn't exist; with the Chronicle Elixir client you pass the subj
 defmodule MyApp.Events.OrderPlaced do
   use Chronicle.Events.EventType, id: "order-placed"
 
-  defstruct [:customer_id, :amount]
+  defstruct customer_id: %MyApp.CustomerId{}, amount: %MyApp.Money{}
 end
 
 defmodule MyApp.PlaceOrder do
-  def place(order_id, customer_id, amount) do
+  def place(%MyApp.OrderId{} = order_id, %MyApp.CustomerId{} = customer_id, amount) do
     Chronicle.append(
-      order_id,
+      order_id.value,
       %MyApp.Events.OrderPlaced{customer_id: customer_id, amount: amount},
-      subject: customer_id
+      subject: customer_id.value
     )
   end
 end
@@ -359,11 +356,11 @@ With Arc's Chronicle integration in .NET and TypeScript, the [causation](https:/
 <TabItem label="C#">
 
 ```csharp
+[NotAudited]
+public record Password(string Value) : ConceptAs<string>(Value);
+
 [Command]
-public record ChangePassword(
-    UserId User,
-    [property: NotAudited] string OldPassword,
-    [property: NotAudited] string NewPassword)
+public record ChangePassword([Key] UserId User, Password OldPassword, Password NewPassword)
 {
     public PasswordChanged Handle(IPasswordHasher hasher) => new(hasher.Hash(NewPassword));
 }
@@ -382,12 +379,18 @@ Arc for Java records the command's type and key in the causation chain, not its 
 </TabItem>
 <TabItem label="TypeScript">
 
+In Arc for TypeScript, `@notAudited()` marks a field, not a type.
+
 ```typescript
+export class Password extends ConceptAs<string> {
+    static readonly valueType = String;
+}
+
 @command()
 export class ChangePassword {
     @field(UserId) @key() user!: UserId;
-    @field(String) @notAudited() oldPassword = '';
-    @field(String) @notAudited() newPassword = '';
+    @field(Password) @notAudited() oldPassword!: Password;
+    @field(Password) @notAudited() newPassword!: Password;
 
     @inject(PasswordHasher)
     handle(hasher: PasswordHasher): PasswordChanged {
@@ -429,7 +432,7 @@ An observer hears about a redaction only if it subscribes to the original event 
 
 ```csharp
 [EventType]
-public record RedactionPersonRegistered(string Name);
+public record RedactionPersonRegistered(PiiConceptsPersonName Name);
 
 public class RedactionPersonReactor : IReactor
 {

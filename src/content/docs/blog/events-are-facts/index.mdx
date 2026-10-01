@@ -173,7 +173,7 @@ Nullable properties are where the rule gets strict. An event records what was tr
 ```csharp
 using Cratis.Chronicle.Events;
 
-public record OrderId(Guid Value);
+public record OrderId(Guid Value) : EventSourceId<Guid>(Value);
 public record Money(decimal Amount, string Currency);
 
 // Nullable smell — "sometimes there's a discount, sometimes not"
@@ -195,11 +195,17 @@ public record DiscountApplied(OrderId Id, Money Amount);
 <TabItem label="Kotlin">
 
 ```kotlin
+import io.cratis.arc.concepts.ConceptAs as ArcConceptAs
+import io.cratis.chronicle.concepts.ConceptAs as ChronicleConceptAs
 import io.cratis.chronicle.events.EventType
 import java.math.BigDecimal
 import java.util.UUID
 
-data class OrderId(val value: UUID)
+data class OrderId(private val id: UUID) : ArcConceptAs<UUID>, ChronicleConceptAs<UUID> {
+    override fun value(): UUID = id
+    override val value: UUID get() = id
+}
+
 data class Money(val amount: BigDecimal, val currency: String)
 
 // Nullable smell — "sometimes there's a discount, sometimes not"
@@ -222,12 +228,19 @@ data class DiscountApplied(val id: OrderId, val amount: Money)
 <TabItem label="Java">
 
 ```java
+import io.cratis.arc.concepts.ConceptAs;
 import io.cratis.chronicle.events.EventType;
 
 import java.math.BigDecimal;
 import java.util.UUID;
 
-record OrderId(UUID value) {}
+record OrderId(UUID value) implements ConceptAs<UUID>, io.cratis.chronicle.concepts.ConceptAs<UUID> {
+    @Override
+    public UUID getValue() {
+        return value;
+    }
+}
+
 record Money(BigDecimal amount, String currency) {}
 
 // Nullable smell — "sometimes there's a discount, sometimes not"
@@ -250,13 +263,13 @@ record DiscountApplied(OrderId id, Money amount) {}
 
 ```typescript
 import { eventType } from '@cratis/chronicle';
-import { field, Guid } from '@cratis/fundamentals';
+import { ConceptAs, field, Guid } from '@cratis/fundamentals';
 
-class OrderId {
-    @field(Guid) readonly value: Guid;
+class OrderId extends ConceptAs<Guid> {
+    static readonly valueType = Guid;
 
     constructor(value: Guid) {
-        this.value = value;
+        super(value);
     }
 }
 
@@ -313,7 +326,7 @@ class DiscountApplied {
 
 ```elixir
 defmodule MyApp.OrderId do
-  defstruct [:value]
+  use Chronicle.Concept, type: :uuid, event_source_id: true
 end
 
 defmodule MyApp.Money do
@@ -324,20 +337,20 @@ end
 defmodule MyApp.Events.OrderPlacedWithNullableDiscount do
   use Chronicle.Events.EventType, id: "order-placed-with-nullable-discount"
 
-  defstruct [:id, :total, :discount]
+  defstruct id: %MyApp.OrderId{}, total: %MyApp.Money{}, discount: nil
 end
 
 # Two facts
 defmodule MyApp.Events.OrderPlaced do
   use Chronicle.Events.EventType, id: "order-placed"
 
-  defstruct [:id, :total]
+  defstruct id: %MyApp.OrderId{}, total: %MyApp.Money{}
 end
 
 defmodule MyApp.Events.DiscountApplied do
   use Chronicle.Events.EventType, id: "discount-applied"
 
-  defstruct [:id, :amount]
+  defstruct id: %MyApp.OrderId{}, amount: %MyApp.Money{}
 end
 ```
 
@@ -353,19 +366,17 @@ In an Arc application, a command handler returns the events and Arc's Chronicle 
 
 ```csharp
 using Cratis.Arc.Commands.ModelBound;
-using Cratis.Chronicle.Keys;
 
 [Command]
-public record PlaceOrder([Key] Guid Id, Money Total, Money? Discount)
+public record PlaceOrder(OrderId Id, Money Total, Money? Discount)
 {
     public IEnumerable<object> Handle()
     {
-        var orderId = new OrderId(Id);
-        var events = new List<object> { new OrderPlaced(orderId, Total) };
+        var events = new List<object> { new OrderPlaced(Id, Total) };
 
         if (Discount is { } discount)
         {
-            events.Add(new DiscountApplied(orderId, discount));
+            events.Add(new DiscountApplied(Id, discount));
         }
 
         return events;
@@ -380,23 +391,20 @@ public record PlaceOrder([Key] Guid Id, Money Total, Money? Discount)
 import io.cratis.arc.artifacts.Command
 import io.cratis.arc.artifacts.CommandKey
 import io.cratis.arc.commands.CommandResponseValues
-import java.util.UUID
 
 @Command
 data class PlaceOrder(
-    @CommandKey val id: UUID,
+    @CommandKey val id: OrderId,
     val total: Money,
     val discount: Money?
 ) {
-    fun handle(): CommandResponseValues {
-        val orderId = OrderId(id)
-        return CommandResponseValues(
+    fun handle(): CommandResponseValues =
+        CommandResponseValues(
             listOfNotNull(
-                OrderPlaced(orderId, total),
-                discount?.let { DiscountApplied(orderId, it) }
+                OrderPlaced(id, total),
+                discount?.let { DiscountApplied(id, it) }
             )
         )
-    }
 }
 ```
 
@@ -409,16 +417,13 @@ import io.cratis.arc.artifacts.CommandKey;
 import io.cratis.arc.commands.CommandResponseValues;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.UUID;
-
 @Command
-public record PlaceOrder(@CommandKey UUID id, Money total, @Nullable Money discount) {
+public record PlaceOrder(@CommandKey OrderId id, Money total, @Nullable Money discount) {
     public CommandResponseValues handle() {
-        var orderId = new OrderId(id);
-        var response = CommandResponseValues.builder().add(new OrderPlaced(orderId, total));
+        var response = CommandResponseValues.builder().add(new OrderPlaced(id, total));
 
         if (discount != null) {
-            response.add(new DiscountApplied(orderId, discount));
+            response.add(new DiscountApplied(id, discount));
         }
 
         return response.build();
@@ -433,20 +438,19 @@ From Arc for TypeScript, an early source preview whose packages aren't on npm ye
 
 ```typescript
 import { command, key, optional } from '@cratis/arc.core';
-import { field, Guid } from '@cratis/fundamentals';
+import { field } from '@cratis/fundamentals';
 
 @command()
 export class PlaceOrder {
-    @field(Guid) @key() id!: Guid;
+    @field(OrderId) @key() id!: OrderId;
     @field(Money) total!: Money;
     @field(Money) @optional() discount?: Money;
 
     handle() {
-        const orderId = new OrderId(this.id);
-        const events: object[] = [new OrderPlaced(orderId, this.total)];
+        const events: object[] = [new OrderPlaced(this.id, this.total)];
 
         if (this.discount) {
-            events.push(new DiscountApplied(orderId, this.discount));
+            events.push(new DiscountApplied(this.id, this.discount));
         }
 
         return events;
@@ -505,7 +509,7 @@ Anything that processes events remembers how far it has come, and that position 
 
 *Each event source has its own facts, and every fact has one number in the log.*
 
-Appending is one call on the event log. The appending docs use a simpler `OrderPlaced`:
+Appending is one call on the event log. The appending docs use a simpler `OrderPlaced`, shown here with `CustomerId` and `Money` in place of a string and a number:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
@@ -513,13 +517,16 @@ Appending is one call on the event log. The appending docs use a simpler `OrderP
 ```csharp
 using Cratis.Chronicle.Events;
 using Cratis.Chronicle.EventSequences;
+using Cratis.Concepts;
+
+public record CustomerId(Guid Value) : ConceptAs<Guid>(Value);
 
 [EventType]
-public record OrderPlaced(string CustomerId, decimal Total);
+public record OrderPlaced(CustomerId CustomerId, Money Total);
 
 public class CheckoutService(IEventLog eventLog)
 {
-    public async Task PlaceOrder(OrderId orderId, string customerId, decimal total)
+    public async Task PlaceOrder(OrderId orderId, CustomerId customerId, Money total)
     {
         var result = await eventLog.Append(
             orderId,
@@ -538,20 +545,27 @@ public class CheckoutService(IEventLog eventLog)
 <TabItem label="Kotlin">
 
 ```kotlin
+import io.cratis.arc.concepts.ConceptAs as ArcConceptAs
+import io.cratis.chronicle.concepts.ConceptAs as ChronicleConceptAs
 import io.cratis.chronicle.eventSequences.IEventLog
 import io.cratis.chronicle.events.EventType
-import java.math.BigDecimal
+import java.util.UUID
+
+data class CustomerId(private val id: UUID) : ArcConceptAs<UUID>, ChronicleConceptAs<UUID> {
+    override fun value(): UUID = id
+    override val value: UUID get() = id
+}
 
 @EventType
 data class OrderPlaced(
-    val customerId: String,
-    val total: BigDecimal
+    val customerId: CustomerId,
+    val total: Money
 )
 
 class CheckoutService(private val eventLog: IEventLog) {
-    suspend fun placeOrder(orderId: String, customerId: String, total: BigDecimal) {
+    suspend fun placeOrder(orderId: OrderId, customerId: CustomerId, total: Money) {
         val result = eventLog.append(
-            orderId,
+            orderId.value.toString(),
             OrderPlaced(customerId, total)
         )
 
@@ -566,14 +580,22 @@ class CheckoutService(private val eventLog: IEventLog) {
 <TabItem label="Java">
 
 ```java
+import io.cratis.arc.concepts.ConceptAs;
 import io.cratis.chronicle.eventSequences.IEventLog;
 import io.cratis.chronicle.events.EventType;
 import io.cratis.chronicle.java.BlockingEventSequence;
 
-import java.math.BigDecimal;
+import java.util.UUID;
+
+record CustomerId(UUID value) implements ConceptAs<UUID>, io.cratis.chronicle.concepts.ConceptAs<UUID> {
+    @Override
+    public UUID getValue() {
+        return value;
+    }
+}
 
 @EventType
-record OrderPlaced(String customerId, BigDecimal total) {}
+record OrderPlaced(CustomerId customerId, Money total) {}
 
 class CheckoutService {
     private final BlockingEventSequence eventLog;
@@ -582,8 +604,8 @@ class CheckoutService {
         this.eventLog = new BlockingEventSequence(eventLog);
     }
 
-    void placeOrder(String orderId, String customerId, BigDecimal total) {
-        var result = eventLog.append(orderId, new OrderPlaced(customerId, total));
+    void placeOrder(OrderId orderId, CustomerId customerId, Money total) {
+        var result = eventLog.append(orderId.value().toString(), new OrderPlaced(customerId, total));
 
         if (!result.isSuccess()) {
             // Decide whether to retry or surface a conflict to the caller.
@@ -597,14 +619,22 @@ class CheckoutService {
 
 ```typescript
 import { eventType, IEventLog } from '@cratis/chronicle';
-import { field } from '@cratis/fundamentals';
+import { ConceptAs, field, Guid } from '@cratis/fundamentals';
+
+class CustomerId extends ConceptAs<Guid> {
+    static readonly valueType = Guid;
+
+    constructor(value: Guid) {
+        super(value);
+    }
+}
 
 @eventType()
 class OrderPlaced {
-    @field(String) customerId: string;
-    @field(Number) total: number;
+    @field(CustomerId) customerId: CustomerId;
+    @field(Money) total: Money;
 
-    constructor(customerId: string, total: number) {
+    constructor(customerId: CustomerId, total: Money) {
         this.customerId = customerId;
         this.total = total;
     }
@@ -613,9 +643,9 @@ class OrderPlaced {
 class CheckoutService {
     constructor(private readonly eventLog: IEventLog) {}
 
-    async placeOrder(orderId: string, customerId: string, total: number): Promise<void> {
+    async placeOrder(orderId: OrderId, customerId: CustomerId, total: Money): Promise<void> {
         const result = await this.eventLog.append(
-            orderId,
+            orderId.toString(),
             new OrderPlaced(customerId, total)
         );
 
@@ -630,15 +660,19 @@ class CheckoutService {
 <TabItem label="Elixir">
 
 ```elixir
+defmodule MyApp.CustomerId do
+  use Chronicle.Concept, type: :uuid
+end
+
 defmodule MyApp.Events.OrderPlaced do
   use Chronicle.Events.EventType, id: "order-placed"
 
-  defstruct [:customer_id, :total]
+  defstruct customer_id: %MyApp.CustomerId{}, total: %MyApp.Money{}
 end
 
 defmodule MyApp.CheckoutService do
-  def place_order(order_id, customer_id, total) do
-    case Chronicle.append(order_id, %MyApp.Events.OrderPlaced{
+  def place_order(%MyApp.OrderId{} = order_id, customer_id, total) do
+    case Chronicle.append(order_id.value, %MyApp.Events.OrderPlaced{
            customer_id: customer_id,
            total: total
          }) do
@@ -769,7 +803,7 @@ The code that appends can set some of these fields itself. An order imported fro
 public class OrderImport(IEventLog eventLog)
 {
     public Task<AppendResult> ImportOrder(
-        OrderId orderId, string customerId, decimal total, DateTimeOffset placedAt) =>
+        OrderId orderId, CustomerId customerId, Money total, DateTimeOffset placedAt) =>
         eventLog.Append(
             orderId,
             new OrderPlaced(customerId, total),
@@ -786,10 +820,10 @@ public class OrderImport(IEventLog eventLog)
 ```kotlin
 class OrderImport(private val eventLog: IEventLog) {
     suspend fun importOrder(
-        orderId: String, customerId: String, total: BigDecimal, placedAt: Instant
+        orderId: OrderId, customerId: CustomerId, total: Money, placedAt: Instant
     ): AppendResult =
         eventLog.append(
-            orderId,
+            orderId.value.toString(),
             OrderPlaced(customerId, total),
             AppendOptions(
                 eventSourceType = "Order",
@@ -812,7 +846,7 @@ class OrderImport {
         this.eventLog = new BlockingEventSequence(eventLog);
     }
 
-    AppendResult importOrder(String orderId, String customerId, BigDecimal total, Instant placedAt) {
+    AppendResult importOrder(OrderId orderId, CustomerId customerId, Money total, Instant placedAt) {
         var options = new AppendOptionsBuilder()
             .eventSourceType("Order")
             .eventStreamType("Checkout")
@@ -820,7 +854,7 @@ class OrderImport {
             .occurred(placedAt)
             .build();
 
-        return eventLog.append(orderId, new OrderPlaced(customerId, total), options);
+        return eventLog.append(orderId.value().toString(), new OrderPlaced(customerId, total), options);
     }
 }
 ```
@@ -832,8 +866,8 @@ class OrderImport {
 class OrderImport {
     constructor(private readonly eventLog: IEventLog) {}
 
-    importOrder(orderId: string, customerId: string, total: number, placedAt: Date) {
-        return this.eventLog.append(orderId, new OrderPlaced(customerId, total), {
+    importOrder(orderId: OrderId, customerId: CustomerId, total: Money, placedAt: Date) {
+        return this.eventLog.append(orderId.toString(), new OrderPlaced(customerId, total), {
             sourceType: 'Order',
             streamType: 'Checkout',
             tags: ['imported'],
@@ -848,9 +882,9 @@ class OrderImport {
 
 ```elixir
 defmodule MyApp.OrderImport do
-  def import_order(order_id, customer_id, total, placed_at) do
+  def import_order(%MyApp.OrderId{} = order_id, customer_id, total, placed_at) do
     Chronicle.append(
-      order_id,
+      order_id.value,
       %MyApp.Events.OrderPlaced{customer_id: customer_id, total: total},
       event_source_type: "Order",
       event_stream_type: "Checkout",
@@ -878,10 +912,10 @@ using Cratis.Chronicle.Auditing;
 
 public class PlaceOrderCausation(ICausationManager causationManager)
 {
-    public void RecordPlaceOrder(string orderId) =>
+    public void RecordPlaceOrder(OrderId orderId) =>
         causationManager.Add(
             "MyApp.Commands.PlaceOrder",
-            new Dictionary<string, string> { ["orderId"] = orderId });
+            new Dictionary<string, string> { ["orderId"] = orderId.Value.ToString() });
 }
 ```
 
@@ -894,8 +928,8 @@ import io.cratis.chronicle.auditing.causationManager
 
 // Per thread, not per request or coroutine; clear in finally on thread-pooled paths.
 class PlaceOrderCausation {
-    fun recordPlaceOrder(orderId: String) {
-        causationManager.add(CausationType("MyApp.Commands.PlaceOrder"), mapOf("orderId" to orderId))
+    fun recordPlaceOrder(orderId: OrderId) {
+        causationManager.add(CausationType("MyApp.Commands.PlaceOrder"), mapOf("orderId" to orderId.value.toString()))
     }
 }
 ```
@@ -912,11 +946,11 @@ import static io.cratis.chronicle.auditing.CausationManagerKt.getCausationManage
 
 // Per thread, not per request or coroutine; clear in finally on thread-pooled paths.
 class PlaceOrderCausation {
-    void recordPlaceOrder(String orderId) {
+    void recordPlaceOrder(OrderId orderId) {
         CausationManagerJavaBridge.add(
             getCausationManager(),
             "MyApp.Commands.PlaceOrder",
-            Map.of("orderId", orderId));
+            Map.of("orderId", orderId.value().toString()));
     }
 }
 ```
@@ -928,8 +962,8 @@ class PlaceOrderCausation {
 import { causationManager, CausationType } from '@cratis/chronicle';
 
 class PlaceOrderCausation {
-    recordPlaceOrder(orderId: string): void {
-        causationManager.add(new CausationType('MyApp.Commands.PlaceOrder'), { orderId });
+    recordPlaceOrder(orderId: OrderId): void {
+        causationManager.add(new CausationType('MyApp.Commands.PlaceOrder'), { orderId: orderId.toString() });
     }
 }
 ```
@@ -941,7 +975,7 @@ class PlaceOrderCausation {
 defmodule MyApp.PlaceOrderCausation do
   alias Chronicle.Auditing.CausationManager
 
-  def record_place_order(order_id) do
+  def record_place_order(%MyApp.OrderId{value: order_id}) do
     CausationManager.add("MyApp.Commands.PlaceOrder", %{order_id: order_id})
   end
 end

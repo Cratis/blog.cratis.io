@@ -340,7 +340,7 @@ defmodule MyApp.ReadModels.Author do
 
   alias MyApp.Events.AuthorRegistered
 
-  defstruct [:id, :name]
+  defstruct id: %MyApp.AuthorId{}, name: %MyApp.AuthorName{}
 
   from AuthorRegistered,
     set: [

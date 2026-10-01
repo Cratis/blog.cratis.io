@@ -23,25 +23,24 @@ That's one line in a table of differences, and it matters the day a second team 
 
 Not every team is on .NET, and not every service in one system should have to be. Arc's [HTTP contract](https://cratis.io/arc/http-contract/) is shared across three server implementations, and each generates TypeScript proxies for the frontend, though each has gaps of its own.
 
-On the JVM, [Arc for Kotlin](https://cratis.io/arc/backend/kotlin/) is a Spring Boot implementation for Kotlin and Java, published to Maven Central. This command and its event come from its Chronicle Spring Boot sample, trimmed, and the C# and TypeScript tabs have the same command, the TypeScript one from Arc for TypeScript's Chronicle guide:
+On the JVM, [Arc for Kotlin](https://cratis.io/arc/backend/kotlin/) is a Spring Boot implementation for Kotlin and Java, published to Maven Central. This command and its event come from its Chronicle Spring Boot sample, trimmed and with the id and title as concepts. The C# and TypeScript tabs have the same command, the TypeScript one from Arc for TypeScript's Chronicle guide:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
 
-The same command in C#, where `[Key]` names the event source.
+The same command in C#, where `TaskId`, an `EventSourceId<Guid>`, names the event source.
 
 ```csharp
 using Cratis.Arc.Authorization;
 using Cratis.Arc.Commands.ModelBound;
 using Cratis.Chronicle.Events;
-using Cratis.Chronicle.Keys;
 
 [EventType]
-public record TaskCreated(string Title);
+public record TaskCreated(TaskTitle Title);
 
 [Command]
 [AllowAnonymous]
-public record CreateTask([Key] string Id, string Title)
+public record CreateTask(TaskId Id, TaskTitle Title)
 {
     public TaskCreated Handle() => new(Title);
 }
@@ -57,11 +56,11 @@ import io.cratis.arc.authorization.AllowAnonymous
 import io.cratis.chronicle.events.EventType
 
 @EventType
-data class TaskCreated(val title: String = "")
+data class TaskCreated(val title: TaskTitle = TaskTitle(""))
 
 @Command
 @AllowAnonymous
-data class CreateTask(@CommandKey val id: String, val title: String) {
+data class CreateTask(@CommandKey val id: TaskId, val title: TaskTitle) {
     fun handle(): TaskCreated = TaskCreated(title)
 }
 ```
@@ -76,11 +75,11 @@ import io.cratis.arc.authorization.AllowAnonymous;
 import io.cratis.chronicle.events.EventType;
 
 @EventType
-public record TaskCreated(String title) {}
+public record TaskCreated(TaskTitle title) {}
 
 @Command
 @AllowAnonymous
-public record CreateTask(@CommandKey String id, String title) {
+public record CreateTask(@CommandKey TaskId id, TaskTitle title) {
     public TaskCreated handle() {
         return new TaskCreated(title);
     }
@@ -97,15 +96,15 @@ import { allowAnonymous, command, key } from '@cratis/arc.core';
 
 @eventType()
 export class TaskCreated {
-    @field(String) title: string;
-    constructor(title: string) { this.title = title; }
+    @field(TaskTitle) title: TaskTitle;
+    constructor(title: TaskTitle) { this.title = title; }
 }
 
 @command()
 @allowAnonymous()
 export class CreateTask {
-    @field(String) @key() id = '';
-    @field(String) title = '';
+    @field(TaskId) @key() id!: TaskId;
+    @field(TaskTitle) title!: TaskTitle;
 
     handle(): TaskCreated {
         return new TaskCreated(this.title);
@@ -164,7 +163,7 @@ The same query in C#, with a `BehaviorSubject` as the `ISubject`.
 ```csharp
 [ReadModel]
 [AllowAnonymous]
-public record TaskView(string Id, string Title)
+public record TaskView(TaskId Id, TaskTitle Title)
 {
     static readonly BehaviorSubject<IEnumerable<TaskView>> Tasks = new([]);
 
@@ -180,7 +179,7 @@ private val _tasks = MutableStateFlow<List<TaskView>>(emptyList())
 
 @ReadModel
 @AllowAnonymous
-data class TaskView(val id: String, val title: String) {
+data class TaskView(val id: TaskId, val title: TaskTitle) {
     companion object {
         @JvmStatic
         fun all(): Flow<List<TaskView>> = _tasks
@@ -194,7 +193,7 @@ data class TaskView(val id: String, val title: String) {
 ```java
 @ReadModel
 @AllowAnonymous
-public record TaskView(String id, String title) {
+public record TaskView(TaskId id, TaskTitle title) {
     private static final ObservableState<List<TaskView>> tasks = new ObservableState<>(List.of());
 
     public static Flow.Publisher<List<TaskView>> all() {
@@ -212,8 +211,8 @@ const tasks = new BehaviorSubject<TaskView[]>([]);
 @readModel()
 @allowAnonymous()
 export class TaskView {
-    @field(String) id!: string;
-    @field(String) title!: string;
+    @field(TaskId) id!: TaskId;
+    @field(TaskTitle) title!: TaskTitle;
 
     @query({ observable: true })
     static all(): Observable<TaskView[]> { return tasks; }
@@ -236,7 +235,7 @@ Validation is Jakarta Bean Validation, with reusable concept and model validator
 
 Chronicle is optional on the JVM as well. `io.cratis:arc` has no Chronicle dependency, and an application can sit on JPA, MongoDB or plain services. For an event-sourced application the one dependency to take is `io.cratis:cratis`, which pulls in Arc, its Spring wiring and the [Chronicle integration](https://cratis.io/arc/backend/kotlin/guides/chronicle/).
 
-With it, a command returns an event and Arc appends it, as `CreateTask` does above. `@EventType` on the event is required. Arc's Chronicle integration treats only `@EventType` values as events. A collection or routed wrapper that contains anything else fails before anything is appended, and a single unannotated value isn't appended at all. Arc for Kotlin's plain example returns a `TaskCreated` with no annotation, which is fine there because that sample has no event log, and wrong the moment Chronicle is involved. The Chronicle sample also gives every event property a default, as in `val title: String = ""`, and the Chronicle client's own examples declare events the same way.
+With it, a command returns an event and Arc appends it, as `CreateTask` does above. `@EventType` on the event is required. Arc's Chronicle integration treats only `@EventType` values as events. A collection or routed wrapper that contains anything else fails before anything is appended, and a single unannotated value isn't appended at all. Arc for Kotlin's plain example returns a `TaskCreated` with no annotation, which is fine there because that sample has no event log, and wrong the moment Chronicle is involved. The Chronicle sample also gives every event property a default, as `TaskCreated` above does with `val title: TaskTitle = TaskTitle("")`, and the Chronicle client's own examples declare events the same way.
 
 `@CommandKey` is required too. It names the event source, and a command without one gets back a validation result with `reasonDetail: "commandKey"`, because Arc won't guess which event source you meant. Events returned inside one outermost command are staged and committed with a single `appendMany` call, which fails closed if the event store, the namespace or the correlation doesn't match. That makes it a commit barrier for the event log. Chronicle, JPA and MongoDB can't join one atomic transaction, and cross-store transactions aren't planned.
 
@@ -262,15 +261,15 @@ A successful append means the fact is stored. The read model catches up asynchro
 
 ## Chronicle in TypeScript
 
-`@cratis/chronicle` is on npm. Its artifacts are decorators, such as `@eventType` for an event and `@projection` or `@reducer` for a read model. An append goes from a `ChronicleClient` to an `EventStore` to its `EventLog`. The [appending example](https://cratis.io/chronicle/events/appending/), without its service wrapper:
+`@cratis/chronicle` is on npm. Its artifacts are decorators, such as `@eventType` for an event and `@projection` or `@reducer` for a read model. An append goes from a `ChronicleClient` to an `EventStore` to its `EventLog`. The [appending example](https://cratis.io/chronicle/events/appending/), without its service wrapper and with `CustomerId` and `Money` in place of a string and a number:
 
 ```typescript
 @eventType()
 class OrderPlaced {
-    @field(String) customerId: string;
-    @field(Number) total: number;
+    @field(CustomerId) customerId: CustomerId;
+    @field(Money) total: Money;
 
-    constructor(customerId: string, total: number) {
+    constructor(customerId: CustomerId, total: Money) {
         this.customerId = customerId;
         this.total = total;
     }
