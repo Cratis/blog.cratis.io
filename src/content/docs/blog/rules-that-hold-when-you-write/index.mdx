@@ -767,7 +767,7 @@ public record WithdrawFunds(AccountId AccountId, Amount Amount)
     public Result<FundsWithdrawn, ValidationResult> Handle(AccountBalance balance) =>
 #pragma warning restore ARC0006
         balance.Balance.Value < Amount.Value
-            ? ValidationResult.Error("Insufficient funds.", [nameof(Amount)])
+            ? ValidationResult.Error("Insufficient funds.", ["amount"])
             : new FundsWithdrawn(Amount);
 }
 ```
