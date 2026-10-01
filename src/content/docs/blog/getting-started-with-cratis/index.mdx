@@ -278,7 +278,174 @@ The template's AppHost also sets `Cratis__Chronicle__ConnectionString` on the ba
 
 Arc recommends a [vertical slice](https://cratis.io/arc/vertical-slices/), with the command, the read model, the screen and the specs in one feature folder, so one change is one diff. Arc doesn't enforce it. We still recommend it, because when a feature is spread across five layer folders, reviewing one change means opening all five. The C# template's `Registration/` and `Listing/` folders are already laid out that way.
 
-![A diagram titled One feature, one folder, with two panels side by side. By layer: Controllers, Services, Data, Frontend and Tests folders, captioned A piece of the change in each. By feature: a Registration folder labeled Arc, holding RegisterAuthor.cs, Author.cs, RegisterAuthor.tsx and when_registering_author.cs, captioned Command, read model, screen and spec.](./one-feature-one-folder.png)
+In the author feature, Arc's own registration slice keeps the event, the validator and the command side by side:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+// Authors/Registration/Registration.cs
+[EventType]
+public record AuthorRegistered(AuthorName FirstName, AuthorName LastName);
+
+public class RegisterAuthorValidator : CommandValidator<RegisterAuthor>
+{
+    public RegisterAuthorValidator()
+    {
+        RuleFor(c => c.FirstName)
+            .NotEmpty().WithMessage("First name is required");
+
+        RuleFor(c => c.LastName)
+            .NotEmpty().WithMessage("Last name is required");
+    }
+}
+
+[Command]
+public record RegisterAuthor(AuthorName FirstName, AuthorName LastName)
+{
+    public AuthorId Provide() => AuthorId.New();
+
+    public (AuthorId, AuthorRegistered) Handle(AuthorId authorId) =>
+        (authorId, new AuthorRegistered(FirstName, LastName));
+}
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+// Authors/Registration/Registration.kt
+@EventType
+data class AuthorRegistered(val firstName: AuthorName, val lastName: AuthorName)
+
+@Component
+class RegisterAuthorValidator : CommandValidator<RegisterAuthor> {
+    override val commandType: Class<RegisterAuthor> = RegisterAuthor::class.java
+
+    override suspend fun validate(command: RegisterAuthor, context: CommandContext): List<ValidationResult> =
+        buildList {
+            if (command.firstName.value().isBlank()) {
+                add(ValidationResult.error("First name is required", listOf("firstName")))
+            }
+            if (command.lastName.value().isBlank()) {
+                add(ValidationResult.error("Last name is required", listOf("lastName")))
+            }
+        }
+}
+
+@Command
+@AllowAnonymous
+data class RegisterAuthor(
+    @CommandKey val id: AuthorId,
+    val firstName: AuthorName,
+    val lastName: AuthorName
+) {
+    fun handle(): Pair<AuthorId, AuthorRegistered> = id to AuthorRegistered(firstName, lastName)
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+Java keeps one public type per file, all in the same folder:
+
+```java
+// Authors/Registration/AuthorRegistered.java
+@EventType
+public record AuthorRegistered(AuthorName firstName, AuthorName lastName) { }
+
+// Authors/Registration/RegisterAuthorValidator.java
+public final class RegisterAuthorValidator implements BlockingCommandValidator<RegisterAuthor> {
+    @Override
+    public Class<RegisterAuthor> getCommandType() {
+        return RegisterAuthor.class;
+    }
+
+    @Override
+    public List<ValidationResult> validate(RegisterAuthor command, CommandContext context) {
+        var results = new ArrayList<ValidationResult>();
+        if (command.firstName().value().isBlank()) {
+            results.add(ValidationResult.error("First name is required", List.of("firstName")));
+        }
+        if (command.lastName().value().isBlank()) {
+            results.add(ValidationResult.error("Last name is required", List.of("lastName")));
+        }
+        return results;
+    }
+}
+
+// Authors/Registration/RegistrationValidation.java
+@Configuration
+public class RegistrationValidation {
+    @Bean
+    public CommandValidator<RegisterAuthor> registerAuthorValidator() {
+        return new BlockingCommandValidatorAdapter<>(new RegisterAuthorValidator());
+    }
+}
+
+// Authors/Registration/RegisterAuthor.java
+@Command
+@AllowAnonymous
+public record RegisterAuthor(@CommandKey AuthorId id, AuthorName firstName, AuthorName lastName) {
+    public Pair<AuthorId, AuthorRegistered> handle() {
+        return new Pair<>(id, new AuthorRegistered(firstName, lastName));
+    }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+From Arc for TypeScript, an early source preview whose packages aren't on npm yet:
+
+```typescript
+// Authors/Registration/Registration.ts
+@eventType()
+export class AuthorRegistered {
+    @field(AuthorName) firstName: AuthorName;
+    @field(AuthorName) lastName: AuthorName;
+
+    constructor(firstName = new AuthorName(''), lastName = new AuthorName('')) {
+        this.firstName = firstName;
+        this.lastName = lastName;
+    }
+}
+
+@command()
+export class RegisterAuthor {
+    @field(AuthorName) firstName!: AuthorName;
+    @field(AuthorName) lastName!: AuthorName;
+
+    provide(): AuthorId {
+        return AuthorId.create();
+    }
+
+    handle(authorId: AuthorId) {
+        return tuple(
+            eventSourceIdResponse(authorId.value.toString()),
+            new AuthorRegistered(this.firstName, this.lastName));
+    }
+}
+
+@validator(RegisterAuthor)
+export class RegisterAuthorValidator extends CommandValidator<RegisterAuthor> {
+    constructor() {
+        super();
+        this.ruleFor(command => command.firstName).notEmpty().withMessage('First name is required');
+        this.ruleFor(command => command.lastName).notEmpty().withMessage('Last name is required');
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
+
+</TabItem>
+</Tabs>
+
+![A diagram titled One feature, one folder, with two panels side by side. By layer: Controllers, Services, Data, Frontend and Tests folders, captioned A piece of the change in each. By feature: a Registration folder labeled Arc, holding Registration.cs, Author.cs, RegisterDialog.tsx and when_registering_author.cs, captioned Command, read model, screen and spec.](./one-feature-one-folder.png)
 
 *One feature, one folder, one diff.*
 

@@ -596,13 +596,257 @@ The guard covers the event-log tail for that event source. Revisions, redactions
 
 Arc's [Chronicle integration](https://cratis.io/arc/backend/csharp/chronicle/commands/) turns these tools into declarations on a command. A `[Command]` returns events from `Handle()`, and Chronicle appends them in the command's pending transaction, committed on success and rolled back on failure. A `Result<TEvent, ValidationResult>` return drops the pending events when it carries a failure and unwraps the event when it succeeds.
 
-Scope can be declared on the command. `[EventStreamId("...", concurrency: true)]`, `[EventStreamType("Transactions", concurrency: true)]` and `[EventSourceType("Customer", concurrency: true)]` tag the events, and with `concurrency: true` each of them also contributes to the scope. Stream tags bound the check even without the flag, because the fallback strategy narrows by the tags an append carries ([command concurrency](https://cratis.io/arc/backend/csharp/chronicle/commands/concurrency/)).
+Scope can be declared on the command. `[EventStreamId]`, `[EventStreamType]` and `[EventSourceType]` tag the events, and with `concurrency: true` each of them also contributes to the scope. Stream tags bound the check even without the flag, because the fallback strategy narrows by the tags an append carries ([command concurrency](https://cratis.io/arc/backend/csharp/chronicle/commands/concurrency/)).
 
-Returning `EventForEventSourceId`, one or many and mixed with plain events if you like, appends across event sources atomically. A constraint violation, a conflict or an append error rejects the whole batch. Order across sources isn't kept, so `A1, B1, A2` can commit as `A1, A2, B1`, and Arc builds one scope per target, each with that target's own expected tail.
+Returning `EventForEventSourceId`, one or many and mixed with plain events if you like, appends across event sources atomically. A constraint violation, a conflict or an append error rejects the whole batch. Order across sources isn't kept, so `A1, B1, A2` can commit as `A1, A2, B1`, and Arc builds one scope per target, each with that target's own expected tail. A transfer debits one account and credits another in one command:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+On a returned `EventForEventSourceId`, C# keeps only `Occurred` and `Tags`. The event source and stream types come from the command's attributes.
+
+```csharp
+[Command]
+[EventSourceType("Account", concurrency: true)]
+[EventStreamType("Transactions", concurrency: true)]
+public record TransferFunds(EventSourceId FromAccountId, EventSourceId ToAccountId, decimal Amount)
+{
+    public IEnumerable<EventForEventSourceId> Handle() =>
+    [
+        new EventForEventSourceId(FromAccountId, new FundsDebited(Amount)),
+        new EventForEventSourceId(ToAccountId, new FundsCredited(Amount))
+    ];
+}
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+The JVM annotations tag the events, and a value set on a wrapper wins. They add no concurrency check; that takes `EventsWithConcurrencyScopes`.
+
+```kotlin
+@Command
+@CommandEventSourceType("Account")
+@CommandEventStreamType("Transactions")
+data class TransferFunds(val fromAccountId: String, val toAccountId: String, val amount: BigDecimal) {
+    fun handle(): List<EventForEventSourceId> = listOf(
+        EventForEventSourceId(fromAccountId, FundsDebited(amount)),
+        EventForEventSourceId(toAccountId, FundsCredited(amount))
+    )
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+The JVM annotations tag the events, and a value set on a wrapper wins. They add no concurrency check; that takes `EventsWithConcurrencyScopes`.
+
+```java
+@Command
+@CommandEventSourceType("Account")
+@CommandEventStreamType("Transactions")
+public record TransferFunds(String fromAccountId, String toAccountId, BigDecimal amount) {
+    public List<EventForEventSourceId> handle() {
+        return List.of(
+            new EventForEventSourceId(fromAccountId, new FundsDebited(amount)),
+            new EventForEventSourceId(toAccountId, new FundsCredited(amount)));
+    }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+From Arc for TypeScript, an early source preview whose packages aren't on npm yet. A value set on an entry wins over the decorators:
+
+```typescript
+@command()
+@eventSourceType('Account', { concurrency: true })
+@eventStreamType('Transactions', { concurrency: true })
+export class TransferFunds {
+    @field(String) fromAccountId = '';
+    @field(String) toAccountId = '';
+    @field(Number) amount = 0;
+
+    handle() {
+        return [
+            eventForEventSourceId({ eventSourceId: this.fromAccountId, event: new FundsDebited(this.amount) }),
+            eventForEventSourceId({ eventSourceId: this.toAccountId, event: new FundsCredited(this.amount) })
+        ];
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+Arc for Elixir doesn't exist. With the Chronicle Elixir client, one call appends both events:
+
+```elixir
+defmodule MyApp.TransferService do
+  alias Chronicle.EventSequences.{EventForEventSourceId, EventLog}
+  alias MyApp.Events.{FundsCredited, FundsDebited}
+
+  def transfer(from_account_id, to_account_id, amount) do
+    EventLog.append_many_for_event_sources([
+      %EventForEventSourceId{event_source_id: from_account_id, event: %FundsDebited{amount: amount}},
+      %EventForEventSourceId{event_source_id: to_account_id, event: %FundsCredited{amount: amount}}
+    ])
+  end
+end
+```
+
+</TabItem>
+</Tabs>
 
 When global order or an exact revision matters, return `EventsWithConcurrencyScopes`. It carries the revision the decision actually read, under labels you choose, and a label can name an independent fact such as all events about active administrators. Events and scopes are committed together. `BeforeFirst` means no matching event may exist, while `Unavailable` protects nothing. A revision that governs authorization has to come from the server, never from request input.
 
-A [`CommandValidator<T>`](https://cratis.io/arc/backend/csharp/chronicle/validation/) can take the read model Chronicle projected for the command's key and reject the command before `Handle()` runs. How fresh that read model is depends on what backs it, and a snapshot alone, materialized or passive, doesn't hold an invariant under concurrent commands. That's a job for a constraint.
+Opening an account only once is the `BeforeFirst` case:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+[Command]
+public record OpenAccount(EventSourceId AccountId, string AccountName)
+{
+    public EventsWithConcurrencyScopes Handle() =>
+        new(
+            [new(AccountId, new AccountOpened(AccountName))],
+            [new(AccountId, new ConcurrencyScope(EventSequenceNumber.BeforeFirst, EventSourceId: AccountId))]);
+}
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+@Command
+data class OpenAccount(@CommandKey val accountId: String, val accountName: String) {
+    fun handle(): EventsWithConcurrencyScopes = eventsWithConcurrencyScopes {
+        event(accountId, AccountOpened(accountName))
+        concurrencyScope(accountId) {
+            withExpectsNoMatchingEvent()
+            withEventSourceId()
+        }
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+@Command
+public record OpenAccount(@CommandKey String accountId, String accountName) {
+    public EventsWithConcurrencyScopes handle() {
+        var scope = new ConcurrencyScopeBuilder()
+            .withExpectsNoMatchingEvent()
+            .withEventSourceId()
+            .build();
+
+        return EventsWithConcurrencyScopes.builder()
+            .event(accountId, new AccountOpened(accountName))
+            .concurrencyScope(accountId, scope)
+            .build();
+    }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+From Arc for TypeScript, an early source preview whose packages aren't on npm yet:
+
+```typescript
+@command()
+export class OpenAccount {
+    @field(String) @key() accountId = '';
+    @field(String) accountName = '';
+
+    handle() {
+        return eventsWithConcurrencyScopes([new AccountOpened(this.accountName)], {
+            [this.accountId]: { eventSourceId: true, sequenceNumber: EventSequenceNumber.beforeFirst.value }
+        });
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+Arc for Elixir doesn't exist, and the Chronicle Elixir client can't express an expectation that no event exists yet.
+
+</TabItem>
+</Tabs>
+
+`WithdrawFunds` can also decide from a read model instead of an aggregate. Arc resolves the balance by the command's key and passes it to `Handle()`. That balance is a snapshot loaded before `Handle()` runs, so it doesn't stop two concurrent withdrawals from both passing:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+[Command]
+public record WithdrawFunds([Key] Guid AccountId, decimal Amount)
+{
+    // Required on purpose: a missing balance rejects the command before Handle runs.
+#pragma warning disable ARC0006
+    public FundsWithdrawn Handle(AccountBalance balance) =>
+#pragma warning restore ARC0006
+        new(Amount, balance.Balance - Amount);
+}
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+@Command
+data class WithdrawFunds(@CommandKey val accountId: UUID, val amount: BigDecimal) {
+    fun handle(balance: AccountBalance): FundsWithdrawn =
+        FundsWithdrawn(amount, balance.balance - amount)
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+@Command
+public record WithdrawFunds(@CommandKey UUID accountId, BigDecimal amount) {
+    public FundsWithdrawn handle(AccountBalance balance) {
+        return new FundsWithdrawn(amount, balance.balance().subtract(amount));
+    }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+From Arc for TypeScript, an early source preview whose packages aren't on npm yet:
+
+```typescript
+@command()
+export class WithdrawFunds {
+    @field(String) @key() accountId = '';
+    @field(Number) amount = 0;
+
+    @inject(commandReadModel(AccountBalance))
+    handle(balance: AccountBalance): FundsWithdrawn {
+        return new FundsWithdrawn(this.amount, balance.balance - this.amount);
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
+
+</TabItem>
+</Tabs>
+
+A [`CommandValidator<T>`](https://cratis.io/arc/backend/csharp/chronicle/validation/) can take the read model Chronicle projected for the command's key and reject the command before `Handle()` runs. How fresh that read model is depends on what backs it, materialized or passive. The rule that must hold needs a constraint or, in .NET, a protected decision read, as in the decision reads above.
 
 ## Aggregates up close
 
