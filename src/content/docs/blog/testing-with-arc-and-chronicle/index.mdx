@@ -189,7 +189,7 @@ class AssessLoanTest {
 </TabItem>
 <TabItem label="TypeScript">
 
-From Arc for TypeScript, an early source preview whose packages aren't on npm yet:
+From Arc for TypeScript, an early source preview whose packages aren't on npm yet. As in [*Validation all the way down*](/validation-all-the-way-down/), `provide()` rejects an applicant with no credit history. This direct spec supplies the score to `handle()` and doesn't exercise that rejection:
 
 ```typescript
 @command()
@@ -198,9 +198,10 @@ export class AssessLoan {
     @field(ApplicantId) applicant!: ApplicantId;
 
     // provide() takes no parameters, so it resolves its services from the execution scope.
-    async provide(): Promise<CreditScore> {
+    async provide(): Promise<CreditScore | Outcome<never>> {
         const bureau = await currentServices().resolve(CreditBureau);
-        return bureau.scoreFor(this.applicant);
+        const score = await bureau.findScore(this.applicant);
+        return score ?? rejected(validation('No credit history', ['applicant']));
     }
 
     handle(creditScore: CreditScore): LoanAssessment {
@@ -491,33 +492,37 @@ class AuthorReducerTest {
 </TabItem>
 <TabItem label="TypeScript">
 
-The TypeScript client's `ReadModelScenario` evaluates a `@fromEvent` model-bound projection. It refuses a field marked `@pii()`, such as the author's name, and asks for a kernel-backed test, so the name is a plain string here.
+The TypeScript client's `ReadModelScenario` evaluates a `@fromEvent` model-bound projection. It refuses protected fields, including fields whose concept is marked `@pii()`. The series' `AuthorName` keeps that marking and needs a kernel-backed test. This spec uses separate, unprotected test fixtures and checks only projection behavior, not personal-data handling.
 
 ```typescript
-@eventType()
-class AuthorRegistered {
-    @field(String) name: string;
-    constructor(name = '') { this.name = name; }
+class TestAuthorName extends ConceptAs<string> {
+    static readonly valueType = String;
 }
 
-@fromEvent(AuthorRegistered)
-class Author {
+@eventType()
+class TestAuthorRegistered {
+    @field(TestAuthorName) @unique('UniqueAuthorName') name: TestAuthorName;
+    constructor(name = new TestAuthorName('')) { this.name = name; }
+}
+
+@fromEvent(TestAuthorRegistered)
+class TestAuthor {
     @field(AuthorId) id!: AuthorId;
-    @field(String) name = '';
+    @field(TestAuthorName) name = new TestAuthorName('');
 }
 
 describe('when an author is registered', () => {
     const authorId = AuthorId.create();
-    const name = 'Jane Austen';
-    const scenario = new ReadModelScenario(Author);
+    const name = new TestAuthorName('Jane Austen');
+    const scenario = new ReadModelScenario(TestAuthor);
 
     beforeEach(async () => {
-        await scenario.given.forEventSource(authorId.toString()).events(new AuthorRegistered(name));
+        await scenario.given.forEventSource(authorId.toString()).events(new TestAuthorRegistered(name));
     });
 
     it('should have the name', async () => {
         const author = await scenario.instance;
-        author!.name.should.equal(name);
+        author!.name.should.deep.equal(name);
     });
 });
 ```
@@ -573,22 +578,26 @@ The Java client has no in-memory scenario that checks constraints.
 </TabItem>
 <TabItem label="TypeScript">
 
-This spec uses Vitest. The in-process scenario accepts only flat scalar content (Chronicle.TypeScript#170), so the name is a plain string here.
+This spec uses Vitest and the same `TestAuthorName` and `TestAuthorRegistered` fixtures. Since `@cratis/chronicle` 6.31.4, `EventScenario` accepts string and boolean concepts, comparing their serialized scalar values. Its content still has to fit the supported flat, unprotected string/boolean schema; numeric, `Guid`, date and nested object fields remain unsupported. It also refuses the series' `@pii()`-marked `AuthorName`, so testing the real `AuthorRegistered` still needs a kernel. This fixture tests uniqueness without personal-data handling.
 
 ```typescript
+class TestAuthorName extends ConceptAs<string> {
+    static readonly valueType = String;
+}
+
 @eventType()
-class AuthorRegistered {
-    @field(String) @unique('UniqueAuthorName') name: string;
-    constructor(name = '') { this.name = name; }
+class TestAuthorRegistered {
+    @field(TestAuthorName) @unique('UniqueAuthorName') name: TestAuthorName;
+    constructor(name = new TestAuthorName('')) { this.name = name; }
 }
 
 describe('when registering a taken author name', () => {
     let result: AppendResult;
 
     beforeEach(async () => {
-        const scenario = new EventScenario({ artifacts: { eventTypes: [AuthorRegistered] } });
-        await scenario.given.forEventSource(AuthorId.create().toString()).events(new AuthorRegistered('Jane Austen'));
-        result = await scenario.when.forEventSource(AuthorId.create().toString()).event(new AuthorRegistered('Jane Austen'));
+        const scenario = new EventScenario({ artifacts: { eventTypes: [TestAuthorRegistered] } });
+        await scenario.given.forEventSource(AuthorId.create().toString()).events(new TestAuthorRegistered(new TestAuthorName('Jane Austen')));
+        result = await scenario.when.forEventSource(AuthorId.create().toString()).event(new TestAuthorRegistered(new TestAuthorName('Jane Austen')));
     });
 
     it('should be rejected', () => { result.isSuccess.should.be.false; });
