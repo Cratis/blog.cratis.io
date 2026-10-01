@@ -106,7 +106,126 @@ The C# spec is written with [Cratis Specifications](https://cratis.io/specificat
 
 An event is a record, so expecting one is an equality check on a value. The event doesn't even repeat its own event source ID, because Chronicle keeps that in the event context, so the value `Handle()` returns is all there is to compare. The [event-sourced commands lesson](https://cratis.io/arc/backend/csharp/testing/event-sourced-commands/) puts every branch of a decision in direct specs like this one.
 
-Arc also splits getting data from deciding with it. `Provide()` fetches what a command needs, and `Handle()` decides with what it was given, so `Handle` can be a pure function of its arguments. The [command decisions lesson](https://cratis.io/arc/backend/csharp/testing/command-decisions/) tests one command both ways, once directly and once through the pipeline. A `Handle()` that calls a service or reads the clock is still testable, but it isn't a pure function just because it lives on a command.
+Arc also splits getting data from deciding with it. `Provide()` fetches what a command needs, and `Handle()` decides with what it was given, so `Handle` can be a pure function of its arguments. Arc's loan example gets a credit score in `Provide()`, and its spec hands `Handle()` a score directly:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+[Command]
+public record AssessLoan(LoanId LoanId, ApplicantId Applicant)
+{
+    public CreditScore Provide(ICreditBureau bureau) => bureau.GetScore(Applicant);
+
+    public LoanAssessment Handle(CreditScore creditScore) => new(LoanId, creditScore);
+}
+
+public class when_assessing_a_loan : Specification
+{
+    readonly LoanId _loanId = LoanId.New();
+    LoanAssessment _assessment = null!;
+
+    void Because() => _assessment = new AssessLoan(_loanId, ApplicantId.New()).Handle(new CreditScore(800));
+
+    [Fact] void should_return_the_assessment() =>
+        _assessment.ShouldEqual(new LoanAssessment(_loanId, new CreditScore(800)));
+}
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+@Command
+data class AssessLoan(val loanId: LoanId, val applicant: ApplicantId) {
+    suspend fun provide(bureau: CreditBureau): CreditScore = bureau.score(applicant)
+
+    fun handle(creditScore: CreditScore): LoanAssessment = LoanAssessment(loanId, creditScore)
+}
+
+class WhenAssessingALoan {
+    @Test
+    fun `handle returns the assessment`() {
+        val loanId = LoanId(UUID.randomUUID())
+        val command = AssessLoan(loanId, ApplicantId(UUID.randomUUID()))
+
+        val assessment = command.handle(CreditScore(800))
+
+        assertEquals(LoanAssessment(loanId, CreditScore(800)), assessment)
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+@Command
+public record AssessLoan(LoanId loanId, ApplicantId applicant) {
+    public CreditScore provide(CreditBureau bureau) {
+        return bureau.score(applicant);
+    }
+
+    public LoanAssessment handle(CreditScore creditScore) {
+        return new LoanAssessment(loanId, creditScore);
+    }
+}
+
+class WhenAssessingALoan {
+    @Test
+    void handleReturnsTheAssessment() {
+        var loanId = new LoanId(UUID.randomUUID());
+        var command = new AssessLoan(loanId, new ApplicantId(UUID.randomUUID()));
+
+        var assessment = command.handle(new CreditScore(800));
+
+        assertEquals(new LoanAssessment(loanId, new CreditScore(800)), assessment);
+    }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+From Arc for TypeScript, an early source preview whose packages aren't on npm yet:
+
+```typescript
+@command()
+export class AssessLoan {
+    @field(LoanId) loanId!: LoanId;
+    @field(ApplicantId) applicant!: ApplicantId;
+
+    // provide() takes no parameters, so it resolves its services from the execution scope.
+    async provide(): Promise<CreditScore> {
+        const bureau = await currentServices().resolve(CreditBureau);
+        return bureau.scoreFor(this.applicant);
+    }
+
+    handle(creditScore: CreditScore): LoanAssessment {
+        return new LoanAssessment(this.loanId, creditScore);
+    }
+}
+
+describe('when assessing a loan', () => {
+    it('should return the assessment', () => {
+        const command = new AssessLoan();
+        command.loanId = LoanId.create();
+        command.applicant = ApplicantId.create();
+
+        expect(command.handle(new CreditScore(800))).toEqual(new LoanAssessment(command.loanId, new CreditScore(800)));
+    });
+});
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
+
+</TabItem>
+</Tabs>
+
+The [command decisions lesson](https://cratis.io/arc/backend/csharp/testing/command-decisions/) tests one command both ways, once directly and once through the pipeline. A `Handle()` that calls a service or reads the clock is still testable, but it isn't a pure function just because it lives on a command.
 
 Reducers work the same way. A reducer takes the event, the current state and the event context, and returns the next state. In .NET, the [Processing sample](https://github.com/Cratis/Samples/tree/3c1ee46a4b8e86bac9623fcf9faace208a9551d9/Chronicle/Processing) tests its progress reducer by folding four events by hand, trimmed here to the action:
 
@@ -392,7 +511,82 @@ Not available in the Elixir client yet.
 </TabItem>
 </Tabs>
 
-This is the uniqueness rule's natural home too. In .NET, an `EventScenario` appends to its in-memory event log, so a first registration seeded through its `Given` is in the log the constraint is checked against, and a second append with the same name is rejected there. Assert the violation by the constraint's name with `ShouldHaveConstraintViolationFor`. The same helper exists on a `CommandResult` and on an append result.
+This is the uniqueness rule's natural home too. In .NET, an `EventScenario` appends to its in-memory event log, so a first registration seeded through its `Given` is in the log the constraint is checked against, and a second append with the same name is rejected there. Assert the violation by the constraint's name with `ShouldHaveConstraintViolationFor`:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+[EventType]
+public record AuthorRegistered([property: Unique(name: "UniqueAuthorName")] AuthorName Name);
+
+public class when_registering_a_taken_author_name : Specification, IDisposable
+{
+    readonly EventScenario _scenario = new();
+    AppendResult _result = default!;
+
+    Task Establish() =>
+        _scenario.Given.ForEventSource(AuthorId.New()).Events(new AuthorRegistered("Jane Austen"));
+
+    async Task Because() =>
+        _result = await _scenario.When.ForEventSource(AuthorId.New()).Events(new AuthorRegistered("Jane Austen"));
+
+    [Fact] void should_be_rejected() => _result.ShouldBeFailed();
+
+    [Fact] void should_report_the_constraint() => _result.ShouldHaveConstraintViolationFor("UniqueAuthorName");
+
+    public void Dispose() => _scenario.Dispose();
+}
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+The Kotlin client's `EventScenario` doesn't check constraints.
+
+</TabItem>
+<TabItem label="Java">
+
+The Java client has no in-memory scenario that checks constraints.
+
+</TabItem>
+<TabItem label="TypeScript">
+
+This spec uses Vitest. The in-process scenario accepts only flat scalar content, so the name is a plain string here.
+
+```typescript
+@eventType()
+class AuthorRegistered {
+    @field(String) @unique('UniqueAuthorName') name: string;
+    constructor(name = '') { this.name = name; }
+}
+
+describe('when registering a taken author name', () => {
+    const scenario = new EventScenario({ artifacts: { eventTypes: [AuthorRegistered] } });
+    let result: AppendResult;
+
+    beforeEach(async () => {
+        await scenario.given.forEventSource('author-1').events(new AuthorRegistered('Jane Austen'));
+        result = await scenario.when.forEventSource('author-2').event(new AuthorRegistered('Jane Austen'));
+    });
+
+    it('should be rejected', () => { expect(result.isSuccess).toBe(false); });
+
+    it('should report the constraint', () => {
+        expect(result.constraintViolations[0]?.constraintId).toBe('UniqueAuthorName');
+    });
+});
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+Not available in the Elixir client yet.
+
+</TabItem>
+</Tabs>
+
+The same helper exists on a `CommandResult` and on an append result.
 
 In .NET, `ReactorScenario` delivers each event once. To check that a reactor is idempotent, deliver the same event twice yourself and look at what happened the second time.
 

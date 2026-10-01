@@ -664,7 +664,7 @@ Behind the call, Chronicle does five things in order:
 4. It persists the event and its metadata atomically.
 5. It updates the sequence's state.
 
-Metadata you leave out gets a stored default: event source type `Default`, event stream type `All` and event stream id `Default`. Some clients, .NET among them, can supply the time the event occurred. Otherwise the server stamps it, which is what you want in almost every case. Setting `Occurred` yourself bypasses the server's clock and can break anything that relies on time ordering, so it belongs to imports and replays of existing history.
+Metadata you leave out gets a stored default: event source type `Default`, event stream type `All` and event stream id `Default`. Every client can supply the time the event occurred. Otherwise the server stamps it, which is what you want in almost every case. Setting `Occurred` yourself bypasses the server's clock and can break anything that relies on time ordering, so it belongs to imports and replays of existing history.
 
 [Cross-cutting properties](https://cratis.io/chronicle/events/cross-cutting-properties/) cover data that belongs on every event and in no domain method. A class implementing `ICanProvideAdditionalEventInformation` is discovered automatically, and it can add a tenant id to each append without the code that appends ever touching it. In .NET, the client adds cross-cutting properties before the event is sent.
 
@@ -759,6 +759,110 @@ The Elixir client passes the event context to `handle/2` as a map with the keys 
 </Tabs>
 
 Most of the fields place the event in the log and in time, down to the event store and namespace it lives in. `Subject` defaults to the event source id. The namespace matters for the author feature, because with Arc's Chronicle integration each tenant gets a [namespace](https://cratis.io/chronicle/concepts/namespaces/) of its own, with its own events and observers.
+
+The code that appends can set some of these fields itself. An order imported from an older system keeps the time it was placed, gets an event source type and a stream type, and carries a tag:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+public class OrderImport(IEventLog eventLog)
+{
+    public Task<AppendResult> ImportOrder(
+        OrderId orderId, string customerId, decimal total, DateTimeOffset placedAt) =>
+        eventLog.Append(
+            orderId,
+            new OrderPlaced(customerId, total),
+            eventSourceType: "Order",
+            eventStreamType: "Checkout",
+            tags: ["imported"],
+            occurred: placedAt);
+}
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+class OrderImport(private val eventLog: IEventLog) {
+    suspend fun importOrder(
+        orderId: String, customerId: String, total: BigDecimal, placedAt: Instant
+    ): AppendResult =
+        eventLog.append(
+            orderId,
+            OrderPlaced(customerId, total),
+            AppendOptions(
+                eventSourceType = "Order",
+                eventStreamType = "Checkout",
+                tags = listOf("imported"),
+                occurred = placedAt
+            )
+        )
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+class OrderImport {
+    private final BlockingEventSequence eventLog;
+
+    OrderImport(IEventLog eventLog) {
+        this.eventLog = new BlockingEventSequence(eventLog);
+    }
+
+    AppendResult importOrder(String orderId, String customerId, BigDecimal total, Instant placedAt) {
+        var options = new AppendOptionsBuilder()
+            .eventSourceType("Order")
+            .eventStreamType("Checkout")
+            .tag("imported")
+            .occurred(placedAt)
+            .build();
+
+        return eventLog.append(orderId, new OrderPlaced(customerId, total), options);
+    }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+class OrderImport {
+    constructor(private readonly eventLog: IEventLog) {}
+
+    importOrder(orderId: string, customerId: string, total: number, placedAt: Date) {
+        return this.eventLog.append(orderId, new OrderPlaced(customerId, total), {
+            sourceType: 'Order',
+            streamType: 'Checkout',
+            tags: ['imported'],
+            occurred: placedAt
+        });
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+```elixir
+defmodule MyApp.OrderImport do
+  def import_order(order_id, customer_id, total, placed_at) do
+    Chronicle.append(
+      order_id,
+      %MyApp.Events.OrderPlaced{customer_id: customer_id, total: total},
+      event_source_type: "Order",
+      event_stream_type: "Checkout",
+      tags: ["imported"],
+      occurred: placed_at
+    )
+  end
+end
+```
+
+</TabItem>
+</Tabs>
 
 Three of the fields are set once for an operation and then flow into every append made during it, and together they answer who did this and why. The [correlation id](https://cratis.io/chronicle/concepts/correlation-identity-causation/) ties together everything that belongs to one logical operation, such as one HTTP request or one handler invocation. When a single registration produces three events, the correlation id is how you find all three.
 

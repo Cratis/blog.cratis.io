@@ -100,7 +100,145 @@ That's the whole command. [Arc](https://cratis.io/arc/) gives it an HTTP route a
 
 In .NET, Arc discovers a command when the type has `[Command]` and a public instance `Handle()`. The route comes from the configured prefix, `api` by default, then the namespace in kebab-case with its leading segments skipped, then the type name. An explicit path is kept exactly as written. Nothing about this needs an event store.
 
-`AuthorName` is a `ConceptAs<string>`. On the wire it's just the string, and every Arc proxy generator types it as the underlying primitive in the generated TypeScript, so the C# model gets a named type without the HTTP contract getting a wrapper object.
+`AuthorId` and `AuthorName` are concepts, and a concept validator puts a rule on every author name:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+public record AuthorId(Guid Value) : EventSourceId<Guid>(Value)
+{
+    public static readonly AuthorId NotSet = new(Guid.Empty);
+    public static AuthorId New() => new(Guid.NewGuid());
+    public static implicit operator AuthorId(Guid value) => new(value);
+}
+
+public record AuthorName(string Value) : ConceptAs<string>(Value)
+{
+    public static readonly AuthorName NotSet = new(string.Empty);
+    public static implicit operator AuthorName(string value) => new(value);
+}
+
+public class AuthorNameValidator : ConceptValidator<AuthorName>
+{
+    public AuthorNameValidator() => RuleFor(name => name.Value).NotEmpty();
+}
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+data class AuthorId(private val id: UUID) : ArcConceptAs<UUID>, ChronicleConceptAs<UUID> {
+    override fun value(): UUID = id
+    override val value: UUID get() = id
+
+    companion object {
+        val NOT_SET = AuthorId(UUID(0, 0))
+        fun new(): AuthorId = AuthorId(UUID.randomUUID())
+    }
+}
+
+data class AuthorName(private val name: String) : ArcConceptAs<String>, ChronicleConceptAs<String> {
+    override fun value(): String = name
+    override val value: String get() = name
+}
+
+@Component
+class AuthorNameValidator : ConceptValidator<AuthorName> {
+    override val conceptType: Class<AuthorName> = AuthorName::class.java
+
+    override fun validate(concept: AuthorName): List<ValidationResult> =
+        if (concept.value().isBlank()) listOf(ValidationResult.error("A name is required.")) else emptyList()
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+public record AuthorId(UUID value) implements ConceptAs<UUID>, io.cratis.chronicle.concepts.ConceptAs<UUID> {
+    public static final AuthorId NOT_SET = new AuthorId(new UUID(0, 0));
+
+    public static AuthorId newId() {
+        return new AuthorId(UUID.randomUUID());
+    }
+
+    @Override
+    public UUID getValue() {
+        return value;
+    }
+}
+
+public record AuthorName(String value) implements ConceptAs<String>, io.cratis.chronicle.concepts.ConceptAs<String> {
+    @Override
+    public String getValue() {
+        return value;
+    }
+}
+
+@Component
+public final class AuthorNameValidator implements ConceptValidator<AuthorName> {
+    @Override
+    public Class<AuthorName> getConceptType() {
+        return AuthorName.class;
+    }
+
+    @Override
+    public List<ValidationResult> validate(AuthorName concept) {
+        return concept.value().isBlank()
+            ? List.of(ValidationResult.error("A name is required."))
+            : List.of();
+    }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+From Arc for TypeScript, an early source preview whose packages aren't on npm yet:
+
+```typescript
+export class AuthorId extends ConceptAs<Guid> {
+    static readonly valueType = Guid;
+
+    static create(): AuthorId {
+        return new AuthorId(Guid.create());
+    }
+}
+
+export class AuthorName extends ConceptAs<string> {
+    static readonly valueType = String;
+}
+
+@validator(AuthorName)
+export class AuthorNameValidator extends ConceptValidator<AuthorName> {
+    constructor() {
+        super();
+        this.ruleFor(name => name.value).notEmpty();
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+Arc for Elixir doesn't exist, so there's no validator. The Chronicle Elixir client declares the two concepts:
+
+```elixir
+defmodule MyApp.AuthorId do
+  use Chronicle.Concept, type: :uuid
+end
+
+defmodule MyApp.AuthorName do
+  use Chronicle.Concept, type: :string
+end
+```
+
+</TabItem>
+</Tabs>
+
+On the wire `AuthorName` is just the string, and every Arc proxy generator types it as the underlying primitive in the generated TypeScript, so the C# model gets a named type without the HTTP contract getting a wrapper object.
 
 Dependencies go on `Handle()` as parameters, resolved from the command's service scope. A `CancellationToken` parameter gets the request-aborted token over HTTP. A version of the command with a first and last name, where the command also produces the new author's id, shows the other half of the model:
 
@@ -219,7 +357,99 @@ var filters = new List<ICommandFilter> { _validationFilter, authorizationFilter 
 [Fact] void should_not_leak_any_validation_detail() => _result.ValidationResults.ShouldBeEmpty();
 ```
 
-[Validation](https://cratis.io/arc/backend/csharp/commands/validation/) runs next, from three sources. DataAnnotations attributes work, and on a positional record they have to target the property, as in `[property: Required]`, because the filter doesn't read attributes on constructor parameters. A `CommandValidator<T>` is a FluentValidation validator that Arc discovers for the command. A `ConceptValidator<T>` holds rules for a value type and applies them wherever that type is used, so a rule on `AuthorName` covers every command that carries an author name. Validators can take constructor dependencies from the command's scope. Each result has a severity of error, warning or information, and the `X-Allowed-Severity` header decides which of them block the command.
+[Validation](https://cratis.io/arc/backend/csharp/commands/validation/) runs next, from three sources. DataAnnotations attributes work, and on a positional record they have to target the property, as in `[property: Required]`, because the filter doesn't read attributes on constructor parameters. A `CommandValidator<T>` is a FluentValidation validator that Arc discovers for the command. A `ConceptValidator<T>` holds rules for a value type and applies them wherever that type is used, so a rule on `AuthorName` covers every command that carries an author name. For `RegisterAuthor` itself, a command validator checks the name too and caps it at 200 characters:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+public class RegisterAuthorValidator : CommandValidator<RegisterAuthor>
+{
+    public RegisterAuthorValidator() =>
+        RuleFor(c => c.Name).NotEmpty().MaximumLength(200);
+}
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+@Component
+class RegisterAuthorValidator : CommandValidator<RegisterAuthor> {
+    override val commandType: Class<RegisterAuthor> = RegisterAuthor::class.java
+
+    override suspend fun validate(
+        command: RegisterAuthor,
+        context: CommandContext
+    ): List<ValidationResult> = when {
+        command.name.value().isBlank() ->
+            listOf(ValidationResult.error("An author needs a name.", listOf("name")))
+        command.name.value().length > 200 ->
+            listOf(ValidationResult.error("An author name is at most 200 characters.", listOf("name")))
+        else -> emptyList()
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+public final class RegisterAuthorValidator implements BlockingCommandValidator<RegisterAuthor> {
+    @Override
+    public Class<RegisterAuthor> getCommandType() {
+        return RegisterAuthor.class;
+    }
+
+    @Override
+    public List<ValidationResult> validate(RegisterAuthor command, CommandContext context) {
+        var name = command.name().value();
+        if (name.isBlank()) {
+            return List.of(ValidationResult.error("An author needs a name.", List.of("name")));
+        }
+        if (name.length() > 200) {
+            return List.of(ValidationResult.error(
+                "An author name is at most 200 characters.",
+                List.of("name")));
+        }
+
+        return List.of();
+    }
+}
+
+@Configuration
+public class RegisterAuthorValidation {
+    @Bean
+    public CommandValidator<RegisterAuthor> registerAuthorValidator() {
+        return new BlockingCommandValidatorAdapter<>(new RegisterAuthorValidator());
+    }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+From Arc for TypeScript, an early source preview whose packages aren't on npm yet:
+
+```typescript
+@validator(RegisterAuthor)
+export class RegisterAuthorValidator extends CommandValidator<RegisterAuthor> {
+    constructor() {
+        super();
+        this.ruleFor(command => command.name).notEmpty().maxLength(200);
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
+
+</TabItem>
+</Tabs>
+
+Validators can take constructor dependencies from the command's scope. Each result has a severity of error, warning or information, and the `X-Allowed-Severity` header decides which of them block the command.
 
 Then `Provide()`, then `Handle()`, then response handlers, command operations and the execution scope.
 
