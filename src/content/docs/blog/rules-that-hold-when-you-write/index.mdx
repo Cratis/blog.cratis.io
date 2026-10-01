@@ -775,12 +775,12 @@ export class OpenAccount {
 </TabItem>
 <TabItem label="Elixir">
 
-Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
+Arc for Elixir doesn't exist, and the Chronicle Elixir client can't express an expectation that no event exists yet.
 
 </TabItem>
 </Tabs>
 
-`WithdrawFunds` can also decide from a read model instead of an aggregate. Arc resolves the balance by the command's key and passes it to `Handle()`:
+`WithdrawFunds` can also decide from a read model instead of an aggregate. Arc resolves the balance by the command's key and passes it to `Handle()`. That balance is a snapshot loaded before `Handle()` runs, so it doesn't stop two concurrent withdrawals from both passing:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
@@ -846,7 +846,7 @@ Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
 </TabItem>
 </Tabs>
 
-A [`CommandValidator<T>`](https://cratis.io/arc/backend/csharp/chronicle/validation/) can take the read model Chronicle projected for the command's key and reject the command before `Handle()` runs. How fresh that read model is depends on what backs it, and a snapshot alone, materialized or passive, doesn't hold an invariant under concurrent commands. That's a job for a constraint.
+A [`CommandValidator<T>`](https://cratis.io/arc/backend/csharp/chronicle/validation/) can take the read model Chronicle projected for the command's key and reject the command before `Handle()` runs. How fresh that read model is depends on what backs it, materialized or passive. The rule that must hold needs a constraint or, in .NET, a protected decision read, as in the decision reads above.
 
 ## Aggregates up close
 
