@@ -127,7 +127,7 @@ Event modeling happens in a room, or on a call, with a product owner, someone wh
 
 [Cratis Studio](https://cratis.studio) is where that conversation can happen instead. It's a collaborative workspace in the browser where people and AI agents design, visualize and edit the same event model, and it's built on Chronicle and Arc. Cratis Studio is live and in beta. Open signup is coming soon at cratis.studio, with a 14-day free trial.
 
-The team brainstorms on a shared board with live cursors, transfers the events that hold up into the event model, and exports it as Screenplay to commit next to the code. Press Play, and Studio starts a disposable Stage session so you can try the application the model describes before anyone has written it. Code generation is opt-in for each application. When a slice assigned to an AI agent is marked ready for implementation, Studio renders it through Stage into your connected Git repository. Generation goes one way, one slice at a time, and nothing reads the code back into the model. What the renderer can't express is marked with a TODO rather than refused. Studio doesn't ship a language model. Every AI feature runs on a provider your organization configures, and until one is configured the AI features stay switched off.
+The team brainstorms on a shared board with live cursors, transfers the events that hold up into the event model, and exports it as Screenplay to commit next to the code. Press Play, and Studio starts a disposable Stage session so you can try the application the model describes before anyone has written it. Code generation is opt-in for each application. When a slice assigned to an AI agent is marked ready for implementation, Studio renders it through Stage into your connected Git repository. Generation goes one way, one slice at a time, and nothing reads the code back into the model. Studio uses Stage's older direct-write path, where what the renderer can't express is marked with a TODO rather than refused, and `cratis render` refuses it instead. Studio doesn't ship a language model. Every AI feature runs on a provider your organization configures, and until one is configured the AI features stay switched off.
 
 ## Start it: from nothing to a running skeleton
 
@@ -589,7 +589,7 @@ Each product ships on its own, with its own package, releases, license and suppo
 - **Experimental:** Screenplay, Stage, Scene and Prologue, including Prologue inside Cratis Studio, and Narrator and Prompter. Syntax and behavior can still change.
 - **Early preview, available as source only, not on npm:** Arc for TypeScript, whose Chronicle integration is experimental.
 - **Preview:** the Cratis AI corpus and its hooks.
-- **.NET only today:** decision reads and Arc aggregates.
+- **.NET only today:** decision reads, and Arc aggregates in the published packages. The Arc for TypeScript source preview has an experimental aggregate root.
 
 For the company side of Cratis, who we are and how we work with teams, see [cratis.no](https://cratis.no).
 

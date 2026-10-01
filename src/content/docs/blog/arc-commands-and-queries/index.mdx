@@ -100,7 +100,7 @@ That's the whole command. [Arc](https://cratis.io/arc/) gives it an HTTP route a
 
 In .NET, Arc discovers a command when the type has `[Command]` and a public instance `Handle()`. The route comes from the configured prefix, `api` by default, then the namespace in kebab-case with its leading segments skipped, then the type name. An explicit path is kept exactly as written. Nothing about this needs an event store.
 
-`AuthorName` is a `ConceptAs<string>`. On the wire it's just the string, and in .NET the proxy generator maps it to a TypeScript value type, so the C# model gets a named type without the HTTP contract getting a wrapper object. Arc for Kotlin and Java erase it to the underlying type in the generated TypeScript.
+`AuthorName` is a `ConceptAs<string>`. On the wire it's just the string, and every Arc proxy generator types it as the underlying primitive in the generated TypeScript, so the C# model gets a named type without the HTTP contract getting a wrapper object.
 
 Dependencies go on `Handle()` as parameters, resolved from the command's service scope. A `CancellationToken` parameter gets the request-aborted token over HTTP. A version of the command with a first and last name, where the command also produces the new author's id, shows the other half of the model:
 

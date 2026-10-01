@@ -295,7 +295,7 @@ The strongest case against all of this is to share nothing. Give each tenant its
 
 The cost is that every tenant becomes another deployment to upgrade, migrate, back up and watch. Namespaces put many tenants on one Chronicle kernel and one event store, each with its own data. In exchange, the selection path has to be right at every hop, which is why it deserves tests.
 
-A second objection is that the defaults should reject a missing tenant. Arc does fail early in one place. Configure the subdomain resolver without a usable base domain and the application refuses to start, because otherwise every request would take its tenant from a header any client can set. For a missing tenant, though, the resolvers select `Default` on purpose, so single-tenant applications work with no tenant configuration at all. Arc has no switch that rejects a request without a tenant. That check is yours, as middleware or an authorization rule, next to the membership check.
+A second objection is that the defaults should reject a missing tenant. Arc does fail early in one place. Configure the subdomain resolver without a usable base domain and the application refuses to start, because otherwise every request would take its tenant from a header any client can set. For a missing tenant, though, the resolvers select `Default` on purpose, so single-tenant applications work with no tenant configuration at all. Arc for .NET has no switch that rejects a request without a tenant, although Arc for Kotlin and Java (`cratis.arc.tenancy.required`) and Arc for TypeScript (`tenancy.required`) do. In .NET that check is yours, as middleware or an authorization rule, next to the membership check.
 
 ## Seven tests before the second tenant signs up
 

@@ -346,6 +346,141 @@ end
 
 With two events, a projection that shows discounts listens for `DiscountApplied` and never has to ask whether a null meant "no discount" or "we forgot to send it". Chronicle's .NET [code analysis](https://cratis.io/chronicle/code-analysis/chr0012/) flags a nullable event property with rule CHR0012 as a warning, and a nullable property is still allowed. Data collection is the exception. When a form lets someone leave their middle name empty, the event records exactly what was collected, and null is the true value.
 
+In an Arc application, a command handler returns the events and Arc's Chronicle integration appends them together, with `DiscountApplied` included only when the order has a discount:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+using Cratis.Arc.Commands.ModelBound;
+using Cratis.Chronicle.Keys;
+
+[Command]
+public record PlaceOrder([Key] Guid Id, Money Total, Money? Discount)
+{
+    public IEnumerable<object> Handle()
+    {
+        var orderId = new OrderId(Id);
+        var events = new List<object> { new OrderPlaced(orderId, Total) };
+
+        if (Discount is { } discount)
+        {
+            events.Add(new DiscountApplied(orderId, discount));
+        }
+
+        return events;
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import io.cratis.arc.artifacts.Command
+import io.cratis.arc.artifacts.CommandKey
+import io.cratis.arc.commands.CommandResponseValues
+import java.util.UUID
+
+@Command
+data class PlaceOrder(
+    @CommandKey val id: UUID,
+    val total: Money,
+    val discount: Money?
+) {
+    fun handle(): CommandResponseValues {
+        val orderId = OrderId(id)
+        return CommandResponseValues(
+            listOfNotNull(
+                OrderPlaced(orderId, total),
+                discount?.let { DiscountApplied(orderId, it) }
+            )
+        )
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+import io.cratis.arc.artifacts.Command;
+import io.cratis.arc.artifacts.CommandKey;
+import io.cratis.arc.commands.CommandResponseValues;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.UUID;
+
+@Command
+public record PlaceOrder(@CommandKey UUID id, Money total, @Nullable Money discount) {
+    public CommandResponseValues handle() {
+        var orderId = new OrderId(id);
+        var response = CommandResponseValues.builder().add(new OrderPlaced(orderId, total));
+
+        if (discount != null) {
+            response.add(new DiscountApplied(orderId, discount));
+        }
+
+        return response.build();
+    }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+From Arc for TypeScript, an early source preview whose packages aren't on npm yet:
+
+```typescript
+import { command, key, optional } from '@cratis/arc.core';
+import { field, Guid } from '@cratis/fundamentals';
+
+@command()
+export class PlaceOrder {
+    @field(Guid) @key() id!: Guid;
+    @field(Money) total!: Money;
+    @field(Money) @optional() discount?: Money;
+
+    handle() {
+        const orderId = new OrderId(this.id);
+        const events: object[] = [new OrderPlaced(orderId, this.total)];
+
+        if (this.discount) {
+            events.push(new DiscountApplied(orderId, this.discount));
+        }
+
+        return events;
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
+
+```elixir
+defmodule MyApp.PlaceOrder do
+  alias MyApp.Events.{DiscountApplied, OrderPlaced}
+
+  def place_order(%MyApp.OrderId{} = order_id, total, discount) do
+    events = [%OrderPlaced{id: order_id, total: total}]
+
+    events =
+      if discount do
+        events ++ [%DiscountApplied{id: order_id, amount: discount}]
+      else
+        events
+      end
+
+    Chronicle.append_many(order_id.value, events)
+  end
+end
+```
+
+</TabItem>
+</Tabs>
+
 ## Carry what was true then
 
 An event holds the data that was true at the moment it occurred, captured by value. It doesn't point at mutable state that might change later, and it doesn't carry what a consumer can work out for itself. Read it in five years with no other context, and it should still make sense on its own. That five-year test is worth the minute it takes before an event type is committed, because the type will outlive the code that first appended it.
@@ -521,18 +656,17 @@ end
 </TabItem>
 </Tabs>
 
-Behind the call, Chronicle does six things in order:
+Behind the call, Chronicle does five things in order:
 
 1. It validates the content against the registered schema.
-2. It applies cross-cutting properties.
-3. It associates the event with its event source.
-4. It assigns the next sequence number.
-5. It persists the event and its metadata atomically.
-6. It updates the sequence's state.
+2. It associates the event with its event source.
+3. It assigns the next sequence number.
+4. It persists the event and its metadata atomically.
+5. It updates the sequence's state.
 
 Metadata you leave out gets a stored default: event source type `Default`, event stream type `All` and event stream id `Default`. Some clients, .NET among them, can supply the time the event occurred. Otherwise the server stamps it, which is what you want in almost every case. Setting `Occurred` yourself bypasses the server's clock and can break anything that relies on time ordering, so it belongs to imports and replays of existing history.
 
-[Cross-cutting properties](https://cratis.io/chronicle/events/cross-cutting-properties/) cover data that belongs on every event and in no domain method. A class implementing `ICanProvideAdditionalEventInformation` is discovered automatically, and it can add a tenant id to each append without the code that appends ever touching it.
+[Cross-cutting properties](https://cratis.io/chronicle/events/cross-cutting-properties/) cover data that belongs on every event and in no domain method. A class implementing `ICanProvideAdditionalEventInformation` is discovered automatically, and it can add a tenant id to each append without the code that appends ever touching it. In .NET, the client adds cross-cutting properties before the event is sent.
 
 The result deserves the `if` in the example. An append that reports a schema, constraint or concurrency violation was rejected, and the event wasn't stored. An append that reports an infrastructure error, or that fails on a timeout or a dropped connection, has an unknown outcome, and appending again can store the event twice. A retry becomes safe when the append carries an expected sequence number or when a constraint would reject the duplicate. The `[Unique]` rule on an author's name is one such constraint, and [*Rules that hold when you write*](/rules-that-hold-when-you-write/) covers the rest. [*Inside Chronicle*](/inside-chronicle/) follows the same append through the kernel.
 
@@ -714,7 +848,7 @@ end
 
 In a Cratis application you rarely write that yourself. [Arc's Chronicle integration](https://cratis.io/arc/backend/csharp/chronicle/commands/causation/) adds the command link on its own, and in .NET and TypeScript records the command's name and its property values on every event the command appends. For `RegisterAuthor`, that puts the submitted name into the causation of `AuthorRegistered`. Those values are part of the event log. Changing the code later doesn't remove them, and they aren't encrypted under the subject's key. `[PII]` or `[NotAudited]` on a top-level command property keeps its value off new causation chains. A nested object is written as compact JSON, and marking a property inside it doesn't exclude that property. An author's name is personal data, and [*Personal data in an event log*](/personal-data-in-an-event-log/) is about exactly that problem.
 
-![A diagram titled Anatomy of an append. At the top left, a payload row, OrderPlaced with CustomerId and Total, points down into six numbered steps: 1 schema check, 2 cross-cutting properties, 3 event source, 4 next sequence number, 5 persist atomically, 6 update sequence state. The last step points right to a card, Stored event, #42, number never changes. It sits in a group titled Stored with every event, together with three notes: Correlation, one operation; Identity, who caused it; Causation, HTTP request to command.](./anatomy-of-an-append.png)
+![A diagram titled Anatomy of an append. At the top left, a payload row, OrderPlaced with CustomerId and Total, points down into five numbered steps: 1 schema check, 2 event source, 3 next sequence number, 4 persist atomically, 5 update sequence state. The last step points right to a card, Stored event, #42, number never changes. It sits in a group titled Stored with every event, together with three notes: Correlation, one operation; Identity, who caused it; Causation, HTTP request to command.](./anatomy-of-an-append.png)
 
 *What goes in, what Chronicle does, and what's stored with the event.*
 
