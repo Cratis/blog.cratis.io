@@ -182,7 +182,7 @@ using Cratis.Chronicle;
 using Cratis.Chronicle.Events;
 
 [Command]
-public record PlaceOrder(OrderId OrderId, CustomerId CustomerId, Money Total)
+public record PlaceCustomerOrder(OrderId OrderId, CustomerId CustomerId, Money Total)
     : ICanProvideEventSourceId
 {
     public EventSourceId GetEventSourceId() => OrderId;
@@ -207,7 +207,7 @@ import io.cratis.arc.artifacts.CommandKey
 import io.cratis.chronicle.events.EventType
 
 @Command
-data class PlaceOrder(
+data class PlaceCustomerOrder(
     @CommandKey val orderId: OrderId,
     val customerId: CustomerId,
     val total: Money
@@ -233,7 +233,7 @@ import io.cratis.arc.artifacts.CommandKey;
 import io.cratis.chronicle.events.EventType;
 
 @Command
-public record PlaceOrder(@CommandKey OrderId orderId, CustomerId customerId, Money total)
+public record PlaceCustomerOrder(@CommandKey OrderId orderId, CustomerId customerId, Money total)
     implements CommandEventSubjectProvider {
     @Override
     public String eventSubject() {
@@ -260,7 +260,7 @@ import { eventType } from '@cratis/chronicle/events';
 import { command, key } from '@cratis/arc.core';
 
 @command()
-export class PlaceOrder {
+export class PlaceCustomerOrder {
     @field(OrderId) @key() orderId!: OrderId;
     @field(CustomerId) customerId!: CustomerId;
     @field(Money) total!: Money;
@@ -290,7 +290,7 @@ defmodule MyApp.Events.OrderPlaced do
   defstruct customer_id: %MyApp.CustomerId{}, total: %MyApp.Money{}
 end
 
-defmodule MyApp.PlaceOrder do
+defmodule MyApp.PlaceCustomerOrder do
   def place(%MyApp.OrderId{} = order_id, %MyApp.CustomerId{} = customer_id, total) do
     Chronicle.append(
       order_id.value,

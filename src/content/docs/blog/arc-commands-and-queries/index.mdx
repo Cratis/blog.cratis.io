@@ -253,14 +253,14 @@ end
 
 On the wire `AuthorName` is just the string, and every Arc proxy generator types it as the underlying primitive in the generated TypeScript, so the C# model gets a named type without the HTTP contract getting a wrapper object.
 
-Dependencies go on `Handle()` as parameters, resolved from the command's service scope. A `CancellationToken` parameter gets the request-aborted token over HTTP. A version of the command that produces the new author's id itself shows the other half of the model:
+Dependencies go on `Handle()` as parameters, resolved from the command's service scope. A `CancellationToken` parameter gets the request-aborted token over HTTP. A command that produces the new author's id itself, here `RegisterNewAuthor`, shows the other half of the model:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
 
 ```csharp
 [Command]
-public record RegisterAuthor(AuthorName Name)
+public record RegisterNewAuthor(AuthorName Name)
 {
     public (AuthorId, AuthorRegistered) Handle() => (AuthorId.New(), new AuthorRegistered(Name));
 }
@@ -271,7 +271,7 @@ public record RegisterAuthor(AuthorName Name)
 
 ```kotlin
 @Command
-data class RegisterAuthor(val name: AuthorName) {
+data class RegisterNewAuthor(val name: AuthorName) {
     fun handle(): Pair<AuthorId, EventForEventSourceId> {
         val authorId = AuthorId.new()
         return authorId to EventForEventSourceId(authorId.value().toString(), AuthorRegistered(name))
@@ -284,7 +284,7 @@ data class RegisterAuthor(val name: AuthorName) {
 
 ```java
 @Command
-public record RegisterAuthor(AuthorName name) {
+public record RegisterNewAuthor(AuthorName name) {
     public CommandResponseValues handle() {
         var authorId = AuthorId.newId();
         return CommandResponseValues.of(
@@ -299,7 +299,7 @@ public record RegisterAuthor(AuthorName name) {
 
 ```typescript
 @command()
-export class RegisterAuthor {
+export class RegisterNewAuthor {
     @field(AuthorName) name!: AuthorName;
 
     handle() {

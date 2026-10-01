@@ -775,47 +775,37 @@ public record WithdrawFunds(AccountId AccountId, Amount Amount)
 </TabItem>
 <TabItem label="Kotlin">
 
-Arc for Kotlin turns an exception that implements `ValidationFailure` into validation results.
+In Arc for Kotlin, a `provide()` that returns a `ValidationResult` instead of a value rejects the command before `handle()` runs.
 
 ```kotlin
-class InsufficientFunds : RuntimeException("Insufficient funds"), ValidationFailure {
-    override val validationResults: List<ValidationResult> =
-        listOf(ValidationResult.error("Insufficient funds.", listOf("amount")))
-}
-
 @Command
 data class WithdrawFunds(@CommandKey val accountId: AccountId, val amount: Amount) {
-    fun handle(balance: AccountBalance): FundsWithdrawn {
-        if (balance.balance.value < amount.value) throw InsufficientFunds()
-        return FundsWithdrawn(amount)
-    }
+    fun provide(balance: AccountBalance): Any =
+        if (balance.balance.value < amount.value) {
+            ValidationResult.error("Insufficient funds.", listOf("amount"))
+        } else {
+            balance
+        }
+
+    fun handle(balance: AccountBalance): FundsWithdrawn = FundsWithdrawn(amount)
 }
 ```
 
 </TabItem>
 <TabItem label="Java">
 
-Arc for Java turns an exception that implements `ValidationFailure` into validation results.
+In Arc for Java, a `provide()` that returns a `ValidationResult` instead of a value rejects the command before `handle()` runs.
 
 ```java
-public final class InsufficientFunds extends RuntimeException implements ValidationFailure {
-    public InsufficientFunds() {
-        super("Insufficient funds");
-    }
-
-    @Override
-    public List<ValidationResult> getValidationResults() {
-        return List.of(ValidationResult.error("Insufficient funds.", List.of("amount")));
-    }
-}
-
 @Command
 public record WithdrawFunds(@CommandKey AccountId accountId, Amount amount) {
-    public FundsWithdrawn handle(AccountBalance balance) {
-        if (balance.balance().value().compareTo(amount.value()) < 0) {
-            throw new InsufficientFunds();
-        }
+    public Object provide(AccountBalance balance) {
+        return balance.balance().value().compareTo(amount.value()) < 0
+            ? ValidationResult.error("Insufficient funds.", List.of("amount"))
+            : balance;
+    }
 
+    public FundsWithdrawn handle(AccountBalance balance) {
         return new FundsWithdrawn(amount);
     }
 }

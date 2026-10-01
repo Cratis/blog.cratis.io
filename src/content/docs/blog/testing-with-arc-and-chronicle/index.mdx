@@ -496,6 +496,18 @@ class AuthorReducerTest {
 The TypeScript client's `ReadModelScenario` evaluates a `@fromEvent` model-bound projection. It refuses a field marked `@pii()`, such as the author's name, and asks for a kernel-backed test, so the name is a plain string here.
 
 ```typescript
+@eventType()
+class AuthorRegistered {
+    @field(String) name: string;
+    constructor(name = '') { this.name = name; }
+}
+
+@fromEvent(AuthorRegistered)
+class Author {
+    @field(AuthorId) id!: AuthorId;
+    @field(String) name = '';
+}
+
 describe('when an author is registered', () => {
     const authorId = AuthorId.create();
     const name = 'Jane Austen';

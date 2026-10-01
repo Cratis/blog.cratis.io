@@ -193,11 +193,9 @@ public record Register(@CommandKey SomeId id, SomeName name) {
 export class Register {
     @field(SomeName) name!: SomeName;
 
-    provide(): SomeId {
-        return SomeId.create();
-    }
+    handle() {
+        const someId = SomeId.create();
 
-    handle(someId: SomeId) {
         return tuple(
             eventSourceIdResponse(someId.value.toString()),
             new Registered(this.name));
@@ -286,9 +284,9 @@ In the author feature, the registration slice keeps the command and its event, w
 ```csharp
 // Authors/Registration/Registration.cs
 [Command]
-public record RegisterAuthor(AuthorName Name)
+public record RegisterAuthor(AuthorId Id, AuthorName Name)
 {
-    public (AuthorId, AuthorRegistered) Handle() => (AuthorId.New(), new AuthorRegistered(Name));
+    public AuthorRegistered Handle() => new(Name);
 }
 
 [EventType]
@@ -301,11 +299,8 @@ public record AuthorRegistered([property: Unique(name: "UniqueAuthorName")] Auth
 ```kotlin
 // Authors/Registration/Registration.kt
 @Command
-data class RegisterAuthor(val name: AuthorName) {
-    fun handle(): Pair<AuthorId, EventForEventSourceId> {
-        val authorId = AuthorId.new()
-        return authorId to EventForEventSourceId(authorId.value().toString(), AuthorRegistered(name))
-    }
+data class RegisterAuthor(@CommandKey val id: AuthorId, val name: AuthorName) {
+    fun handle(): AuthorRegistered = AuthorRegistered(name)
 }
 
 @EventType
@@ -320,13 +315,8 @@ Java keeps one public type per file, all in the same folder:
 ```java
 // Authors/Registration/RegisterAuthor.java
 @Command
-public record RegisterAuthor(AuthorName name) {
-    public CommandResponseValues handle() {
-        var authorId = AuthorId.newId();
-        return CommandResponseValues.of(
-            authorId,
-            new EventForEventSourceId(authorId.value().toString(), new AuthorRegistered(name)));
-    }
+public record RegisterAuthor(@CommandKey AuthorId id, AuthorName name) {
+    public AuthorRegistered handle() { return new AuthorRegistered(name); }
 }
 
 // Authors/Registration/AuthorRegistered.java
@@ -343,12 +333,10 @@ From Arc for TypeScript, an early source preview whose packages aren't on npm ye
 // Authors/Registration/Registration.ts
 @command()
 export class RegisterAuthor {
+    @key() @field(AuthorId) id!: AuthorId;
     @field(AuthorName) name!: AuthorName;
 
-    handle() {
-        const authorId = AuthorId.create();
-        return tuple(eventSourceIdResponse(authorId.toString()), new AuthorRegistered(this.name));
-    }
+    handle(): AuthorRegistered { return new AuthorRegistered(this.name); }
 }
 
 @eventType()
