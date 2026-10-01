@@ -227,7 +227,7 @@ Arc for Elixir doesn't exist, so there's no validator. The Chronicle Elixir clie
 
 ```elixir
 defmodule MyApp.AuthorId do
-  use Chronicle.Concept, type: :uuid
+  use Chronicle.Concept, type: :uuid, event_source_id: true
 end
 
 defmodule MyApp.AuthorName do
@@ -480,7 +480,7 @@ public enum AccountRole { AccountReader, Admin, Auditor }
 
 [ReadModel]
 [Roles(nameof(AccountRole.AccountReader))]
-public record DebitAccount(AccountId Id, AccountName Name, decimal Balance)
+public record DebitAccount(AccountId Id, AccountName Name, Amount Balance)
 {
     [Path("/api/accounts")]
     public static IEnumerable<DebitAccount> AllAccounts(IMongoCollection<DebitAccount> collection) =>
@@ -489,7 +489,7 @@ public record DebitAccount(AccountId Id, AccountName Name, decimal Balance)
     [Roles(nameof(AccountRole.Admin), nameof(AccountRole.Auditor))]
     [Path("/api/accounts/overdrawn")]
     public static IEnumerable<DebitAccount> OverdrawnAccounts(IMongoCollection<DebitAccount> collection) =>
-        collection.Find(account => account.Balance < 0).ToList();
+        collection.Find(Builders<DebitAccount>.Filter.Lt(account => account.Balance, new Amount(0))).ToList();
 }
 ```
 
@@ -503,11 +503,10 @@ import io.cratis.arc.artifacts.FromServices
 import io.cratis.arc.artifacts.ReadModel
 import io.cratis.arc.authorization.Roles
 import io.cratis.arc.queries.Path
-import java.math.BigDecimal
 
 @ReadModel
 @Roles("AccountReader")
-data class DebitAccount(val id: AccountId, val name: AccountName, val balance: BigDecimal) {
+data class DebitAccount(val id: AccountId, val name: AccountName, val balance: Amount) {
     companion object {
         @JvmStatic
         @Path("/api/accounts")
@@ -533,12 +532,11 @@ import io.cratis.arc.artifacts.FromServices;
 import io.cratis.arc.artifacts.ReadModel;
 import io.cratis.arc.authorization.Roles;
 import io.cratis.arc.queries.Path;
-import java.math.BigDecimal;
 import java.util.List;
 
 @ReadModel
 @Roles("AccountReader")
-public record DebitAccount(AccountId id, AccountName name, BigDecimal balance) {
+public record DebitAccount(AccountId id, AccountName name, Amount balance) {
     @Path("/api/accounts")
     public static List<DebitAccount> allAccounts(@FromServices DebitAccountRepository accounts) {
         return accounts.findAll();
@@ -561,11 +559,12 @@ import { path, query, readModel, roles, service } from '@cratis/arc.core';
 import { mongoCollection, type MongoCollection } from '@cratis/arc.mongodb';
 import { AccountId } from './AccountId.js';
 import { AccountName } from './AccountName.js';
+import { Amount } from './Amount.js';
 
 export class DebitAccount {
     @field(AccountId) id!: AccountId;
     @field(AccountName) name!: AccountName;
-    @field(Number) balance!: number;
+    @field(Amount) balance!: Amount;
 }
 
 const accounts = mongoCollection(DebitAccount);

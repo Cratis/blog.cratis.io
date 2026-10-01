@@ -161,7 +161,7 @@ The samples show two paths, and they differ in what sits between the command and
 
 In the .NET Ideas board there's no event store. The command's `Handle(IdeaStore store)` calls `store.Capture(...)`, which pushes a new list into the `BehaviorSubject`. The query returns that same subject, so every subscriber gets the new list, the hub sends it to the browser and the hook re-renders. The command writes to a current-state store, and the query observes that same store.
 
-With Chronicle and MongoDB, the chain is longer. In .NET, this is the author list from Cratis's [full-app walkthrough](https://cratis.io/build-a-full-app/):
+With Chronicle and MongoDB, the chain is longer. In .NET, this is the author list from Cratis's [full-app walkthrough](https://cratis.io/build-a-full-app/), with the name typed as `AuthorName`:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
@@ -169,7 +169,7 @@ With Chronicle and MongoDB, the chain is longer. In .NET, this is the author lis
 ```csharp
 [ReadModel]
 [FromEvent<AuthorRegistered>]
-public record Author(AuthorId Id, string Name)
+public record Author(AuthorId Id, AuthorName Name)
 {
     public static ISubject<IEnumerable<Author>> AllAuthors(IMongoCollection<Author> collection) =>
         collection.Observe();
@@ -187,7 +187,7 @@ Arc for Kotlin and Java observe the collection with `MongoObservableQuery`, whic
 @FromEvent(AuthorRegistered::class)
 data class Author(
     @FromEventSourceId val id: AuthorId = AuthorId(UUID(0, 0)),
-    val name: String = ""
+    val name: AuthorName = AuthorName("")
 ) {
     companion object {
         @JvmStatic
@@ -210,7 +210,7 @@ public class Author {
     @FromEventSourceId
     public AuthorId id = new AuthorId(new UUID(0, 0));
 
-    public String name = "";
+    public AuthorName name = new AuthorName("");
 
     public static Flow.Publisher<List<Author>> allAuthors(@FromServices MongoObservableQuery queries) {
         return queries.observePublisher(Author.class);
@@ -228,7 +228,7 @@ In Arc for TypeScript, `ChronicleReadModels` watches the read model through Chro
 @fromEvent(AuthorRegistered)
 export class Author {
     @field(AuthorId) id!: AuthorId;
-    @field(String) name!: string;
+    @field(AuthorName) name!: AuthorName;
 
     @query({ observable: true }, service(ChronicleReadModels))
     static allAuthors(models: ChronicleReadModels): Observable<Author[]> {
