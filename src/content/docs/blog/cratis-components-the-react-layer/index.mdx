@@ -15,7 +15,7 @@ tags:
 
 The dialog that registers a name in the `cratis` template has one field and no event handlers. It still keeps its button disabled while validation fails, shows a spinner while the command runs, puts a server's rejection under the field it names and closes only when the command succeeds. Two packages share that work. Arc's React package runs the command and holds the form state, and [Cratis Components](https://cratis.io/components/) draws the dialog, the field and the buttons around it.
 
-Components is a React component library aligned with Arc application patterns. In [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/), a signed-in user registers an author, and author names are unique within the organization. The `cratis` template, which `dotnet new cratis` and `cratis new` both scaffold and [*Getting started with Cratis, and the tools around it*](/getting-started-with-cratis/) walks through, already has the two screens that feature needs, a list page and a register dialog, and both are built with Components 4. [*Live UIs*](/live-uis-with-arc/) covered the live query behind the list and the props of `CommandDialog`.
+The `cratis` template, which `dotnet new cratis` and `cratis new` both scaffold (see [*Cratis: from script to stage, and the long run*](/from-the-edge-to-the-event-log/#start-it-from-nothing-to-a-running-skeleton)), already has the two screens the author feature needs, a list page and a register dialog, and both are built with Components 4. [*Live UIs*](/live-uis-with-arc/) covered the live query behind the list and the props of `CommandDialog`.
 
 ## Arc underneath, Components on top
 
@@ -74,7 +74,7 @@ Keeping them in CSS also keeps `tsc` quiet. TypeScript 6 checks side-effect impo
 
 ## The registration dialog
 
-The template's dialog, with the names changed for authors. Its `Register` command creates the new id on the server, the shape [*Arc: commands and queries without the plumbing*](/arc-commands-and-queries/) calls `RegisterNewAuthor`, so that's its name here:
+The template's dialog, with the names changed for authors. In the C# template, its `Register` command creates the new id on the server, the shape [*Arc: commands and queries without the plumbing*](/arc-commands-and-queries/) calls `RegisterNewAuthor`, so that's its name here:
 
 ```tsx
 import { CommandDialog } from '@cratis/components/CommandDialog';
@@ -152,7 +152,7 @@ The field also gets `aria-invalid="true"` and an `aria-describedby` that points 
 
 Step 5 works because two names match. The member comes from the event's property, and it reaches a field only when the command has a property with the same name, as `Register.Name` and `Registered.Name` do. A validation result that matches no field has no built-in place on the form. [`CommandForm`](https://cratis.io/arc/frontend/react/command-form/) shows field errors and a form-level panel for exceptions, and that panel shows a safe default sentence, never the exception text. For a rule that doesn't map to one field, handle `onValidationFailure` yourself, or show it as a notification.
 
-The server preflight doesn't catch it earlier. With `autoServerValidate`, the dialog calls the command's `/validate` route, which runs authorization and validation without the handler. Posting the duplicate name to `/validate` in the same app returns 200 with `isValid: true`. No event is appended there, so the constraint isn't checked, and a taken name comes back only when the user confirms.
+`autoServerValidate` calls the `/validate` route; [*Validation all the way down*](/validation-all-the-way-down/) explains why it can't catch this duplicate before the user confirms.
 
 ## The author list
 
@@ -284,6 +284,10 @@ When a screen needs what a vendor grid does, such as grouping, row expansion, in
 
 Everything above takes props, so it works the same inside a view model's view. Arc's [MVVM package](https://cratis.io/arc/frontend/react/mvvm/), `@cratis/arc.react.mvvm`, keeps screen behavior in a class that `withViewModel` binds to a component, and [*Live UIs*](/live-uis-with-arc/) walks through it with a Components dialog. The template doesn't install the package. Arc's advice is plain hooks unless a screen has substantial behavior, and a list with a register button doesn't.
 
+## Upgrading from Components 3
+
+Components 3 to 4 is a breaking upgrade. Root namespace imports, rendered markup, style parts and the provider changed. The [migration guide](https://cratis.io/components/migration/3-to-4/) comes with `@cratis/components.migrator`, a development CLI that rewrites imports and a few props, and `@cratis/eslint-plugin-components`, which stops the old imports from coming back.
+
 ## Where Components stops
 
 The contract is React in a browser. There's no React Native, Vue, Angular or framework-neutral target.
@@ -293,8 +297,6 @@ Sorting and filtering in the tables work on the page that's loaded, and the tabl
 The repository runs automated checks on its built-in renderer, including axe, form and event behavior in jsdom, and server rendering. Those checks aren't an accessibility conformance result, and they don't replace a review with assistive technology in your application. Some generated labels and plural text are still outside the provider's message set, so the provider can't translate every string a page shows.
 
 Arc React's published type declarations report TS2503 errors when an application type-checks libraries with `skipLibCheck: false`. The template sets `skipLibCheck: true`.
-
-Components 3 to 4 is a breaking upgrade. Root namespace imports, rendered markup, style parts and the provider changed. The [migration guide](https://cratis.io/components/migration/3-to-4/) comes with `@cratis/components.migrator`, a development CLI that rewrites imports and a few props, and `@cratis/eslint-plugin-components`, which stops the old imports from coming back.
 
 ---
 

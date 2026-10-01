@@ -17,7 +17,7 @@ import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 Chronicle has clients for .NET, Kotlin and Java, TypeScript and Elixir, and all of them append to the same kernel through the same contract. Only one of them checks concurrency on an append unless you ask it to. The .NET client reads the tail of the event source and sends the sequence number it expects, so an append that lands between that read and its write fails. The Kotlin and Java client appends with no concurrency scope, and the TypeScript and Elixir clients send no check at all.
 
-That's one line in a table of differences, and it matters the day a second team picks a second language. In [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/), a signed-in user registers an author, and author names are unique within the organization. The feature is written in C#, and nothing in the rule needs C#. A JVM or Node team can build the same feature on Cratis, once they know what exists for their language and where it departs from the .NET path.
+That's one line in a table of differences, and it matters the day a second team picks a second language. The author feature is written in C#, and nothing in its uniqueness rule needs C#. A JVM or Node team can build the same feature on Cratis, once they know what exists for their language and where it departs from the .NET path.
 
 ## One contract, several ecosystems
 
@@ -122,7 +122,7 @@ Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
 
 The command returns the event, and Arc's Chronicle integration, which the sample uses, appends it to the event source named by `@CommandKey`. Arc for Kotlin also has validation, authorization, tenancy, observable queries and in-process command scenarios. It isn't at parity with .NET. Command operations and aggregates aren't in it, and it runs only on Spring Boot.
 
-On Node.js, [Arc for TypeScript](https://github.com/Cratis/Arc.TypeScript) is an early preview of a TypeScript command and query server. It isn't on npm, and its APIs can still change. A command is a decorated class, here from its Tasks sample:
+The Node.js command is a decorated class, here from the source-only Tasks sample described in [*Arc for TypeScript, from source*](/beyond-dotnet/#arc-for-typescript-from-source):
 
 ```typescript
 @command()
@@ -136,8 +136,6 @@ export class RegisterTask {
     }
 }
 ```
-
-It has adapters for Express, Fastify and Hono, plus a Fetch API entry for Next.js route handlers, Bun and Deno. Its Chronicle integration is experimental.
 
 Chronicle has its own set of [clients](https://cratis.io/chronicle-clients/): a first-class .NET SDK, and clients for TypeScript, Kotlin/Java (JVM) and Elixir, over whichever storage provider each deployment chooses. Services in one system can use different clients against the same kernel. The clients aren't interchangeable, though. The default concurrency check, `ExpectingNoMatchingEvent`, decision reads and some erasure options differ, and [where the clients differ](https://cratis.io/chronicle/clients/where-the-clients-differ/) lists the gaps. [Event sourcing in any language](https://blog.cratis.io/event-sourcing-in-any-language/) explains the shared contract underneath.
 
@@ -247,7 +245,7 @@ The Chronicle sample is strict about tenants. Every request has to carry the `x-
 
 ### What the JVM doesn't have
 
-Arc for Kotlin runs on Spring Boot's servlet stack only, so WebFlux and hosts outside Spring aren't supported. Controller-based commands, static-file and SPA-fallback hosting, `@FromRequest` and `@GenerateOneOf` aren't planned. Command operations and aggregate roots aren't in the source, and Screenplay generation doesn't target the JVM. Agreement with .NET is checked only in part: generated proxies against a captured .NET fixture, and HTTP behaviour over nine common cases. MongoDB observables need a replica set, and Java's delegated filters and validators need adapter beans.
+Arc for Kotlin runs on Spring Boot's servlet stack only, so WebFlux and hosts outside Spring aren't supported. Controller-based commands, static-file and SPA-fallback hosting, `@FromRequest` and `@GenerateOneOf` aren't planned. Command operations and aggregate roots aren't in the source, and Screenplay generation doesn't target the JVM. Agreement with .NET is checked only in part: generated proxies against a captured .NET fixture, and HTTP behavior over nine common cases. MongoDB observables need a replica set, and Java's delegated filters and validators need adapter beans.
 
 ## Chronicle on the JVM
 
@@ -257,7 +255,7 @@ In Kotlin every call to the kernel suspends. Java gets blocking bridges over the
 
 By default the client constructs an artifact by calling a constructor with no parameters, or one where every parameter has a default. A reactor that needs a repository, or anything else from the container, needs an `IArtifactActivator`, and the starter supplies one.
 
-A successful append means the fact is stored. The read model catches up asynchronously, so a read on the very next line can return `null`, and the client's guide shows a bounded wait for the places that need one. Reactors take `@OnceOnly` and `@Replay` as they do on .NET. The client checks the kernel's version when it connects and refuses a kernel it isn't compatible with, and Arc for Kotlin's Chronicle guide names a matching client and kernel pair. The JVM client also skips certificate validation by default, which lets it accept a local kernel's self-signed certificate, so add `skipTlsValidation=false` for any shared server.
+A successful append means the fact is stored. The read model catches up asynchronously, so a read on the very next line can return `null`, and the client's guide shows a bounded wait for the places that need one. Reactors take `@OnceOnly` and `@Replay` as they do on .NET. The client checks the kernel's version when it connects and refuses a kernel it isn't compatible with, and Arc for Kotlin's Chronicle guide names a matching client and kernel pair. [*Running Chronicle in production*](/running-chronicle-in-production/) covers the certificate-validation setup before connecting any client to a shared server.
 
 ## Chronicle in TypeScript
 
@@ -284,9 +282,7 @@ if (!result.isSuccess) { /* decide whether to retry or surface a conflict */ }
 
 `eventType` comes from `@cratis/chronicle` and `field` from `@cratis/fundamentals`. The append sends no concurrency check, so when the event depends on something you read first, give the append an explicit scope.
 
-The client needs Node.js 22.19 or later, because it's built on `undici`, and it fails to import on Node 20. Standard decorators and top-level `await` need TypeScript 5.2 or later and an ES module build. A read model is inferred from a `@projection`, a `@reducer` or an exported model with `@fromEvent`, its schema comes from the model type, and its id defaults to the class name.
-
-`skipTlsValidation` defaults to `true`, which is why the development image's self-signed certificate works without any setup. For any shared server, set it to `false`.
+The client needs Node.js 22.19 or later, because it's built on `undici`, and it fails to import on Node 20. Standard decorators and top-level `await` need TypeScript 5.2 or later and an ES module build. A read model is inferred from a `@projection`, a `@reducer` or an exported model with `@fromEvent`, its schema comes from the model type, and its id defaults to the class name. `skipTlsValidation` defaults to `true`, as on every client, so set it to `false` for any shared server.
 
 ## Chronicle in Elixir
 
@@ -310,11 +306,11 @@ end
 
 `Chronicle.append` returns `:ok` or `{:error, reason}`, so there's no sequence number to read back from a successful append. The client is a supervised child of your application, `{Chronicle.Client, connection_string: ..., event_store: ..., otp_app: ...}`. It connects and registers in the background with backoff, and until registration has finished, calls return `{:error, :not_connected}`. `Lifecycle.wait_until(..., :registered)` waits for it.
 
-The client needs Elixir 1.18 or later and a kernel with contracts 19.19 or later. The Mint gRPC adapter needs `enable_push: false`, among other caveats. TLS has the same default as in TypeScript, so set `skipTlsValidation=false` for anything shared. Version 3.5.0 had defects, so take 3.5.1 or later.
+The client needs Elixir 1.18 or later and a kernel with contracts 19.19 or later. The Mint gRPC adapter needs `enable_push: false`, among other caveats. TLS has the same default as in TypeScript. Version 3.5.0 had defects, so take 3.5.1 or later.
 
 ## Arc for TypeScript, from source
 
-[Arc for TypeScript](https://cratis.io/arc/backend/typescript/getting-started/) is a source preview. Its packages aren't on npm, its version starts with 0, and its APIs can change. You run it from a clone, for example with `yarn workspace @cratis/arc.core.sample.tasks start`. Next to the `RegisterTask` command above, the Tasks sample has a live query:
+[Arc for TypeScript](https://cratis.io/arc/backend/typescript/getting-started/) is an early source preview of a TypeScript command and query server on Node.js. Its packages aren't on npm, its version starts with 0, and its APIs can change. You run it from a clone, for example with `yarn workspace @cratis/arc.core.sample.tasks start`. Next to the `RegisterTask` command above, the Tasks sample has a live query:
 
 ```typescript
 @readModel()
@@ -329,9 +325,9 @@ export class TaskItem {
 
 An observable query returns an RxJS `BehaviorSubject`, an `Observable` or an async iterable. The older `defineCommand` and `defineQuery` functions with Zod schemas still work.
 
-Besides Express 5, Fastify 5 and Hono 4 there's a standalone Node host, and the Fetch API entry, `@cratis/arc.core/fetch`, runs a Next.js App Router route handler on the Node runtime. Cloudflare Workers and the Next.js Edge runtime aren't supported, and there's no NestJS adapter. Data comes from tenant-scoped MongoDB, which observes changes through a replica set, or from Drizzle over SQLite or PostgreSQL, with no change tracking and no SQL observation. There are no automatic migrations.
+Besides Express 5, Fastify 5 and Hono 4 there's a standalone Node host, and a Fetch API entry, `@cratis/arc.core/fetch`, for Next.js route handlers, Bun and Deno. Next.js App Router route handlers run on the Node runtime. Cloudflare Workers and the Next.js Edge runtime aren't supported, and there's no NestJS adapter. Data comes from tenant-scoped MongoDB, which observes changes through a replica set, or from Drizzle over SQLite or PostgreSQL, with no change tracking and no SQL observation. There are no automatic migrations.
 
-The Chronicle integration, `@cratis/arc.chronicle`, is experimental. It appends returned events and resolves read models by key. Returned events and command operations can't be combined, and immediate appends, aggregates and reactor command effects don't join the single event-log batch. Wire behaviour is compared with Arc on .NET in a paired suite for a bounded set of HTTP cases, which doesn't amount to parity. A source-based `arc-proxygenerator` writes a bounded client that compiles against the published `@cratis/arc` and `@cratis/arc.react`.
+The Chronicle integration, `@cratis/arc.chronicle`, is experimental. It appends returned events and resolves read models by key. Returned events and command operations can't be combined, and immediate appends, aggregates and reactor command effects don't join the single event-log batch. Wire behavior is compared with Arc on .NET in a paired suite for a bounded set of HTTP cases, which doesn't amount to parity. A source-based `arc-proxygenerator` writes a bounded client that compiles against the published `@cratis/arc` and `@cratis/arc.react`.
 
 ## Where the clients differ
 
@@ -371,7 +367,7 @@ The [templates](https://cratis.io/templates/) create JVM applications too, with 
 
 In a clone of the Arc for Kotlin repository, `./Samples/run.sh` starts the Kotlin sample with in-memory storage and the React frontend on port 5173. `--language java` switches to Java, `--database mongodb` to MongoDB, and `--chronicle` starts a development kernel pinned by digest. The Chronicle sample runs backend-only. There are four samples, Kotlin and Java, each with and without Chronicle, and they're applications you run from source.
 
-The author feature carries over. On Spring Boot, `RegisterAuthor` is a `@Command` that returns an `@EventType` event, keyed by a `@CommandKey`, and the generated TypeScript feeds the same React form. What doesn't carry over is the defaults. Set a concurrency scope wherever a decision depends on something you read, and pass the subject when it isn't the event source. On every client, .NET included, turn certificate validation on (`skipTlsValidation=false`) before it talks to anything shared.
+The author feature carries over. On Spring Boot, `RegisterAuthor` is a `@Command` that returns an `@EventType` event, keyed by a `@CommandKey`, and the generated TypeScript feeds the same React form. What doesn't carry over is the defaults. Set a concurrency scope wherever a decision depends on something you read, and pass the subject when it isn't the event source. Every client, .NET included, skips certificate validation by default, allowing the development image's self-signed certificate. Turn it on (`skipTlsValidation=false`) before connecting to anything shared, following [*Running Chronicle in production*](/running-chronicle-in-production/).
 
 ---
 

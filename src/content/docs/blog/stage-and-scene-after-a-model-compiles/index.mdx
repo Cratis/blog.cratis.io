@@ -18,7 +18,7 @@ A Screenplay model in which one event declares two generations passes `cratis sc
 
 [Stage](https://github.com/Cratis/Stage) is the experimental part of the Cratis modeling layer that takes a compiled model somewhere. It renders the part of the model it supports into a C# application on Arc and Chronicle, boots a disposable sandbox, and runs the model's Given/When/Then examples. [Scene](https://github.com/Cratis/Scene), also experimental, describes a user interface without describing a platform, and it's how a `screen` in the model reaches React. Both are in early development.
 
-The running example is the feature from [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/): a signed-in user registers an author, and author names are unique within the organization. [*Screenplay*](/screenplay-an-event-model-you-can-compile/) wrote it down as a `RegisterAuthor` slice. What happens to that slice next depends on which of Stage's jobs you ask for, and on whether the slice stays inside what Stage supports.
+[*Screenplay*](/screenplay-an-event-model-you-can-compile/) wrote the author feature down as a `RegisterAuthor` slice. What happens to that slice next depends on which of Stage's jobs you ask for, and on whether the slice stays inside what Stage supports.
 
 ## One input, three jobs
 
@@ -229,7 +229,7 @@ The model is checked for the wire shape of its screens. Nothing verifies that ev
 
 Cratis Studio, live and in beta, uses Stage in two places. Play runs the model in a disposable Stage session, which is for exploring and not for hosting. When a slice is assigned to an AI agent, Cratis Studio can render it through Stage into C# for Arc and Chronicle in a connected Git repository, commit the result, and optionally let the agent refine it. Code generation is opt-in for each application. It goes one slice at a time, through Stage's older direct-write path instead of the planned render `cratis render` uses. [*Cratis Studio*](/cratis-studio-event-modeling-together/) goes through both.
 
-For the author feature, everything the sticky note asked for is inside Stage's vertical: the concept for the name, the command with its validation and sign-in policy, the event, the unique-name constraint, a projection and a by-key query. The C# for anything Stage refuses still goes in `Customizations/` or beside it, written by a person or an agent.
+Stage's vertical covers what the author feature needs: the concept for the name, the command with its validation and sign-in policy, the event, the unique-name constraint, a projection and a by-key query. The C# for anything Stage refuses still goes in `Customizations/` or beside it, written by a person or an agent.
 
 ---
 

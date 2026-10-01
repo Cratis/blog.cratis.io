@@ -17,7 +17,7 @@ import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 In the author feature, the rule that a name has at most 200 characters can run in the browser and again on the server. The rule that a name is unique within the organization runs in neither place. Chronicle checks it while it appends the event, and that's the only place where the check still holds when two people press **Register** with the same name at the same moment.
 
-A Cratis application has several places a rule can live, from the TypeScript the proxy generator writes for the browser down to the Chronicle kernel. In [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/), a signed-in user registers an author, and author names are unique within the organization. [*Arc: commands and queries without the plumbing*](/arc-commands-and-queries/) and [*Rules that hold when you write*](/rules-that-hold-when-you-write/) took the command pipeline and the constraints one at a time. A `RegisterAuthor` request meets both, and the layers between them, in a fixed order. Each layer promises something the one before it can't.
+A Cratis application has several places a rule can live, from the TypeScript the proxy generator writes for the browser down to the Chronicle kernel. [*Arc: commands and queries without the plumbing*](/arc-commands-and-queries/) and [*Rules that hold when you write*](/rules-that-hold-when-you-write/) took the command pipeline and the constraints one at a time. A `RegisterAuthor` request meets both, and the layers between them, in a fixed order. Each layer promises something the one before it can't.
 
 ![A diagram titled Where a rule can live. Six numbered cards in two rows, in the order a request meets them. 1, Browser, copied rules: early feedback, skippable. 2, Arc, authorization: decided first, 403. 3, Arc, validation: every rule runs. A bar under cards 2 and 3 reads: /validate runs only 2 and 3. 4, Arc, Provide and Handle: snapshot reads, unless protected. 5, Chronicle, schema: matches its generation. 6, Chronicle, constraints: every writer, races included. An amber note reads: X-Allowed-Severity can lift errors in .NET, unless the command has BlockOnValidationSeverity. A band along the bottom reads: Only the append sees every writer.](./where-a-rule-can-live.png)
 
@@ -148,19 +148,19 @@ After a backend build, the proxy generator copies the rules it can express into 
 
 | Backend | Copied into the generated TypeScript | Stays on the server |
 |---|---|---|
-| .NET | `NotEmpty`, `NotNull`, `EmailAddress`, length rules, `Matches` and numeric comparisons with constants, from command and concept validators, and the matching data annotations | `Must`, `MustAsync`, rules that call services, cross-property comparisons |
+| .NET | `NotEmpty`, `NotNull`, `EmailAddress`, length rules, `Matches` and numeric comparisons with constants, from command and concept validators, and the matching data annotations | `Must`, `MustAsync`, rules that call services, cross-property comparisons and comparisons against non-numeric constants |
 | Kotlin and Java | Literal rules in a `FluentModelValidator<T>`, and Jakarta constraint annotations | `ConceptValidator`, `CommandValidator` and `ModelValidator` rules |
 | TypeScript | Literal, unconditional `ruleFor` chains, including rules on direct concept fields | `when`, `unless`, `must`, `mustAsync` |
 
 A .NET rule inside `When` or `Unless` can be copied without its condition, and the browser then applies it every time. With a .NET or TypeScript backend, both name rules reach the browser from the concept. On the JVM the concept validator above runs on the server only, and [browser rules](https://cratis.io/arc/backend/kotlin/guides/validation/) come from a `FluentModelValidator<T>` or Jakarta annotations on the command's members. Arc for TypeScript reports a diagnostic for each rule [it keeps on the server](https://cratis.io/arc/backend/typescript/proxy-generation/validation/).
 
-In the browser, Arc's `CommandForm` runs the generated validator and shows the message under the field. The `cratis` template, the starting application that `dotnet new cratis` or `cratis new` scaffolds and [*Getting started with Cratis, and the tools around it*](/getting-started-with-cratis/) sets up, comes with a register dialog that keeps its confirm button disabled while a rule fails. [*Cratis Components, the React layer*](/cratis-components-the-react-layer/) walks through that dialog. Anyone can call the route without the browser, so the server runs every rule again. [*Arc gotchas*](/arc-gotchas/) lists the other ways the copy can drift from the original.
+In the browser, Arc's `CommandForm` runs the generated validator and shows the message under the field. The `cratis` template, the starting application that `dotnet new cratis` or `cratis new` scaffolds (see [*Cratis: from script to stage, and the long run*](/from-the-edge-to-the-event-log/#start-it-from-nothing-to-a-running-skeleton)), comes with a register dialog that keeps its confirm button disabled while a rule fails. [*Cratis Components, the React layer*](/cratis-components-the-react-layer/) walks through that dialog. Anyone can call the route without the browser, so the server runs every rule again. [*Arc gotchas*](/arc-gotchas/) lists the other ways the copy can drift from the original.
 
 ## The server, in order
 
 Arc runs a command through authorization, validation, `Provide()` and `Handle()`, in that [order](https://cratis.io/arc/backend/csharp/commands/command-pipeline/). In all three implementations, authorization is decided before any validator runs, so a caller who isn't allowed gets a 403 (401 when authentication itself fails) with no validation detail, even when the command is also invalid. In .NET the body says `isAuthorized: false` and carries an empty `validationResults` list.
 
-In .NET, validation runs as two filters, one for data annotations and one for FluentValidation, which covers the command validator and the walk over concept validators. Every rule in the walk runs, so a form gets all of a command's problems in one response. A filter that fails stops the chain, and the next filter doesn't run.
+Validators can take constructor dependencies from the command's scope. In .NET, validation runs as two filters, one for data annotations and one for FluentValidation, which covers the command validator and the walk over concept validators. Every rule in the walk runs, so a form gets all of a command's problems in one response. A filter that fails stops the chain, and the next filter doesn't run.
 
 Data annotations have a catch for forms. Arc reports their member as the C# property name, `Name`, and the form matches members exactly against the field's name, `name`. A data-annotation failure from the server therefore doesn't appear under the field, and in the `cratis` template's dialog it doesn't appear at all: the request returns 400 and the dialog stays open without a message. The same goes for a validation result you build yourself with `nameof(Name)`, because Arc sends members you name as written ([Cratis/Arc#2945](https://github.com/Cratis/Arc/issues/2945)). Concept and command validators report `name`.
 
@@ -361,7 +361,7 @@ end
 </TabItem>
 </Tabs>
 
-The kernel checks a constraint against the values already appended to the same event sequence in the same namespace, and Arc's Chronicle integration maps each tenant to its own namespace. The name is therefore unique within each organization, and two requests with the same name can both pass every layer above while the second append is refused. The constraints you declare come in two kinds, a unique property and one event of a type per event source, and `[RemoveConstraint]` releases a value when an author is removed. A rule that isn't about uniqueness can't be a constraint. [*Rules that hold when you write*](/rules-that-hold-when-you-write/) covers both kinds, narrower scopes and the concurrency scopes that guard the facts behind a single decision.
+The constraints you declare come in two kinds, a unique property and one event of a type per event source, and `[RemoveConstraint]` releases a value when an author is removed. A rule that isn't about uniqueness can't be a constraint. [*Rules that hold when you write*](/rules-that-hold-when-you-write/) covers both kinds, narrower scopes and the concurrency scopes that guard the facts behind a single decision.
 
 The kernel's own message names the event type and the member and leaves the value out, because a value worth keeping unique usually identifies someone. The .NET, Kotlin, Java and TypeScript clients replace it with the declared message, and fill `{PropertyName}` and `{PropertyValue}` from the violation's details. The Elixir client accepts `message:`, and its append still returns the kernel's message, inside `{:error, {:constraint_violations, violations}}`.
 
@@ -410,7 +410,9 @@ Most layers have a test that reaches them, and [*Testing with Arc and Chronicle*
 | Only a signed-in user registers an author | Authorization on `RegisterAuthor`, which the snippets above leave out | It's decided before anything reads the values |
 | A name is unique within the organization | `[Unique]` on `AuthorRegistered`, checked in the tenant's namespace | Only the append sees every writer |
 
-The behavior here is that of Arc v22.41.1 and Chronicle v19.25.1.
+This part was checked against Arc v22.41.1 and Chronicle v19.25.1; other parts retain the versions they were checked against.
+
+To test the name rule, put the first registration in the event log and try the duplicate through the command. A seeded read model won't exercise the constraint.
 
 ---
 

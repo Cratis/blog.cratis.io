@@ -17,7 +17,7 @@ import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 A C# record marked `[Command]` with a public `Handle()` method is enough for Arc to expose it as a `POST` endpoint, check its authorization, validate it and, with the proxy build package configured, write a TypeScript class the frontend compiles against. There's no controller, no DTO and no list of registrations anywhere in the application. Arc finds the record, reads what's declared on it and builds the rest.
 
-In [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/), a signed-in user registers an author, and author names are unique within the organization. Arc owns the second step of that feature, between the edge that knows who the user is and the event store that records what happened.
+Arc handles the author registration between the edge that knows who the user is and the event store that records what happened.
 
 ![A diagram titled One feature, layer by layer. A frame labeled Tenant: Acme holds six numbered cards in two columns, each naming its product. 1 AuthProxy: sign-in and tenant, Tenant-ID header. 2 Arc: command, generated TypeScript proxy. 3 Chronicle: namespace, one per tenant, via Arc. 4 Chronicle: append, unique name checked, AuthorRegistered. 5 Chronicle: view, the Author read model, by projection. 6 Components: screen, React, aligned with Arc.](./one-feature-by-layer.png)
 
@@ -350,15 +350,13 @@ var filters = new List<ICommandFilter> { _validationFilter, authorizationFilter 
 [Fact] void should_not_leak_any_validation_detail() => _result.ValidationResults.ShouldBeEmpty();
 ```
 
-[Validation](https://cratis.io/arc/backend/csharp/commands/validation/) runs next, from three sources. DataAnnotations attributes work, and on a positional record they have to target the property, as in `[property: Required]`, because the filter doesn't read attributes on constructor parameters. A `CommandValidator<T>` is a FluentValidation validator that Arc discovers for the command. A `ConceptValidator<T>` holds rules for a value type and applies them wherever that type is used, so a rule on `AuthorName` covers every command that carries an author name. A length limit is a rule about one value, so the 200-character cap sits on `AuthorNameValidator` above. A command validator is for rules about the command as a whole, across its fields or against a service.
-
-Validators can take constructor dependencies from the command's scope. Each result has a severity of error, warning or information, and the `X-Allowed-Severity` header decides which of them block the command.
+Validation runs next; [*Validation all the way down*](/validation-all-the-way-down/) covers command and concept validators, data annotations and the severity header. On a positional record, DataAnnotations must target the property, as in `[property: Required]`, because the filter doesn't read attributes on constructor parameters.
 
 Then `Provide()`, then `Handle()`, then response handlers, command operations and the execution scope.
 
 The [HTTP contract](https://cratis.io/arc/http-contract/) fixes the status codes in the same order. Success is 200. An authorization failure is 403 (401 when authentication itself fails). A validation failure, a malformed body or a dependency Arc can't resolve is 400. A result that isn't ready yet is 202, and an exception is 500. A failed result never carries a response value. A malformed or wrongly typed body turns into a validation failure with the reason `malformedRequest`, and the parser's own message isn't echoed back. Outside the Development environment, exception messages and stack traces are replaced with a generic message, and the detail is logged on the server with the correlation id.
 
-Every command also gets a `POST <route>/validate` endpoint. It runs authorization and validation and stops before the handler, and a form can call it for early feedback. A check that passes reserves nothing, so the real `POST` can still fail.
+For early form feedback, use the command's `POST <route>/validate` endpoint. A check that passes reserves nothing, so the real `POST` can still fail; [*Validation all the way down*](/validation-all-the-way-down/) covers what the endpoint runs and what it leaves out.
 
 Exceptions thrown by a handler, a filter, a response handler or the execution scope are caught into the `CommandResult`. If a handler wrote to a service directly and a later step failed, Arc catches the exception but doesn't roll that write back.
 
@@ -503,62 +501,6 @@ Arc doesn't authenticate anyone either. The host establishes the principal, thro
 
 Two more endpoints are open by default. `/.cratis/commands` and `/.cratis/queries` list every command and query with its route and schema, and on .NET they're anonymous unless you configure them otherwise.
 
-Arc reads the tenant from a header too, but its default header name is `x-cratis-tenant-id`, so point it at the proxy's header. The [tenant resolver docs](https://cratis.io/arc/backend/csharp/tenancy/resolvers/) show the setting with a custom name, and in .NET the extension method lives in `Cratis.Arc.Tenancy`:
-
-<Tabs syncKey="language">
-<TabItem label="C#">
-
-```csharp
-using Cratis.Arc;
-using Cratis.Arc.Tenancy;
-
-builder.AddCratisArc(options =>
-{
-    options.UseHeaderTenancy("Tenant-ID");
-});
-```
-
-</TabItem>
-<TabItem label="Kotlin">
-
-In Arc for Kotlin and Java this is a Spring property. A request without the header has no tenant (`null`) unless `cratis.arc.tenancy.required` is set, which rejects it with a 400, and the Chronicle integration uses the default event store for a null tenant.
-
-```properties
-cratis.arc.tenancy.header-name=Tenant-ID
-```
-
-</TabItem>
-<TabItem label="Java">
-
-In Arc for Kotlin and Java this is a Spring property. A request without the header has no tenant (`null`) unless `cratis.arc.tenancy.required` is set, which rejects it with a 400, and the Chronicle integration uses the default event store for a null tenant.
-
-```properties
-cratis.arc.tenancy.header-name=Tenant-ID
-```
-
-</TabItem>
-<TabItem label="TypeScript">
-
-In Arc for TypeScript this is the `tenancy.httpHeader` option. A request without the header has no `tenantId` (`undefined`) unless `tenancy.required` is set, which answers 400, and the Chronicle integration then appends in the `Default` namespace.
-
-```typescript
-import { ArcApplication } from '@cratis/arc.core';
-
-const builder = ArcApplication.createBuilder({
-    tenancy: { httpHeader: 'Tenant-ID' }
-});
-```
-
-</TabItem>
-<TabItem label="Elixir">
-
-Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
-
-</TabItem>
-</Tabs>
-
-In .NET, with the default resolvers, a missing header doesn't reject the request. It selects the unset tenant and then Chronicle's default namespace, so decide deliberately whether that's allowed.
-
 A resolver, whether it reads a header, a query string, a claim or a subdomain, selects a tenant. It doesn't check that the caller belongs to it, and a header the caller controls isn't evidence of membership. [*Tenancy and identity end to end*](/tenancy-and-identity-end-to-end/) follows the tenant from the edge to the event store.
 
 ## A query is a static method on the read model
@@ -702,7 +644,7 @@ static use(initialValues?: ICaptureIdea): [CaptureIdea, SetCommandValues<ICaptur
 
 In .NET, nobody wrote `maxLength(72)` in TypeScript. It came from the concept. When several sources contribute rules for one member, an explicit FluentValidation validator takes precedence, direct concept-validator rules add to it, and DataAnnotations fill in only where nothing else contributed.
 
-Only a [supported subset](https://cratis.io/arc/backend/csharp/proxy-generation/validation/) of rules makes the trip: not-empty, not-null, email address, length rules, `Matches` and numeric comparisons against constants. Cross-property comparisons and comparisons against non-numeric constants stay on the server, and so do rules that call services or run custom logic. The generated rules give the user early feedback. The server stays authoritative, and a field the browser accepts can still fail on `POST`.
+The browser gets only the rules the generator can translate; [*Validation all the way down*](/validation-all-the-way-down/) covers that subset and why passing it doesn't guarantee a successful `POST`.
 
 ![A diagram titled A rule travels. On the left, a C# card: IdeaTitleValidator, RuleFor Value, NotEmpty and MaximumLength 72. An arrow labeled build leads to a generated TypeScript card on the right: CaptureIdeaValidator, ruleFor title, notEmpty and maxLength 72. It leads down to a browser form giving early feedback, and from the form an arrow labeled POST leads left to a server card: the same C# rule runs again. A band reads: Early feedback in the browser. The server stays authoritative. A note reads: Stays on the server: cross-property comparisons, non-numeric constants, rules that call services.](./a-rule-travels.png)
 

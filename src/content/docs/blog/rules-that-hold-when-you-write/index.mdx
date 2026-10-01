@@ -17,7 +17,7 @@ import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 An event-sourced system has no table to put a `UNIQUE` index on. A rule that has to hold at write time has to be checked where the event is committed.
 
-The sticky-note feature from [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) has exactly such a rule. A signed-in user registers an author, and author names are unique within the user's organization. Chronicle and Arc have four tools for rules like that, and they differ in what they check, where the check runs and which clients have them.
+The author feature needs a name to stay unique within the user's organization. Chronicle and Arc have four tools for rules like that, and they differ in what they check, where the check runs and which clients have them.
 
 A read-model race approves "Withdraw 200" twice against a lagging balance in Arc's [bank-account example](https://cratis.io/arc/backend/csharp/chronicle/aggregates/). Neither check was wrong. Both were answered from state that hadn't caught up yet.
 
@@ -94,7 +94,7 @@ end
 </TabItem>
 </Tabs>
 
-A constraint is scoped to its event sequence and namespace, and Arc's [Chronicle integration](https://cratis.io/arc/backend/csharp/chronicle/tenancy/) maps each tenant to its own Chronicle namespace. So the name is unique within each tenant, which is the rule the sticky note asked for. Nobody wrote a per-tenant uniqueness check. It falls out of the namespace mapping and the constraint scope, both of which were already there.
+A constraint is scoped to its event sequence and namespace, and Arc's [Chronicle integration](https://cratis.io/arc/backend/csharp/chronicle/tenancy/) maps each tenant to its own Chronicle namespace. A constraint doesn't reach across namespaces or across event sequences. So the name is unique within each tenant, which is the rule the author feature needs. Nobody wrote a per-tenant uniqueness check. It falls out of the namespace mapping and the constraint scope, both of which were already there.
 
 ## What a constraint covers
 
@@ -201,8 +201,6 @@ Giving several events the same constraint name makes one rule follow the value a
 The kernel doesn't keep the values themselves. It hashes each constraint value with SHA-256, after joining multi-property values and lowercasing when casing is ignored, and stores only the hash in its index. The hash isn't salted, so anyone who can read the index can confirm a guessed value, and erasing a subject's key leaves the entry in place ([*Personal data in an event log*](/personal-data-in-an-event-log/)).
 
 A violation comes back as a failed append. The result names the constraint and carries the message you declared, and the command turns that into "that name's taken" for the user. The [unique value recipe](https://cratis.io/chronicle/scenarios/enforce-a-unique-value/) goes from the event to that message. Schema errors come back the same way, as violations of type `Schema`.
-
-The scope is one event sequence in one namespace. A constraint doesn't reach across namespaces or across event sequences, which is why the same author name can exist once in each tenant.
 
 ## When one event isn't enough
 
@@ -857,7 +855,7 @@ Chronicle is designed around constraints and decision-scoped consistency, and it
 
 When an append collides on a duplicate sequence number, the kernel retries it with a new number and doesn't revalidate the scopes. Duplicate grain activations, foreign writers, or an earlier storage outcome that was never resolved can therefore defeat a concurrency scope. Decision reads and aggregates don't replace constraints either. A constraint holds for every writer, and a guard holds only for the appends that declare it.
 
-For the author name, all of this comes down to one attribute. `[Unique]` on the name is checked by the kernel inside the tenant's namespace, and it holds whichever client or command appends the event. Scopes, decision reads and aggregates earn their place when a rule reaches past one value.
+`[Unique]` on the author name is checked by the kernel inside the tenant's namespace, and it holds whichever client or command appends the event. Scopes, decision reads and aggregates earn their place when a rule reaches past one value.
 
 ---
 

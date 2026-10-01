@@ -17,7 +17,7 @@ import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 A reactor that charges a card and then crashes before it records the charge will charge the card again on the retry. Chronicle delivers events to reactors at least once, and it never sees your payment provider, so it has no way of knowing whether the charge went through. What it can do is tell your handler, every time the same event arrives, that this is the same delivery.
 
-In [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/), a signed-in user registers an author, and author names are unique within the organization. Once `AuthorRegistered` is in the log, the feature stops being about one request. A welcome mail may need to go out, an external system may need to hear about it, and a Catalog service elsewhere in the company may need to learn that the author exists. Each of those reacts to a fact that's already recorded, and Chronicle has three ways to carry it.
+Once `AuthorRegistered` is in the log, the feature stops being about one request. A welcome mail may need to go out, an external system may need to hear about it, and a Catalog service elsewhere in the company may need to learn that the author exists. Each of those reacts to a fact that's already recorded, and Chronicle has three ways to carry it.
 
 ## Three ways out of the log
 
@@ -216,9 +216,7 @@ A reactor that calls an API brings its own client and configuration; Chronicle's
 
 Events reach a reactor per event source, in sequence order. For the author feature, each author is a partition. A handler that throws marks that author's partition as failed and pauses it, and every other author keeps flowing. Partitions are observed independently of each other, so there's no processing order across event sources.
 
-What happens next is [kernel configuration](https://cratis.io/chronicle/hosting/configuration/observers/). By default a failed partition is retried up to 10 times, the first after one second, with the delay doubling each time up to 600 seconds. When the attempts run out, the partition is quarantined, automatic retries stop and an operator has to act. Setting `maxRetryAttempts` to 0 retries forever. If you set a threshold, a whole observer can also be quarantined when too many of its partitions fail, by count or by percentage. Both are off by default.
-
-Each recorded attempt has a kind. `Handling` means the handler threw, and `Timeout` means the subscriber didn't answer within `subscriberTimeout`, which is 30 seconds by default. The other two kinds are `Disconnected` and `Unknown`. A partition whose last attempt was a timeout doesn't count toward the quarantine thresholds.
+[*Inside Chronicle*](/inside-chronicle/) covers the retry defaults, failure kinds and quarantine thresholds, including why timeouts don't count toward quarantining an observer.
 
 Retries follow the backoff, and a failed partition is also retried whenever the observer subscribes again, for example after a redeploy. Recovery reads the failed partition again from the sequence number where it failed and delivers that event once more, as an ordinary observation. The CLI lists failed partitions and retries a single one, and the Workbench shows them too. [*Workbench*](/chronicle-workbench/) and [*The Cratis CLI*](/the-cratis-cli/) cover both.
 
@@ -359,7 +357,7 @@ An [`IReadModelReactor`](https://cratis.io/chronicle/read-models/reacting-to-cha
 
 A reactor can see the same event more than once in two different situations, and each has its own tool.
 
-The first is a replay. You rewind the observer, or a redaction or a revision rewinds the affected partition. [`[OnceOnly]`](https://cratis.io/chronicle/reactors/once-only/) on a method skips that handler for events that arrive as part of a replay, and on the class it makes the whole reactor non-replayable. [`[Replay]`](https://cratis.io/chronicle/reactors/replay/) on a second handler for the same event type makes that handler the only one that runs during a replay, for when a replay should do something different instead of nothing.
+The first is a replay. You rewind the observer, or a redaction or a revision rewinds the affected partition. [`[OnceOnly]`](https://cratis.io/chronicle/reactors/once-only/) on a method skips that handler for events that arrive as part of a replay, and on the class it makes the whole reactor non-replayable. [`[Replay]`](https://cratis.io/chronicle/reactors/replay/) on a second handler for the same event type makes that handler the only one that runs during a replay, for when a replay should do something different instead of nothing. Without a replay handler, the normal handler runs again unless replay is excluded.
 
 The second is recovery after a failure. The partition paused, and recovery delivers the event again as an ordinary observation, so neither `[OnceOnly]` nor `[Replay]` applies. If the handler charged the card before it threw, the retry charges it again.
 
@@ -555,7 +553,7 @@ Failures are handled in layers. A non-2xx response fails the whole batch. The HT
 
 Say the author feature runs in an Authors service, and a Catalog service needs to hear about new authors. The tempting move is to let Catalog read the Authors service's events. Don't. That couples Catalog to every internal decision the Authors service will ever make.
 
-Chronicle's kernel is a .NET service built on Orleans and reached over gRPC and HTTP. It supports several event stores, each split into namespaces, and an event store is a natural boundary for one service's data. [Persistent subscriptions](https://cratis.io/chronicle/subscriptions/) carry events from one store's [outbox to another store's inbox](https://cratis.io/chronicle/subscriptions/outbox-inbox/), named after the source. The [architecture overview](https://cratis.io/chronicle/architecture/) shows how the parts fit, and it makes no scale or throughput guarantee. If you run more than one server, watch the default [localhost clustering](https://cratis.io/chronicle/hosting/configuration/clustering/): two servers pointed at the same database each form their own single-node cluster, and nothing errors at startup.
+The store boundary and the clustering defaults behind it are covered in [*Inside Chronicle*](/inside-chronicle/), including the limits on what a second server establishes.
 
 The Authors service's log holds everything about the registration. Its outbox carries a smaller event you're willing to support as a contract, saying that a new author exists under this ID, without the name that's personal data. Catalog processes it from its inbox, translates it into a fact of its own, and decides what it means there. When a forwarded event does carry personal data, the subject's key travels with it within the namespace, and erasure covers the stores in that namespace.
 
@@ -685,7 +683,7 @@ In .NET, a reactor on an inbox gets a `ReactorDelivery` that includes the event 
 
 ## Where Chronicle hands over
 
-For the author feature, that means a welcome mail keyed on `delivery.Id`, a Catalog service that reads a public contract from its inbox, and a partition that stops on its own when something breaks. Whether a card gets charged twice is decided by what the handler does with the id.
+The welcome mail has a `delivery.Id` to key on. Catalog reads a public contract from its inbox, and a broken author's partition stops without holding up the others. Whether a card gets charged twice is decided by what the handler does with the id.
 
 ---
 
