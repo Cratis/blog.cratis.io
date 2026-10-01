@@ -100,7 +100,7 @@ That's the whole command. [Arc](https://cratis.io/arc/) gives it an HTTP route a
 
 In .NET, Arc discovers a command when the type has `[Command]` and a public instance `Handle()`. The route comes from the configured prefix, `api` by default, then the namespace in kebab-case with its leading segments skipped, then the type name. An explicit path is kept exactly as written. Nothing about this needs an event store.
 
-`AuthorId` and `AuthorName` are concepts, and a concept validator puts a rule on every author name:
+`AuthorId` and `AuthorName` are concepts. The name is personal data, so its type is marked `[PII]` once, and a concept validator puts its rules on every author name:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
@@ -113,6 +113,7 @@ public record AuthorId(Guid Value) : EventSourceId<Guid>(Value)
     public static implicit operator AuthorId(Guid value) => new(value);
 }
 
+[PII]
 public record AuthorName(string Value) : ConceptAs<string>(Value)
 {
     public static readonly AuthorName NotSet = new(string.Empty);
@@ -121,7 +122,7 @@ public record AuthorName(string Value) : ConceptAs<string>(Value)
 
 public class AuthorNameValidator : ConceptValidator<AuthorName>
 {
-    public AuthorNameValidator() => RuleFor(name => name.Value).NotEmpty();
+    public AuthorNameValidator() => RuleFor(name => name.Value).NotEmpty().MaximumLength(200);
 }
 ```
 
@@ -139,6 +140,7 @@ data class AuthorId(private val id: UUID) : ArcConceptAs<UUID>, ChronicleConcept
     }
 }
 
+@Pii
 data class AuthorName(private val name: String) : ArcConceptAs<String>, ChronicleConceptAs<String> {
     override fun value(): String = name
     override val value: String get() = name
@@ -148,8 +150,11 @@ data class AuthorName(private val name: String) : ArcConceptAs<String>, Chronicl
 class AuthorNameValidator : ConceptValidator<AuthorName> {
     override val conceptType: Class<AuthorName> = AuthorName::class.java
 
-    override fun validate(concept: AuthorName): List<ValidationResult> =
-        if (concept.value().isBlank()) listOf(ValidationResult.error("A name is required.")) else emptyList()
+    override fun validate(concept: AuthorName): List<ValidationResult> = when {
+        concept.value().isBlank() -> listOf(ValidationResult.error("A name is required."))
+        concept.value().length > 200 -> listOf(ValidationResult.error("A name is at most 200 characters."))
+        else -> emptyList()
+    }
 }
 ```
 
@@ -170,6 +175,7 @@ public record AuthorId(UUID value) implements ConceptAs<UUID>, io.cratis.chronic
     }
 }
 
+@Pii
 public record AuthorName(String value) implements ConceptAs<String>, io.cratis.chronicle.concepts.ConceptAs<String> {
     @Override
     public String getValue() {
@@ -186,9 +192,14 @@ public final class AuthorNameValidator implements ConceptValidator<AuthorName> {
 
     @Override
     public List<ValidationResult> validate(AuthorName concept) {
-        return concept.value().isBlank()
-            ? List.of(ValidationResult.error("A name is required."))
-            : List.of();
+        if (concept.value().isBlank()) {
+            return List.of(ValidationResult.error("A name is required."));
+        }
+        if (concept.value().length() > 200) {
+            return List.of(ValidationResult.error("A name is at most 200 characters."));
+        }
+
+        return List.of();
     }
 }
 ```
@@ -207,6 +218,7 @@ export class AuthorId extends ConceptAs<Guid> {
     }
 }
 
+@pii()
 export class AuthorName extends ConceptAs<string> {
     static readonly valueType = String;
 }
@@ -215,7 +227,7 @@ export class AuthorName extends ConceptAs<string> {
 export class AuthorNameValidator extends ConceptValidator<AuthorName> {
     constructor() {
         super();
-        this.ruleFor(name => name.value).notEmpty();
+        this.ruleFor(name => name.value).notEmpty().maxLength(200);
     }
 }
 ```
@@ -232,6 +244,7 @@ end
 
 defmodule MyApp.AuthorName do
   use Chronicle.Concept, type: :string
+  pii()
 end
 ```
 
@@ -240,22 +253,16 @@ end
 
 On the wire `AuthorName` is just the string, and every Arc proxy generator types it as the underlying primitive in the generated TypeScript, so the C# model gets a named type without the HTTP contract getting a wrapper object.
 
-Dependencies go on `Handle()` as parameters, resolved from the command's service scope. A `CancellationToken` parameter gets the request-aborted token over HTTP. A version of the command with a first and last name, where the command also produces the new author's id, shows the other half of the model:
+Dependencies go on `Handle()` as parameters, resolved from the command's service scope. A `CancellationToken` parameter gets the request-aborted token over HTTP. A version of the command that produces the new author's id itself shows the other half of the model:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
 
 ```csharp
-[EventType]
-public record AuthorRegistered(AuthorName FirstName, AuthorName LastName);
-
 [Command]
-public record RegisterAuthor(AuthorName FirstName, AuthorName LastName)
+public record RegisterAuthor(AuthorName Name)
 {
-    public AuthorId Provide() => AuthorId.New();
-
-    public (AuthorId, AuthorRegistered) Handle(AuthorId authorId) =>
-        (authorId, new AuthorRegistered(FirstName, LastName));
+    public (AuthorId, AuthorRegistered) Handle() => (AuthorId.New(), new AuthorRegistered(Name));
 }
 ```
 
@@ -263,15 +270,12 @@ public record RegisterAuthor(AuthorName FirstName, AuthorName LastName)
 <TabItem label="Kotlin">
 
 ```kotlin
-@EventType
-data class AuthorRegistered(val firstName: AuthorName, val lastName: AuthorName)
-
 @Command
-data class RegisterAuthor(val firstName: AuthorName, val lastName: AuthorName) {
-    fun provide(): AuthorId = AuthorId.new()
-
-    fun handle(authorId: AuthorId): Pair<AuthorId, EventForEventSourceId> =
-        authorId to EventForEventSourceId(authorId.value().toString(), AuthorRegistered(firstName, lastName))
+data class RegisterAuthor(val name: AuthorName) {
+    fun handle(): Pair<AuthorId, EventForEventSourceId> {
+        val authorId = AuthorId.new()
+        return authorId to EventForEventSourceId(authorId.value().toString(), AuthorRegistered(name))
+    }
 }
 ```
 
@@ -279,17 +283,13 @@ data class RegisterAuthor(val firstName: AuthorName, val lastName: AuthorName) {
 <TabItem label="Java">
 
 ```java
-@EventType
-public record AuthorRegistered(AuthorName firstName, AuthorName lastName) { }
-
 @Command
-public record RegisterAuthor(AuthorName firstName, AuthorName lastName) {
-    public AuthorId provide() { return AuthorId.newId(); }
-
-    public CommandResponseValues handle(AuthorId authorId) {
+public record RegisterAuthor(AuthorName name) {
+    public CommandResponseValues handle() {
+        var authorId = AuthorId.newId();
         return CommandResponseValues.of(
             authorId,
-            new EventForEventSourceId(authorId.value().toString(), new AuthorRegistered(firstName, lastName)));
+            new EventForEventSourceId(authorId.value().toString(), new AuthorRegistered(name)));
     }
 }
 ```
@@ -298,25 +298,13 @@ public record RegisterAuthor(AuthorName firstName, AuthorName lastName) {
 <TabItem label="TypeScript">
 
 ```typescript
-@eventType()
-export class AuthorRegistered {
-    @field(AuthorName) firstName: AuthorName;
-    @field(AuthorName) lastName: AuthorName;
-    constructor(firstName: AuthorName = new AuthorName(''), lastName: AuthorName = new AuthorName('')) {
-        this.firstName = firstName;
-        this.lastName = lastName;
-    }
-}
-
 @command()
 export class RegisterAuthor {
-    @field(AuthorName) firstName!: AuthorName;
-    @field(AuthorName) lastName!: AuthorName;
+    @field(AuthorName) name!: AuthorName;
 
-    provide(): AuthorId { return AuthorId.create(); }
-
-    handle(authorId: AuthorId) {
-        return tuple(eventSourceIdResponse(authorId.toString()), new AuthorRegistered(this.firstName, this.lastName));
+    handle() {
+        const authorId = AuthorId.create();
+        return tuple(eventSourceIdResponse(authorId.toString()), new AuthorRegistered(this.name));
     }
 }
 ```
@@ -329,7 +317,7 @@ Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
 </TabItem>
 </Tabs>
 
-`Provide()` runs after the request has passed authorization and validation, and whatever it returns is handed to `Handle()`. It's where a command fetches or creates what it needs. It can also stop the command with a validation result.
+When a command needs data loaded first, such as a read model or an answer from another service, `Provide()` loads it. It runs after the request has passed authorization and validation, whatever it returns is handed to `Handle()`, and it can also stop the command with a validation result.
 
 In .NET, what `Handle()` returns decides the response. `void` and `Task` give no response. A plain `T` or `Task<T>` becomes the response, unless a response handler claims it. A `Result<TSuccess, TError>` from `Cratis.Monads` is processed for whichever alternative is active. A tuple is split. Arc processes the values it has handlers for and allows at most one unhandled value, which becomes the response. In the command above, the Chronicle integration appends the event under the new `AuthorId`, and the id goes back to the caller as the response. Two unhandled values fail with `MultipleUnhandledTupleValues`. An arbitrary error record doesn't mark a command as failed on its own, and a returned `ValidationResult` does.
 
@@ -357,97 +345,7 @@ var filters = new List<ICommandFilter> { _validationFilter, authorizationFilter 
 [Fact] void should_not_leak_any_validation_detail() => _result.ValidationResults.ShouldBeEmpty();
 ```
 
-[Validation](https://cratis.io/arc/backend/csharp/commands/validation/) runs next, from three sources. DataAnnotations attributes work, and on a positional record they have to target the property, as in `[property: Required]`, because the filter doesn't read attributes on constructor parameters. A `CommandValidator<T>` is a FluentValidation validator that Arc discovers for the command. A `ConceptValidator<T>` holds rules for a value type and applies them wherever that type is used, so a rule on `AuthorName` covers every command that carries an author name. For `RegisterAuthor` itself, a command validator checks the name too and caps it at 200 characters:
-
-<Tabs syncKey="language">
-<TabItem label="C#">
-
-```csharp
-public class RegisterAuthorValidator : CommandValidator<RegisterAuthor>
-{
-    public RegisterAuthorValidator() =>
-        RuleFor(c => c.Name).NotEmpty().MaximumLength(200);
-}
-```
-
-</TabItem>
-<TabItem label="Kotlin">
-
-```kotlin
-@Component
-class RegisterAuthorValidator : CommandValidator<RegisterAuthor> {
-    override val commandType: Class<RegisterAuthor> = RegisterAuthor::class.java
-
-    override suspend fun validate(
-        command: RegisterAuthor,
-        context: CommandContext
-    ): List<ValidationResult> = when {
-        command.name.value().isBlank() ->
-            listOf(ValidationResult.error("An author needs a name.", listOf("name")))
-        command.name.value().length > 200 ->
-            listOf(ValidationResult.error("An author name is at most 200 characters.", listOf("name")))
-        else -> emptyList()
-    }
-}
-```
-
-</TabItem>
-<TabItem label="Java">
-
-```java
-public final class RegisterAuthorValidator implements BlockingCommandValidator<RegisterAuthor> {
-    @Override
-    public Class<RegisterAuthor> getCommandType() {
-        return RegisterAuthor.class;
-    }
-
-    @Override
-    public List<ValidationResult> validate(RegisterAuthor command, CommandContext context) {
-        var name = command.name().value();
-        if (name.isBlank()) {
-            return List.of(ValidationResult.error("An author needs a name.", List.of("name")));
-        }
-        if (name.length() > 200) {
-            return List.of(ValidationResult.error(
-                "An author name is at most 200 characters.",
-                List.of("name")));
-        }
-
-        return List.of();
-    }
-}
-
-@Configuration
-public class RegisterAuthorValidation {
-    @Bean
-    public CommandValidator<RegisterAuthor> registerAuthorValidator() {
-        return new BlockingCommandValidatorAdapter<>(new RegisterAuthorValidator());
-    }
-}
-```
-
-</TabItem>
-<TabItem label="TypeScript">
-
-From Arc for TypeScript, an early source preview whose packages aren't on npm yet:
-
-```typescript
-@validator(RegisterAuthor)
-export class RegisterAuthorValidator extends CommandValidator<RegisterAuthor> {
-    constructor() {
-        super();
-        this.ruleFor(command => command.name).notEmpty().maxLength(200);
-    }
-}
-```
-
-</TabItem>
-<TabItem label="Elixir">
-
-Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
-
-</TabItem>
-</Tabs>
+[Validation](https://cratis.io/arc/backend/csharp/commands/validation/) runs next, from three sources. DataAnnotations attributes work, and on a positional record they have to target the property, as in `[property: Required]`, because the filter doesn't read attributes on constructor parameters. A `CommandValidator<T>` is a FluentValidation validator that Arc discovers for the command. A `ConceptValidator<T>` holds rules for a value type and applies them wherever that type is used, so a rule on `AuthorName` covers every command that carries an author name. A length limit is a rule about one value, so the 200-character cap sits on `AuthorNameValidator` above. A command validator is for rules about the command as a whole, across its fields or against a service.
 
 Validators can take constructor dependencies from the command's scope. Each result has a severity of error, warning or information, and the `X-Allowed-Severity` header decides which of them block the command.
 
@@ -469,7 +367,6 @@ Authorization is declared on the command or query it protects. `[Authorize]` req
 <TabItem label="C#">
 
 ```csharp
-using System.Collections.Generic;
 using Cratis.Arc.Authorization;
 using Cratis.Arc.Queries.ModelBound;
 using MongoDB.Driver;
@@ -483,13 +380,13 @@ public enum AccountRole { AccountReader, Admin, Auditor }
 public record DebitAccount(AccountId Id, AccountName Name, Amount Balance)
 {
     [Path("/api/accounts")]
-    public static IEnumerable<DebitAccount> AllAccounts(IMongoCollection<DebitAccount> collection) =>
-        collection.Find(_ => true).ToList();
+    public static IQueryable<DebitAccount> AllAccounts(IMongoCollection<DebitAccount> collection) =>
+        collection.AsQueryable();
 
     [Roles(nameof(AccountRole.Admin), nameof(AccountRole.Auditor))]
     [Path("/api/accounts/overdrawn")]
-    public static IEnumerable<DebitAccount> OverdrawnAccounts(IMongoCollection<DebitAccount> collection) =>
-        collection.Find(Builders<DebitAccount>.Filter.Lt(account => account.Balance, new Amount(0))).ToList();
+    public static IQueryable<DebitAccount> OverdrawnAccounts(IMongoCollection<DebitAccount> collection) =>
+        collection.AsQueryable().Where(account => account.Balance < new Amount(0));
 }
 ```
 

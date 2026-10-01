@@ -365,6 +365,7 @@ The decision in `RegisterAuthor` is a method. Call `Handle()`, compare the event
 <TabItem label="C#">
 
 ```csharp
+#if DEBUG
 using Cratis.Specifications;
 using Xunit;
 
@@ -377,6 +378,7 @@ public class when_deciding_to_register_an_author : Specification
 
     [Fact] void should_record_the_name() => _event.Name.ShouldEqual(_name);
 }
+#endif
 ```
 
 </TabItem>
@@ -386,7 +388,7 @@ public class when_deciding_to_register_an_author : Specification
 import kotlin.test.assertEquals
 import org.junit.jupiter.api.Test
 
-class WhenDecidingToRegisterAnAuthor {
+class RegisterAuthorTest {
     private val name = AuthorName("Jane Austen")
 
     @Test
@@ -406,7 +408,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import org.junit.jupiter.api.Test;
 
-public class WhenDecidingToRegisterAnAuthor {
+public class RegisterAuthorTest {
     private final AuthorName name = new AuthorName("Jane Austen");
 
     @Test
@@ -422,8 +424,9 @@ public class WhenDecidingToRegisterAnAuthor {
 <TabItem label="TypeScript">
 
 ```typescript
-import { strictEqual } from 'node:assert';
-import { describe, it } from 'vitest';
+import { chai, describe, it } from 'vitest';
+
+chai.should();
 
 describe('when deciding to register an author', () => {
     const event = Object.assign(new RegisterAuthor(), {
@@ -431,7 +434,7 @@ describe('when deciding to register an author', () => {
         name: new AuthorName('Jane Austen')
     }).handle();
 
-    it('should record the name', () => { strictEqual(event.name.value, 'Jane Austen'); });
+    it('should record the name', () => { event.name.value.should.equal('Jane Austen'); });
 });
 ```
 

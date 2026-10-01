@@ -33,10 +33,9 @@ using Cratis.Chronicle.Compliance.GDPR;
 using Cratis.Concepts;
 
 [PII]
-public record PiiConceptsPersonName(string Value) : ConceptAs<string>(Value)
+public record PersonName(string Value) : ConceptAs<string>(Value)
 {
-    public static implicit operator string(PiiConceptsPersonName name) => name.Value;
-    public static implicit operator PiiConceptsPersonName(string value) => new(value);
+    public static implicit operator PersonName(string value) => new(value);
 }
 ```
 
@@ -48,7 +47,7 @@ import io.cratis.chronicle.compliance.Pii
 import io.cratis.chronicle.concepts.ConceptAs
 
 @Pii
-data class PiiConceptsPersonName(override val value: String) : ConceptAs<String>
+data class PersonName(override val value: String) : ConceptAs<String>
 ```
 
 </TabItem>
@@ -59,7 +58,7 @@ import io.cratis.chronicle.compliance.Pii;
 import io.cratis.chronicle.concepts.ConceptAs;
 
 @Pii
-record PiiConceptsPersonName(String value) implements ConceptAs<String> {
+record PersonName(String value) implements ConceptAs<String> {
     @Override
     public String getValue() {
         return value;
@@ -75,7 +74,7 @@ import { pii } from '@cratis/chronicle';
 import { ConceptAs } from '@cratis/fundamentals';
 
 @pii()
-class PiiConceptsPersonName extends ConceptAs<string> {
+class PersonName extends ConceptAs<string> {
     static readonly valueType = String;
 
     constructor(value: string) {
@@ -88,7 +87,7 @@ class PiiConceptsPersonName extends ConceptAs<string> {
 <TabItem label="Elixir">
 
 ```elixir
-defmodule MyApp.PiiConceptsPersonName do
+defmodule MyApp.PersonName do
   use Chronicle.Concept, type: :string
   pii()
 end
@@ -183,17 +182,17 @@ using Cratis.Chronicle;
 using Cratis.Chronicle.Events;
 
 [Command]
-public record PlaceOrder(OrderId OrderId, CustomerId CustomerId, Money Amount)
+public record PlaceOrder(OrderId OrderId, CustomerId CustomerId, Money Total)
     : ICanProvideEventSourceId
 {
     public EventSourceId GetEventSourceId() => OrderId;
 
     public (OrderPlaced, Subject) Handle() =>
-        (new OrderPlaced(CustomerId, Amount), new Subject(CustomerId.Value.ToString()));
+        (new OrderPlaced(CustomerId, Total), new Subject(CustomerId.Value.ToString()));
 }
 
 [EventType]
-public record OrderPlaced(CustomerId CustomerId, Money Amount);
+public record OrderPlaced(CustomerId CustomerId, Money Total);
 ```
 
 </TabItem>
@@ -211,15 +210,15 @@ import io.cratis.chronicle.events.EventType
 data class PlaceOrder(
     @CommandKey val orderId: OrderId,
     val customerId: CustomerId,
-    val amount: Money
+    val total: Money
 ) : CommandEventSubjectProvider {
     override fun eventSubject(): String = customerId.value.toString()
 
-    fun handle(): OrderPlaced = OrderPlaced(customerId, amount)
+    fun handle(): OrderPlaced = OrderPlaced(customerId, total)
 }
 
 @EventType
-data class OrderPlaced(val customerId: CustomerId, val amount: Money)
+data class OrderPlaced(val customerId: CustomerId, val total: Money)
 ```
 
 </TabItem>
@@ -234,7 +233,7 @@ import io.cratis.arc.artifacts.CommandKey;
 import io.cratis.chronicle.events.EventType;
 
 @Command
-public record PlaceOrder(@CommandKey OrderId orderId, CustomerId customerId, Money amount)
+public record PlaceOrder(@CommandKey OrderId orderId, CustomerId customerId, Money total)
     implements CommandEventSubjectProvider {
     @Override
     public String eventSubject() {
@@ -242,12 +241,12 @@ public record PlaceOrder(@CommandKey OrderId orderId, CustomerId customerId, Mon
     }
 
     public OrderPlaced handle() {
-        return new OrderPlaced(customerId, amount);
+        return new OrderPlaced(customerId, total);
     }
 }
 
 @EventType
-record OrderPlaced(CustomerId customerId, Money amount) {}
+record OrderPlaced(CustomerId customerId, Money total) {}
 ```
 
 </TabItem>
@@ -264,18 +263,18 @@ import { command, key } from '@cratis/arc.core';
 export class PlaceOrder {
     @field(OrderId) @key() orderId!: OrderId;
     @field(CustomerId) customerId!: CustomerId;
-    @field(Money) amount!: Money;
+    @field(Money) total!: Money;
 
     getSubject(): string { return this.customerId.toString(); }
 
-    handle(): OrderPlaced { return new OrderPlaced(this.customerId, this.amount); }
+    handle(): OrderPlaced { return new OrderPlaced(this.customerId, this.total); }
 }
 
 @eventType()
 export class OrderPlaced {
     @field(CustomerId) customerId: CustomerId;
-    @field(Money) amount: Money;
-    constructor(customerId = new CustomerId(Guid.empty), amount = new Money(0, '')) { this.customerId = customerId; this.amount = amount; }
+    @field(Money) total: Money;
+    constructor(customerId = new CustomerId(Guid.empty), total = new Money(0, '')) { this.customerId = customerId; this.total = total; }
 }
 ```
 
@@ -288,14 +287,14 @@ Arc for Elixir doesn't exist; with the Chronicle Elixir client you pass the subj
 defmodule MyApp.Events.OrderPlaced do
   use Chronicle.Events.EventType, id: "order-placed"
 
-  defstruct customer_id: %MyApp.CustomerId{}, amount: %MyApp.Money{}
+  defstruct customer_id: %MyApp.CustomerId{}, total: %MyApp.Money{}
 end
 
 defmodule MyApp.PlaceOrder do
-  def place(%MyApp.OrderId{} = order_id, %MyApp.CustomerId{} = customer_id, amount) do
+  def place(%MyApp.OrderId{} = order_id, %MyApp.CustomerId{} = customer_id, total) do
     Chronicle.append(
       order_id.value,
-      %MyApp.Events.OrderPlaced{customer_id: customer_id, amount: amount},
+      %MyApp.Events.OrderPlaced{customer_id: customer_id, total: total},
       subject: customer_id.value
     )
   end
@@ -360,9 +359,12 @@ With Arc's Chronicle integration in .NET and TypeScript, the [causation](https:/
 public record Password(string Value) : ConceptAs<string>(Value);
 
 [Command]
-public record ChangePassword([Key] UserId User, Password OldPassword, Password NewPassword)
+public record ChangePassword(UserId User, Password OldPassword, Password NewPassword)
 {
-    public PasswordChanged Handle(IPasswordHasher hasher) => new(hasher.Hash(NewPassword));
+    public Result<PasswordChanged, ValidationResult> Handle(UserCredentials? credentials, IPasswordHasher hasher) =>
+        credentials is not null && hasher.Verify(OldPassword, credentials.PasswordHash)
+            ? new PasswordChanged(hasher.Hash(NewPassword))
+            : ValidationResult.Error("The old password is wrong.", [nameof(OldPassword)]);
 }
 ```
 
@@ -392,8 +394,12 @@ export class ChangePassword {
     @field(Password) @notAudited() oldPassword!: Password;
     @field(Password) @notAudited() newPassword!: Password;
 
-    @inject(PasswordHasher)
-    handle(hasher: PasswordHasher): PasswordChanged {
+    @inject(commandReadModel(UserCredentials), PasswordHasher)
+    handle(credentials: UserCredentials, hasher: PasswordHasher): Outcome<PasswordChanged> | PasswordChanged {
+        if (!hasher.verify(this.oldPassword, credentials.passwordHash)) {
+            return rejected(validation('The old password is wrong.', ['oldPassword']));
+        }
+
         return new PasswordChanged(hasher.hash(this.newPassword));
     }
 }
@@ -432,15 +438,15 @@ An observer hears about a redaction only if it subscribes to the original event 
 
 ```csharp
 [EventType]
-public record RedactionPersonRegistered(PiiConceptsPersonName Name);
+public record PersonRegistered(PersonName Name);
 
-public class RedactionPersonReactor : IReactor
+public class PersonRegistrations : IReactor
 {
-    public Task Registered(RedactionPersonRegistered @event, EventContext context) => Task.CompletedTask;
+    public Task Registered(PersonRegistered @event, EventContext context) => Task.CompletedTask;
 
     public Task Redacted(EventRedacted @event, EventContext context)
     {
-        // Called only when a RedactionPersonRegistered event is redacted.
+        // Called only when a PersonRegistered event is redacted.
         return Task.CompletedTask;
     }
 }

@@ -29,6 +29,7 @@ The decision in `RegisterAuthor` is a method. Call `Handle()`, compare the event
 <TabItem label="C#">
 
 ```csharp
+#if DEBUG
 public class when_deciding_to_register_an_author : Specification
 {
     readonly AuthorName _name = "Jane Austen";
@@ -38,6 +39,7 @@ public class when_deciding_to_register_an_author : Specification
 
     [Fact] void should_record_the_name() => _event.Name.ShouldEqual(_name);
 }
+#endif
 ```
 
 </TabItem>
@@ -46,7 +48,7 @@ public class when_deciding_to_register_an_author : Specification
 This spec uses JUnit; Cratis Specifications is a .NET library.
 
 ```kotlin
-class WhenDecidingToRegisterAnAuthor {
+class RegisterAuthorTest {
     private val name = AuthorName("Jane Austen")
 
     @Test
@@ -64,7 +66,7 @@ class WhenDecidingToRegisterAnAuthor {
 This spec uses JUnit; Cratis Specifications is a .NET library.
 
 ```java
-class WhenDecidingToRegisterAnAuthor {
+class RegisterAuthorTest {
     private final AuthorName name = new AuthorName("Jane Austen");
 
     @Test
@@ -90,7 +92,7 @@ describe('when deciding to register an author', () => {
         event = Object.assign(new RegisterAuthor(), { id: AuthorId.create(), name }).handle();
     });
 
-    it('should record the name', () => { expect(event.name).toEqual(name); });
+    it('should record the name', () => { event.name.should.equal(name); });
 });
 ```
 
@@ -120,6 +122,7 @@ public record AssessLoan(LoanId LoanId, ApplicantId Applicant)
     public LoanAssessment Handle(CreditScore creditScore) => new(LoanId, creditScore);
 }
 
+#if DEBUG
 public class when_assessing_a_loan : Specification
 {
     readonly LoanId _loanId = LoanId.New();
@@ -130,6 +133,7 @@ public class when_assessing_a_loan : Specification
     [Fact] void should_return_the_assessment() =>
         _assessment.ShouldEqual(new LoanAssessment(_loanId, new CreditScore(800)));
 }
+#endif
 ```
 
 </TabItem>
@@ -143,7 +147,7 @@ data class AssessLoan(val loanId: LoanId, val applicant: ApplicantId) {
     fun handle(creditScore: CreditScore): LoanAssessment = LoanAssessment(loanId, creditScore)
 }
 
-class WhenAssessingALoan {
+class AssessLoanTest {
     @Test
     fun `handle returns the assessment`() {
         val loanId = LoanId(UUID.randomUUID())
@@ -171,7 +175,7 @@ public record AssessLoan(LoanId loanId, ApplicantId applicant) {
     }
 }
 
-class WhenAssessingALoan {
+class AssessLoanTest {
     @Test
     void handleReturnsTheAssessment() {
         var loanId = new LoanId(UUID.randomUUID());
@@ -212,7 +216,7 @@ describe('when assessing a loan', () => {
         command.loanId = LoanId.create();
         command.applicant = ApplicantId.create();
 
-        expect(command.handle(new CreditScore(800))).toEqual(new LoanAssessment(command.loanId, new CreditScore(800)));
+        command.handle(new CreditScore(800)).should.deep.equal(new LoanAssessment(command.loanId, new CreditScore(800)));
     });
 });
 ```
@@ -280,7 +284,7 @@ result = reducer.workItemOpened(new WorkItemOpened(new WorkItemTitle('Prepare re
 result = reducer.progressRecorded(new ProgressRecorded(new WorkPoints(4)), result, contextFor(1));
 result = reducer.progressRecorded(new ProgressRecorded(new WorkPoints(5)), result, contextFor(2));
 result = reducer.progressRecorded(new ProgressRecorded(new WorkPoints(3)), result, contextFor(3));
-// then: expect(result).toEqual(new WorkItemProgress(workItemId, new WorkPoints(10), new WorkPoints(10), WorkPoints.notSet, 3))
+// then: result.should.deep.equal(new WorkItemProgress(workItemId, new WorkPoints(10), new WorkPoints(10), WorkPoints.notSet, 3))
 ```
 
 </TabItem>
@@ -311,6 +315,7 @@ A [spec](https://cratis.io/arc/backend/csharp/testing/chronicle/) for registerin
 <TabItem label="C#">
 
 ```csharp
+#if DEBUG
 public class when_registering_author : Specification
 {
     readonly AuthorId _authorId = AuthorId.New();
@@ -323,9 +328,10 @@ public class when_registering_author : Specification
     [Fact] void should_succeed() =>
         _result.ShouldBeSuccessful();
 
-    [Fact] Task should_have_appended_registered_event() =>
-        _scenario.EventLog.ShouldHaveAppendedEvent<AuthorRegistered>(_authorId);
+    [Fact] async Task should_have_appended_registered_event() =>
+        await _scenario.ShouldHaveAppendedEvent<RegisterAuthor, AuthorRegistered>(_authorId, e => e.Name == "Jane Austen");
 }
+#endif
 ```
 
 </TabItem>
@@ -334,7 +340,7 @@ public class when_registering_author : Specification
 In Arc for Kotlin and Java, `CommandScenario` from `io.cratis:arc-testing` runs the real command pipeline, and the Chronicle integration gives it an in-memory event log.
 
 ```kotlin
-class WhenRegisteringAuthor {
+class RegisterAuthorScenarioTest {
     private val authorId = AuthorId.new()
 
     @Test
@@ -355,7 +361,7 @@ class WhenRegisteringAuthor {
 In Arc for Kotlin and Java, `CommandScenario` from `io.cratis:arc-testing` runs the real command pipeline, and the Chronicle integration gives it an in-memory event log.
 
 ```java
-class WhenRegisteringAuthor {
+class RegisterAuthorScenarioTest {
     private final AuthorId authorId = AuthorId.newId();
 
     @Test
@@ -428,6 +434,7 @@ In .NET, the `Author` read model from the hub declares its projection with `[Fro
 <TabItem label="C#">
 
 ```csharp
+#if DEBUG
 public class when_an_author_is_registered : Specification
 {
     readonly AuthorId _authorId = AuthorId.New();
@@ -439,6 +446,7 @@ public class when_an_author_is_registered : Specification
 
     [Fact] void should_have_the_name() => _scenario.Instance!.Name.ShouldEqual(_name);
 }
+#endif
 ```
 
 </TabItem>
@@ -447,7 +455,7 @@ public class when_an_author_is_registered : Specification
 The Kotlin client's `ReadModelScenario` folds a reducer.
 
 ```kotlin
-class WhenAnAuthorIsRegistered {
+class AuthorReducerTest {
     private val authorId = AuthorId.new()
     private val name = AuthorName("Jane Austen")
 
@@ -468,7 +476,7 @@ class WhenAnAuthorIsRegistered {
 The Java client calls the reducer method directly.
 
 ```java
-class WhenAnAuthorIsRegistered {
+class AuthorReducerTest {
     private final AuthorName name = new AuthorName("Jane Austen");
 
     @Test
@@ -485,12 +493,12 @@ class WhenAnAuthorIsRegistered {
 </TabItem>
 <TabItem label="TypeScript">
 
-The TypeScript client's `ReadModelScenario` evaluates a `@fromEvent` model-bound projection.
+The TypeScript client's `ReadModelScenario` evaluates a `@fromEvent` model-bound projection. It refuses a field marked `@pii()`, such as the author's name, and asks for a kernel-backed test, so the name is a plain string here.
 
 ```typescript
 describe('when an author is registered', () => {
     const authorId = AuthorId.create();
-    const name = new AuthorName('Jane Austen');
+    const name = 'Jane Austen';
     const scenario = new ReadModelScenario(Author);
 
     beforeEach(async () => {
@@ -499,7 +507,7 @@ describe('when an author is registered', () => {
 
     it('should have the name', async () => {
         const author = await scenario.instance;
-        expect(author?.name).toEqual(name);
+        author!.name.should.equal(name);
     });
 });
 ```
@@ -521,7 +529,8 @@ This is the uniqueness rule's natural home too. In .NET, an `EventScenario` appe
 [EventType]
 public record AuthorRegistered([property: Unique(name: "UniqueAuthorName")] AuthorName Name);
 
-public class when_registering_a_taken_author_name : Specification, IDisposable
+#if DEBUG
+public class when_registering_a_taken_author_name : Specification
 {
     readonly EventScenario _scenario = new();
     AppendResult _result = default!;
@@ -536,8 +545,9 @@ public class when_registering_a_taken_author_name : Specification, IDisposable
 
     [Fact] void should_report_the_constraint() => _result.ShouldHaveConstraintViolationFor("UniqueAuthorName");
 
-    public void Dispose() => _scenario.Dispose();
+    void Destroy() => _scenario.Dispose();
 }
+#endif
 ```
 
 </TabItem>
@@ -571,10 +581,10 @@ describe('when registering a taken author name', () => {
         result = await scenario.when.forEventSource(AuthorId.create().toString()).event(new AuthorRegistered('Jane Austen'));
     });
 
-    it('should be rejected', () => { expect(result.isSuccess).toBe(false); });
+    it('should be rejected', () => { result.isSuccess.should.be.false; });
 
     it('should report the constraint', () => {
-        expect(result.constraintViolations[0]?.constraintId).toBe('UniqueAuthorName');
+        result.constraintViolations.map(violation => violation.constraintId).should.contain('UniqueAuthorName');
     });
 });
 ```
@@ -611,16 +621,19 @@ Two more are worth knowing. `Validate(command)` runs the command filters, and au
 
 ## Examples in the model
 
-A `.play` slice in [Screenplay](https://cratis.io/screenplay/specifications/) can carry given/when/then examples of its own, written against the model. Trimmed from the Screenplay docs' example:
+A `.play` slice in [Screenplay](https://cratis.io/screenplay/specifications/) can carry given/when/then examples of its own, written against the model. Adapted from the Screenplay docs' example, with `for` naming the event source instead of a property on the event:
 
 ```screenplay
 specification RegisteringADraftInvoice
   given CustomerRegistered
-    customerId = "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+    for "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+    name = "Acme Corp"
   when RegisterInvoice
     invoiceId  = "9c858901-8a57-4791-81fe-4c455b099bc9"
+    customerId = "3fa85f64-5717-4562-b3fc-2c963f66afa6"
   then InvoiceRegistered
-    invoiceId  = "9c858901-8a57-4791-81fe-4c455b099bc9"
+    for "9c858901-8a57-4791-81fe-4c455b099bc9"
+    customerId = "3fa85f64-5717-4562-b3fc-2c963f66afa6"
 ```
 
 A `then` can also name a read model, a query result, an error or a denial. The experimental [Stage](https://github.com/Cratis/Stage) specification runner, a container job, compiles the `.play` files, checks each specification against the model and writes the outcome to `results.json`. With the default engine, nothing else starts: no Arc, no Chronicle, no database and no network. The opt-in semantic engine instead runs commands through Arc's in-memory command pipeline, against an in-memory Chronicle event log. It shows that the example fits the model, and it says nothing about whether the C# behaves that way. Reactions aren't executed at the model level either. [*Screenplay*](/screenplay-an-event-model-you-can-compile/) and [*Stage and Scene*](/stage-and-scene-after-a-model-compiles/) go into the model side.

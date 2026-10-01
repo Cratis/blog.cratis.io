@@ -84,13 +84,13 @@ import { RegisterAuthor } from './RegisterAuthor';
 
 export const RegisterAuthorDialog = () => {
     return (
-        <CommandDialog
+        <CommandDialog<RegisterAuthor>
             command={RegisterAuthor}
             title='Register author'
             okLabel='Register'
             cancelLabel='Cancel'>
             <InputTextField<RegisterAuthor>
-                value={c => c.name}
+                value={command => command.name}
                 title='Name'
                 icon={<MdEdit />} />
         </CommandDialog>
@@ -122,7 +122,7 @@ export class RegisterAuthor extends Command<IRegisterAuthor, Guid> implements IR
 
 `CommandDialog` takes that class, and Arc's `CommandForm` creates an instance of it and tracks its values. The dialog walks its children. Each child that's a command form field, such as `InputTextField`, gets wrapped so it binds to the command, and anything else, a heading or a layout `div`, renders as it is, with its own children walked the same way.
 
-The compiler checks `c => c.name` against the generated class. At runtime, Arc reads the accessor a second time, as source text, and takes the first identifier after a dot as the property name. A plain property read like `c => c.name` is all it can infer. An accessor like `c => c[key]` can't be read that way, and the field needs an explicit `fieldName`. In development, Arc warns in the console when a field stays unbound.
+The compiler checks `command => command.name` against the generated class. At runtime, Arc reads the accessor a second time, as source text, and takes the first identifier after a dot as the property name. A plain property read like `command => command.name` is all it can infer. An accessor like `command => command[key]` can't be read that way, and the field needs an explicit `fieldName`. In development, Arc warns in the console when a field stays unbound.
 
 The `Guid` in `Command<IRegisterAuthor, Guid>` is the response type. In C#, the template's handler creates the new id and returns it with the event, so the command responds with the new id as a `Guid` from `@cratis/fundamentals`, and `onSuccess` receives it. The Kotlin and Java templates take the id from the client instead, as a `@CommandKey` on the command. Their dialog adds `initialValues={{ id: crypto.randomUUID() }}`, a UUID string made in the browser, and imports the command from `Api/`, where the Gradle plugin writes the proxies.
 
@@ -172,7 +172,7 @@ export const AuthorsPage = ({ onRegister }: AuthorsPageProps) => {
         <DataPage
             title='Authors'
             query={AllAuthors}
-            dataKey='eventSourceId'
+            dataKey='id'
             emptyMessage='No authors registered yet.'
         >
             <DataPage.MenuItems>

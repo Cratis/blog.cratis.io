@@ -278,36 +278,21 @@ The template's AppHost also sets `Cratis__Chronicle__ConnectionString` on the ba
 
 Arc recommends a [vertical slice](https://cratis.io/arc/vertical-slices/), with the command, the read model, the screen and the specs in one feature folder, so one change is one diff. Arc doesn't enforce it. We still recommend it, because when a feature is spread across five layer folders, reviewing one change means opening all five. The C# template's `Registration/` and `Listing/` folders are already laid out that way.
 
-In the author feature, Arc's own registration slice keeps the event, the validator and the command side by side:
+In the author feature, the registration slice keeps the command and its event, with the rule that names are unique, side by side:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
 
 ```csharp
 // Authors/Registration/Registration.cs
-[EventType]
-public record AuthorRegistered(AuthorName FirstName, AuthorName LastName);
-
-public class RegisterAuthorValidator : CommandValidator<RegisterAuthor>
-{
-    public RegisterAuthorValidator()
-    {
-        RuleFor(c => c.FirstName)
-            .NotEmpty().WithMessage("First name is required");
-
-        RuleFor(c => c.LastName)
-            .NotEmpty().WithMessage("Last name is required");
-    }
-}
-
 [Command]
-public record RegisterAuthor(AuthorName FirstName, AuthorName LastName)
+public record RegisterAuthor(AuthorName Name)
 {
-    public AuthorId Provide() => AuthorId.New();
-
-    public (AuthorId, AuthorRegistered) Handle(AuthorId authorId) =>
-        (authorId, new AuthorRegistered(FirstName, LastName));
+    public (AuthorId, AuthorRegistered) Handle() => (AuthorId.New(), new AuthorRegistered(Name));
 }
+
+[EventType]
+public record AuthorRegistered([property: Unique(name: "UniqueAuthorName")] AuthorName Name);
 ```
 
 </TabItem>
@@ -315,33 +300,16 @@ public record RegisterAuthor(AuthorName FirstName, AuthorName LastName)
 
 ```kotlin
 // Authors/Registration/Registration.kt
-@EventType
-data class AuthorRegistered(val firstName: AuthorName, val lastName: AuthorName)
-
-@Component
-class RegisterAuthorValidator : CommandValidator<RegisterAuthor> {
-    override val commandType: Class<RegisterAuthor> = RegisterAuthor::class.java
-
-    override suspend fun validate(command: RegisterAuthor, context: CommandContext): List<ValidationResult> =
-        buildList {
-            if (command.firstName.value().isBlank()) {
-                add(ValidationResult.error("First name is required", listOf("firstName")))
-            }
-            if (command.lastName.value().isBlank()) {
-                add(ValidationResult.error("Last name is required", listOf("lastName")))
-            }
-        }
-}
-
 @Command
-@AllowAnonymous
-data class RegisterAuthor(
-    @CommandKey val id: AuthorId,
-    val firstName: AuthorName,
-    val lastName: AuthorName
-) {
-    fun handle(): Pair<AuthorId, AuthorRegistered> = id to AuthorRegistered(firstName, lastName)
+data class RegisterAuthor(val name: AuthorName) {
+    fun handle(): Pair<AuthorId, EventForEventSourceId> {
+        val authorId = AuthorId.new()
+        return authorId to EventForEventSourceId(authorId.value().toString(), AuthorRegistered(name))
+    }
 }
+
+@EventType
+data class AuthorRegistered(@Unique(id = "UniqueAuthorName") val name: AuthorName)
 ```
 
 </TabItem>
@@ -350,47 +318,20 @@ data class RegisterAuthor(
 Java keeps one public type per file, all in the same folder:
 
 ```java
-// Authors/Registration/AuthorRegistered.java
-@EventType
-public record AuthorRegistered(AuthorName firstName, AuthorName lastName) { }
-
-// Authors/Registration/RegisterAuthorValidator.java
-public final class RegisterAuthorValidator implements BlockingCommandValidator<RegisterAuthor> {
-    @Override
-    public Class<RegisterAuthor> getCommandType() {
-        return RegisterAuthor.class;
-    }
-
-    @Override
-    public List<ValidationResult> validate(RegisterAuthor command, CommandContext context) {
-        var results = new ArrayList<ValidationResult>();
-        if (command.firstName().value().isBlank()) {
-            results.add(ValidationResult.error("First name is required", List.of("firstName")));
-        }
-        if (command.lastName().value().isBlank()) {
-            results.add(ValidationResult.error("Last name is required", List.of("lastName")));
-        }
-        return results;
-    }
-}
-
-// Authors/Registration/RegistrationValidation.java
-@Configuration
-public class RegistrationValidation {
-    @Bean
-    public CommandValidator<RegisterAuthor> registerAuthorValidator() {
-        return new BlockingCommandValidatorAdapter<>(new RegisterAuthorValidator());
-    }
-}
-
 // Authors/Registration/RegisterAuthor.java
 @Command
-@AllowAnonymous
-public record RegisterAuthor(@CommandKey AuthorId id, AuthorName firstName, AuthorName lastName) {
-    public Pair<AuthorId, AuthorRegistered> handle() {
-        return new Pair<>(id, new AuthorRegistered(firstName, lastName));
+public record RegisterAuthor(AuthorName name) {
+    public CommandResponseValues handle() {
+        var authorId = AuthorId.newId();
+        return CommandResponseValues.of(
+            authorId,
+            new EventForEventSourceId(authorId.value().toString(), new AuthorRegistered(name)));
     }
 }
+
+// Authors/Registration/AuthorRegistered.java
+@EventType
+public record AuthorRegistered(@Unique(id = "UniqueAuthorName") AuthorName name) { }
 ```
 
 </TabItem>
@@ -400,39 +341,22 @@ From Arc for TypeScript, an early source preview whose packages aren't on npm ye
 
 ```typescript
 // Authors/Registration/Registration.ts
-@eventType()
-export class AuthorRegistered {
-    @field(AuthorName) firstName: AuthorName;
-    @field(AuthorName) lastName: AuthorName;
-
-    constructor(firstName = new AuthorName(''), lastName = new AuthorName('')) {
-        this.firstName = firstName;
-        this.lastName = lastName;
-    }
-}
-
 @command()
 export class RegisterAuthor {
-    @field(AuthorName) firstName!: AuthorName;
-    @field(AuthorName) lastName!: AuthorName;
+    @field(AuthorName) name!: AuthorName;
 
-    provide(): AuthorId {
-        return AuthorId.create();
-    }
-
-    handle(authorId: AuthorId) {
-        return tuple(
-            eventSourceIdResponse(authorId.value.toString()),
-            new AuthorRegistered(this.firstName, this.lastName));
+    handle() {
+        const authorId = AuthorId.create();
+        return tuple(eventSourceIdResponse(authorId.toString()), new AuthorRegistered(this.name));
     }
 }
 
-@validator(RegisterAuthor)
-export class RegisterAuthorValidator extends CommandValidator<RegisterAuthor> {
-    constructor() {
-        super();
-        this.ruleFor(command => command.firstName).notEmpty().withMessage('First name is required');
-        this.ruleFor(command => command.lastName).notEmpty().withMessage('Last name is required');
+@eventType()
+export class AuthorRegistered {
+    @unique('UniqueAuthorName') @field(AuthorName) name: AuthorName;
+
+    constructor(name = new AuthorName('')) {
+        this.name = name;
     }
 }
 ```
@@ -465,12 +389,13 @@ Neither the samples nor the templates are production templates. The Samples repo
 
 [Fundamentals](https://cratis.io/fundamentals/) holds the shared building blocks beneath the Cratis stack. For .NET that means concepts, serialization, convention-based dependency injection and type discovery. For TypeScript it means GUIDs, serialization of derived types, property-path proxies and decorators. Chronicle, Arc and Components build on it, and you can use it on its own. Parity between the two isn't a goal, because the environments offer different things.
 
-Most people meet it through a [concept](https://cratis.io/fundamentals/csharp/concepts/). `ConceptAs<T>` wraps a primitive so the compiler stops you passing an author's ID where a book's ID belongs. In .NET, services are registered [by convention](https://cratis.io/fundamentals/csharp/dependency_injection/):
+Most people meet it through a [concept](https://cratis.io/fundamentals/csharp/concepts/). `ConceptAs<T>` wraps a primitive so the compiler stops you passing an author's ID where a book's ID belongs, and a personal value such as a social security number also carries Chronicle's `[PII]` marker. In .NET, services are registered [by convention](https://cratis.io/fundamentals/csharp/dependency_injection/):
 
 <Tabs syncKey="language">
 <TabItem label="C#">
 
 ```csharp
+[PII]
 public record SocialSecurityNumber(string Value) : ConceptAs<string>(Value);
 ```
 
@@ -478,6 +403,7 @@ public record SocialSecurityNumber(string Value) : ConceptAs<string>(Value);
 <TabItem label="Kotlin">
 
 ```kotlin
+@Pii
 data class SocialSecurityNumber(private val rawValue: String) : ConceptAs<String> {
     override fun value(): String = rawValue
 }
@@ -487,6 +413,7 @@ data class SocialSecurityNumber(private val rawValue: String) : ConceptAs<String
 <TabItem label="Java">
 
 ```java
+@Pii
 public record SocialSecurityNumber(String value) implements ConceptAs<String> { }
 ```
 
@@ -494,6 +421,7 @@ public record SocialSecurityNumber(String value) implements ConceptAs<String> { 
 <TabItem label="TypeScript">
 
 ```typescript
+@pii()
 export class SocialSecurityNumber extends ConceptAs<string> {
     static readonly valueType = String;
 }
@@ -505,6 +433,7 @@ export class SocialSecurityNumber extends ConceptAs<string> {
 ```elixir
 defmodule MyApp.SocialSecurityNumber do
   use Chronicle.Concept, type: :string
+  pii()
 end
 ```
 
@@ -517,8 +446,8 @@ end
 ```csharp
 services.AddBindingsByConvention();
 
-public interface IUserService { }
-public class UserService : IUserService { } // Registered as Transient
+public interface IUserDirectory { }
+public class UserDirectory : IUserDirectory { } // Registered as Transient
 ```
 
 </TabItem>
@@ -537,10 +466,10 @@ No Java equivalent: Arc for Kotlin runs on Spring Boot, which registers the serv
 Arc for TypeScript registers services explicitly:
 
 ```typescript
-export class UserService { }
+export class UserDirectory { }
 
 const builder = ArcApplication.createBuilder();
-builder.services.addTransient(UserService);
+builder.services.addTransient(UserDirectory);
 ```
 
 </TabItem>
@@ -551,7 +480,7 @@ No Elixir equivalent.
 </TabItem>
 </Tabs>
 
-A concept wraps exactly one value. The serializers and converters Fundamentals provides unwrap it to the primitive, so a property you add to a concept is ignored and lost. C# gives you an implicit conversion from the concept to the primitive but not back, so you add that one yourself. `AddBindingsByConvention()` pairs `IUserService` with `UserService` only when both sit in the same namespace and the interface has one implementation. Registrations are transient unless the class says `[Singleton]`, and `[IgnoreConvention]` opts a type out. [*Arc: commands and queries without the plumbing*](/arc-commands-and-queries/) shows what Arc does with concepts, from validation to the TypeScript types.
+A concept wraps exactly one value. The serializers and converters Fundamentals provides unwrap it to the primitive, so a property you add to a concept is ignored and lost. C# gives you an implicit conversion from the concept to the primitive but not back, so you add that one yourself. `AddBindingsByConvention()` pairs `IUserDirectory` with `UserDirectory` only when both sit in the same namespace and the interface has one implementation. Registrations are transient unless the class says `[Singleton]`, and `[IgnoreConvention]` opts a type out. [*Arc: commands and queries without the plumbing*](/arc-commands-and-queries/) shows what Arc does with concepts, from validation to the TypeScript types.
 
 ## The shape every spec takes
 

@@ -38,7 +38,7 @@ The last row belongs to [*From event to read model*](/from-event-to-read-model/)
 
 ## A reactor is a class with event methods
 
-The smallest reactor sends a confirmation when an email address is confirmed:
+The smallest reactor sends a confirmation when an email address is confirmed, and `[OnceOnly]` keeps a replay from sending it again:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
@@ -57,10 +57,11 @@ public record EmailConfirmed(EmailAddress Email);
 
 public class EmailNotifications : IReactor
 {
+    [OnceOnly]
     public Task Confirmed(EmailConfirmed @event, EventContext context) =>
-        SendConfirmationAsync(@event.Email, context.Occurred);
+        SendConfirmation(@event.Email, context.Occurred);
 
-    Task SendConfirmationAsync(EmailAddress email, DateTimeOffset occurred) => Task.CompletedTask;
+    Task SendConfirmation(EmailAddress email, DateTimeOffset occurred) => Task.CompletedTask;
 }
 ```
 
@@ -72,6 +73,7 @@ import io.cratis.chronicle.compliance.Pii
 import io.cratis.chronicle.concepts.ConceptAs
 import io.cratis.chronicle.events.EventContext
 import io.cratis.chronicle.events.EventType
+import io.cratis.chronicle.observation.OnceOnly
 import io.cratis.chronicle.observation.Reactor
 
 @Pii
@@ -82,6 +84,7 @@ data class EmailConfirmed(val email: EmailAddress)
 
 @Reactor
 class EmailNotifications {
+    @OnceOnly
     fun confirmed(event: EmailConfirmed, context: EventContext) {
         sendConfirmation(event.email, context.occurred)
     }
@@ -98,6 +101,7 @@ import io.cratis.chronicle.compliance.Pii;
 import io.cratis.chronicle.concepts.ConceptAs;
 import io.cratis.chronicle.events.EventContext;
 import io.cratis.chronicle.events.EventType;
+import io.cratis.chronicle.observation.OnceOnly;
 import io.cratis.chronicle.observation.Reactor;
 import java.time.Instant;
 
@@ -114,6 +118,7 @@ record EmailConfirmed(EmailAddress email) {}
 
 @Reactor
 class EmailNotifications {
+    @OnceOnly
     void confirmed(EmailConfirmed event, EventContext context) {
         sendConfirmation(event.email(), context.getOccurred());
     }
@@ -128,7 +133,7 @@ class EmailNotifications {
 The TypeScript client finds a handler by name: the method is the camelCase of the event's class name, here `emailConfirmed` for `EmailConfirmed`.
 
 ```typescript
-import { EventContext, eventType, pii, reactor } from '@cratis/chronicle';
+import { EventContext, eventType, onceOnly, pii, reactor } from '@cratis/chronicle';
 import { ConceptAs, field } from '@cratis/fundamentals';
 
 @pii()
@@ -151,6 +156,7 @@ class EmailConfirmed {
 
 @reactor()
 class EmailNotifications {
+    @onceOnly()
     async emailConfirmed(event: EmailConfirmed, context: EventContext): Promise<void> {
         await this.sendConfirmation(event.email, context.occurred);
     }
@@ -233,6 +239,7 @@ public record MemberActivityRecorded(Isbn Isbn);
 
 public class ReservationReactor : IReactor
 {
+    [OnceOnly]
     public EventForEventSourceId BookReserved(BookReserved @event, EventContext context) =>
         new(@event.MemberId, new MemberActivityRecorded(@event.Isbn));
 }
@@ -245,6 +252,7 @@ public class ReservationReactor : IReactor
 import io.cratis.chronicle.events.EventContext
 import io.cratis.chronicle.events.EventType
 import io.cratis.chronicle.eventSequences.EventForEventSourceId
+import io.cratis.chronicle.observation.OnceOnly
 import io.cratis.chronicle.observation.Reactor
 
 @EventType
@@ -252,6 +260,7 @@ data class MemberActivityRecorded(val isbn: Isbn)
 
 @Reactor
 class ReservationReactor {
+    @OnceOnly
     fun bookReserved(event: BookReserved, context: EventContext) =
         EventForEventSourceId(event.memberId, MemberActivityRecorded(event.isbn))
 }
@@ -264,6 +273,7 @@ class ReservationReactor {
 import io.cratis.chronicle.events.EventContext;
 import io.cratis.chronicle.events.EventType;
 import io.cratis.chronicle.eventSequences.EventForEventSourceId;
+import io.cratis.chronicle.observation.OnceOnly;
 import io.cratis.chronicle.observation.Reactor;
 
 @EventType
@@ -271,6 +281,7 @@ record MemberActivityRecorded(Isbn isbn) {}
 
 @Reactor
 class ReservationReactor {
+    @OnceOnly
     EventForEventSourceId bookReserved(BookReserved event, EventContext context) {
         return new EventForEventSourceId(event.memberId(), new MemberActivityRecorded(event.isbn()));
     }
@@ -281,7 +292,7 @@ class ReservationReactor {
 <TabItem label="TypeScript">
 
 ```typescript
-import { EventContext, EventForEventSourceId, eventType, reactor } from '@cratis/chronicle';
+import { EventContext, EventForEventSourceId, eventType, onceOnly, reactor } from '@cratis/chronicle';
 import { field } from '@cratis/fundamentals';
 
 @eventType()
@@ -295,6 +306,7 @@ class MemberActivityRecorded {
 
 @reactor()
 class ReservationReactor {
+    @onceOnly()
     async bookReserved(event: BookReserved, context: EventContext): Promise<EventForEventSourceId> {
         return { eventSourceId: event.memberId, event: new MemberActivityRecorded(event.isbn) };
     }
@@ -358,7 +370,7 @@ For that case the .NET client has [delivery identity](https://cratis.io/chronicl
 
 ```csharp
 [EventType]
-public record CustomerWelcomed(CustomerId CustomerId);
+public record CustomerWelcomed(EmailAddress Email);
 
 public class WelcomeMailer(IWelcomeMail mail, IDeliveryReceipts receipts) : IReactor
 {
@@ -370,7 +382,7 @@ public class WelcomeMailer(IWelcomeMail mail, IDeliveryReceipts receipts) : IRea
             return;
         }
 
-        await mail.Send(@event.CustomerId);
+        await mail.Send(@event.Email);
         await receipts.Complete(delivery.Id);
     }
 }
@@ -422,7 +434,7 @@ A [webhook](https://cratis.io/chronicle/webhooks/) is registered once, with a na
 using Cratis.Chronicle;
 using Cratis.Chronicle.Webhooks;
 
-public class WebhooksIndexRegister(IEventStore eventStore)
+public class AccountEventsWebhook(IEventStore eventStore)
 {
     public async Task RegisterWebhook() =>
         await eventStore.Webhooks.Register(
@@ -441,7 +453,7 @@ public class WebhooksIndexRegister(IEventStore eventStore)
 ```kotlin
 import io.cratis.chronicle.IEventStore
 
-class WebhooksIndexRegister(private val eventStore: IEventStore) {
+class AccountEventsWebhook(private val eventStore: IEventStore) {
     suspend fun registerWebhook() =
         eventStore.webhooks.register(
             "account-events",
@@ -465,10 +477,10 @@ import io.cratis.chronicle.java.WebhooksServiceJavaBridge;
 
 import java.util.Objects;
 
-class WebhooksIndexRegister {
+class AccountEventsWebhook {
     private final IEventStore eventStore;
 
-    WebhooksIndexRegister(IEventStore eventStore) {
+    AccountEventsWebhook(IEventStore eventStore) {
         this.eventStore = eventStore;
     }
 
@@ -492,7 +504,7 @@ class WebhooksIndexRegister {
 ```typescript
 import { IEventStore } from '@cratis/chronicle';
 
-class WebhooksIndexRegister {
+class AccountEventsWebhook {
     constructor(private readonly eventStore: IEventStore) {}
 
     async registerWebhook(): Promise<void> {
@@ -514,7 +526,7 @@ class WebhooksIndexRegister {
 <TabItem label="Elixir">
 
 ```elixir
-defmodule MyApp.WebhooksIndexRegister do
+defmodule MyApp.AccountEventsWebhook do
   alias MyApp.Events.AccountOpened
 
   def register_webhook do

@@ -495,24 +495,22 @@ PDL, the Projection Declaration Language, is [Screenplay's language](https://cra
 
 ```pdl
 projection InvoiceDetails => InvoiceDetailsReadModel
-  from InvoiceRegistered key invoiceId
+  from InvoiceRegistered
     customerId    = customerId
     status        = "draft"
     registeredAt  = $eventContext.occurred
-  from InvoicePaid key invoiceId
+  from InvoicePaid
     status = "paid"
   join customer on customerId
     with CustomerRegistered
       customerName = name
   children lineItems identified by lineNumber
     from InvoiceLineItemAdded key lineNumber
-      parent invoiceId
       quantity = quantity
     remove with InvoiceLineItemRemoved key lineNumber
-      parent invoiceId
 ```
 
-Two details in that text do less than they seem to. A `key` on the `projection` line is parsed but doesn't route any events, so each `from` needs its own. In `join customer on customerId`, the name `customer` is only a label and is discarded when the definition is built.
+Two details in that text do less than they seem to. A `key` on the `projection` line is parsed but doesn't route any events. A `from` without a key uses the event source, here the invoice, and one that needs another key states it, as the line items do. In `join customer on customerId`, the name `customer` is only a label and is discarded when the definition is built.
 
 Because the server takes text and returns a definition, a PDL projection can be previewed before it's saved. The Workbench has an editor for it, and the .NET client has `IProjections.Query()` for an ad-hoc, bounded query that replays from the start. The ad-hoc query is .NET only and doesn't replace a registered projection.
 

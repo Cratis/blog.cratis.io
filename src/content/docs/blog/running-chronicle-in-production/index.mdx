@@ -95,7 +95,7 @@ import io.cratis.chronicle.ChronicleOptions;
 import io.cratis.chronicle.connection.ChronicleConnectionString;
 import io.cratis.chronicle.sinks.WellKnownSinkTypes;
 
-class ConfigurationChronicleOptionsSqlSink {
+class ChronicleSqlSinkOptions {
     ChronicleOptions create() {
         return new ChronicleOptions(ChronicleConnectionString.Companion.parse("chronicle://my-server:35000"), "Unknown", WellKnownSinkTypes.SQL);
     }
@@ -158,7 +158,7 @@ The client side has a default to change too. Every Chronicle client uses TLS unl
 ```csharp
 using Cratis.Chronicle;
 
-public static class ConfigurationTlsValidationEnabled
+public static class ChronicleTlsOptions
 {
     public static ChronicleOptions Create() =>
         ChronicleOptions.FromConnectionString(
@@ -182,7 +182,7 @@ fun optionsWithTlsValidationEnabled(): ChronicleOptions =
 ```java
 import io.cratis.chronicle.ChronicleOptions;
 
-class ConfigurationTlsValidationEnabled {
+class ChronicleTlsOptions {
     ChronicleOptions create() {
         return ChronicleOptions.fromConnectionString("chronicle://my-server:35000?skipTlsValidation=false");
     }
@@ -195,7 +195,7 @@ class ConfigurationTlsValidationEnabled {
 ```typescript
 import { ChronicleOptions } from '@cratis/chronicle';
 
-function createConfigurationTlsValidationEnabled(): ChronicleOptions {
+function createOptionsWithTlsValidation(): ChronicleOptions {
     return ChronicleOptions.fromConnectionString('chronicle://my-server:35000?skipTlsValidation=false');
 }
 ```
