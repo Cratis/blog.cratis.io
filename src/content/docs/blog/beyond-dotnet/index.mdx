@@ -292,7 +292,7 @@ The client needs Node.js 22.19 or later, because it's built on `undici`, and it 
 defmodule MyApp.Events.OrderPlaced do
   use Chronicle.Events.EventType, id: "order-placed"
 
-  defstruct [:customer_id, :total]
+  defstruct customer_id: %MyApp.CustomerId{}, total: %MyApp.Money{}
 end
 
 case Chronicle.append(order_id, %MyApp.Events.OrderPlaced{
@@ -345,7 +345,7 @@ These are the [differences between the clients](https://cratis.io/chronicle/clie
 
 An append that depends on an earlier read needs an explicit scope on every client. The .NET default only catches an append that lands between its own read of the tail and its write, and the first append into an empty scope isn't checked unless you opt in. Outside .NET, an append without a scope isn't checked at all. The subject row matters for [personal data](https://cratis.io/chronicle/concepts/subject/): outside .NET, pass the subject explicitly whenever it isn't the event source. [*Personal data in an event log*](/personal-data-in-an-event-log/) explains what the subject decides. A reactor that needs a stable key for its side effects has one on .NET, and elsewhere you build it from the event store, the namespace, the sequence, the reactor and the position, as [*Reacting to facts*](/reacting-to-facts/) describes. Seeding behaves differently per client as well, in what it targets and how it handles duplicates.
 
-![A diagram titled The same fact in four languages, four cards in a two-by-two grid: C#, Kotlin, TypeScript and Elixir. Each card shows the event-type declaration: [EventType] on a record AuthorRegistered in C#, @EventType on a data class TaskCreated in Kotlin, @eventType() on a class OrderPlaced in TypeScript, and use Chronicle.Events.EventType with defstruct [:customer_id, :total] in Elixir. Under each card a chip names the default concurrency on append: optimistic tail check for C#, none for Kotlin, TypeScript and Elixir. A band along the bottom reads: Concurrency on append, by default.](./same-fact-four-languages.png)
+![A diagram titled The same fact in four languages, four cards in a two-by-two grid: C#, Kotlin, TypeScript and Elixir. Each card shows the event-type declaration: [EventType] on a record AuthorRegistered in C#, @EventType on a data class TaskCreated in Kotlin, @eventType() on a class OrderPlaced in TypeScript, and use Chronicle.Events.EventType with the label defstruct with typed defaults in Elixir. Under each card a chip names the default concurrency on append: optimistic tail check for C#, none for Kotlin, TypeScript and Elixir. A band along the bottom reads: Concurrency on append, by default.](./same-fact-four-languages.png)
 
 *One kernel contract, four client defaults.*
 

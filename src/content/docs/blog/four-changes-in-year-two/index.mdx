@@ -27,7 +27,7 @@ A year in, four kinds of change show up that look alike: a new shape for an even
 
 *Four kinds of change, and which one touches the log.*
 
-A new generation changes how an event is represented and leaves the stored fact as it was. A new view only touches derived data. A correction is the one change that alters what the log shows, and only for one event. A stopped processor is about how far an observer has got in the log, and nothing stored is wrong at all. Treat the misspelled name like a new view and you end up replaying projections that were fine. Treat the stuck reactor like a correction and you touch the log to fix a mail server.
+A new generation changes how an event is represented and leaves the stored fact as it was. A new view only touches derived data. A correction is the one change that alters what the log shows. That can reach one event, an event source or a subject, depending on the operation. A stopped processor is about how far an observer has got in the log, and nothing stored is wrong at all. Treat the misspelled name like a new view and you end up replaying projections that were fine. Treat the stuck reactor like a correction and you touch the log to fix a mail server.
 
 ## A new shape for an event
 
@@ -240,14 +240,10 @@ class BookCatalogedMigration implements IEventTypeMigration<BookCataloged, BookC
 </TabItem>
 <TabItem label="Elixir">
 
-The Elixir client takes property names as atoms or strings and writes a snake_case name in camelCase.
+The Elixir client takes property names as atoms or strings and writes a snake_case name in camelCase. Migrations need `cratis_chronicle` 3.8.1 or later when the event modules compile separately; on an earlier version, `require` both event modules at the top of the migration.
 
 ```elixir
 defmodule MyApp.Migrations.BookCatalogedMigration do
-  # Needed until Cratis/Chronicle.Elixir#90 is fixed.
-  require MyApp.Events.BookCatalogedV1
-  require MyApp.Events.BookCataloged
-
   use Chronicle.Events.Migration,
     from: {MyApp.Events.BookCatalogedV1, generation: 1},
     to: {MyApp.Events.BookCataloged, generation: 2}
