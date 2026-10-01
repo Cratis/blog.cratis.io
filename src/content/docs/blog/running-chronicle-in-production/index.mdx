@@ -1,6 +1,6 @@
 ---
-title: "From script to stage · Part 24: Running Chronicle and a Cratis application in production"
-date: 2026-09-30T09:24:00Z
+title: "From script to stage · Part 18: Running Chronicle and a Cratis application in production"
+date: 2026-09-30T09:18:00Z
 authors: sindre
 excerpt: "What Chronicle's production image won't start without, how the storage choice changes where read models land, what a client trusts until you tell it otherwise, where a trace stops today, and the backup order that decides whether a restore can be read."
 tags:
@@ -13,7 +13,7 @@ tags:
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-*[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 24 of 25*
+*[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 18 of 26*
 
 A Compose file that runs Chronicle happily on `cratis/chronicle:latest-development` stops at startup when you change the tag to `latest`. The development images generate their own TLS certificate and fall back to throwaway keys for the built-in OAuth authority, and `latest-development` bundles a database as well. The production image does none of that, and no environment variable changes it back, because the production code paths are chosen by a compile-time symbol that only the development builds define.
 
@@ -342,5 +342,5 @@ The operator can't go from that failed partition to the trace of the command tha
 
 ---
 
-- Previous: [Part 23 — Getting started with Cratis, and the tools around it](/getting-started-with-cratis/)
-- Next: [Part 25 — Cratis Components, the React layer](/cratis-components-the-react-layer/)
+- Previous: [Part 17 — The Cratis CLI, from diagnose to llm-context](/the-cratis-cli/)
+- Next: [Part 19 — Chronicle jobs, scale and performance](/chronicle-jobs-scale-and-performance/)

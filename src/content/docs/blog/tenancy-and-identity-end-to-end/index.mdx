@@ -1,6 +1,6 @@
 ---
-title: "From script to stage · Part 11: Tenancy and identity end to end"
-date: 2026-09-30T09:11:00Z
+title: "From script to stage · Part 10: Tenancy and identity end to end"
+date: 2026-09-30T09:10:00Z
 authors: sindre
 excerpt: "AuthProxy signs the user in, picks a tenant and forwards it as Tenant-ID. Arc reads a header called x-cratis-tenant-id until you tell it otherwise, and Chronicle turns the tenant into a namespace. Every hop from the edge to storage, what a missing tenant becomes at each one, and what stays yours to check."
 tags:
@@ -13,7 +13,7 @@ tags:
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-*[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 11 of 25*
+*[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 10 of 26*
 
 AuthProxy forwards the tenant it resolved in a header named `Tenant-ID`. Arc, left on its defaults, reads the tenant from a header named `x-cratis-tenant-id`. Put the two together without configuring either, and Arc ignores the tenant AuthProxy resolved. A request with no `x-cratis-tenant-id` header gets no tenant, and Arc's Chronicle integration sends it to Chronicle's `Default` namespace. Nothing fails, and every organization ends up in one event log. A request that carries `x-cratis-tenant-id` gets whatever tenant the caller put there, because AuthProxy passes that header through.
 
@@ -311,5 +311,5 @@ None of these proves that a caller belongs to a tenant. Membership is a separate
 
 ---
 
-- Previous: [Part 10 — Beyond .NET](/beyond-dotnet/)
-- Next: [Part 12 — Testing with Arc and Chronicle](/testing-with-arc-and-chronicle/)
+- Previous: [Part 09 — Cratis Components, the React layer](/cratis-components-the-react-layer/)
+- Next: [Part 11 — Testing with Arc and Chronicle](/testing-with-arc-and-chronicle/)

@@ -10,7 +10,7 @@ tags:
   - architecture
 ---
 
-*[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 02 of 25*
+*[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 02 of 26*
 
 When `Append` returns in Chronicle, the event has been checked, numbered and written to storage, and nothing has waited for a projection. The read model that will show the event is updated afterwards, by a different part of the server, on its own schedule. A read straight after a write that misses the event, and a list that stays empty while the log has the event, both come from that gap.
 

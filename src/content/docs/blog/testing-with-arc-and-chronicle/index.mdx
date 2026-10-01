@@ -1,6 +1,6 @@
 ---
-title: "From script to stage · Part 12: Testing with Arc and Chronicle"
-date: 2026-09-30T09:12:00Z
+title: "From script to stage · Part 11: Testing with Arc and Chronicle"
+date: 2026-09-30T09:11:00Z
 authors: sindre
 excerpt: "Most specs in a Cratis application can call a method and compare the event it returns. What the in-process scenarios add on top, the ways a green spec proves nothing, and the few tests that still need a real Chronicle and a running host."
 tags:
@@ -13,7 +13,7 @@ tags:
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-*[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 12 of 25*
+*[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 11 of 26*
 
 A spec for "a second author with the same name is rejected" can pass without the first author ever reaching the event log. On an Arc `CommandScenario`, `Given` seeds an in-memory read model, and nothing it seeds is appended to the log that Chronicle checks a `[Unique]` constraint against. The spec sits in the right folder and carries the right name, and the constraint it's named after is never exercised.
 
@@ -688,5 +688,5 @@ All but the last run in one process with nothing to start. The hosted spec is th
 
 ---
 
-- Previous: [Part 11 — Tenancy and identity end to end](/tenancy-and-identity-end-to-end/)
-- Next: [Part 13 — Chronicle Workbench, screen by screen](/chronicle-workbench/)
+- Previous: [Part 10 — Tenancy and identity end to end](/tenancy-and-identity-end-to-end/)
+- Next: [Part 12 — Beyond .NET](/beyond-dotnet/)

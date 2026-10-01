@@ -1,0 +1,413 @@
+---
+title: "From script to stage · Part 07: Validation all the way down"
+date: 2026-09-30T09:07:00Z
+authors: sindre
+excerpt: "Every place a rule can live in a Cratis application, from the rules copied into the browser to Chronicle's append. What each layer can and can't guarantee, why a taken author name is caught in only one of them, and which rejections find their way back to a form field."
+tags:
+  - validation
+  - arc
+  - chronicle
+  - constraints
+  - typescript
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+*[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 07 of 26*
+
+In the author feature, the rule that a name has at most 200 characters can run in the browser and again on the server. The rule that a name is unique within the organization runs in neither place. Chronicle checks it while it appends the event, and that's the only place where the check still holds when two people press **Register** with the same name at the same moment.
+
+A Cratis application has several places a rule can live, from the TypeScript the proxy generator writes for the browser down to the Chronicle kernel. In [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/), a signed-in user registers an author, and author names are unique within the organization. [*Arc: commands and queries without the plumbing*](/arc-commands-and-queries/) and [*Rules that hold when you write*](/rules-that-hold-when-you-write/) took the command pipeline and the constraints one at a time. A `RegisterAuthor` request meets both, and the layers between them, in a fixed order. Each layer promises something the one before it can't.
+
+![A diagram titled Where a rule can live. Six numbered cards in two rows, in the order a request meets them. 1, Browser, copied rules: early feedback, skippable. 2, Arc, authorization: decided first, 403. 3, Arc, validation: every rule runs. A bar under cards 2 and 3 reads: /validate runs only 2 and 3. 4, Arc, Provide and Handle: snapshot reads, unless protected. 5, Chronicle, schema: matches its generation. 6, Chronicle, constraints: every writer, races included. An amber note reads: X-Allowed-Severity can lift errors in .NET, unless the command has BlockOnValidationSeverity. A band along the bottom reads: Only the append sees every writer.](./where-a-rule-can-live.png)
+
+*The layers a rule can live in, and what each one holds for.*
+
+## A rule that belongs to the value
+
+That a name isn't empty and has at most 200 characters is true of an author name wherever it appears. In Arc, that kind of rule goes on the [concept](https://cratis.io/arc/scenarios/validate-a-command/):
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+public record AuthorName(string Value) : ConceptAs<string>(Value)
+{
+    public static implicit operator AuthorName(string value) => new(value);
+}
+
+public class AuthorNameValidator : ConceptValidator<AuthorName>
+{
+    public AuthorNameValidator()
+    {
+        RuleFor(name => name.Value).NotEmpty().WithMessage("An author needs a name.");
+        RuleFor(name => name.Value).MaximumLength(200).WithMessage("An author name is at most 200 characters.");
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+data class AuthorName(private val name: String) : ArcConceptAs<String>, ChronicleConceptAs<String> {
+    override fun value(): String = name
+    override val value: String get() = name
+}
+
+@Component
+class AuthorNameValidator : ConceptValidator<AuthorName> {
+    override val conceptType: Class<AuthorName> = AuthorName::class.java
+
+    override fun validate(concept: AuthorName): List<ValidationResult> = when {
+        concept.value().isBlank() -> listOf(ValidationResult.error("An author needs a name."))
+        concept.value().length > 200 -> listOf(ValidationResult.error("An author name is at most 200 characters."))
+        else -> emptyList()
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+public record AuthorName(String value) implements ConceptAs<String>, io.cratis.chronicle.concepts.ConceptAs<String> {
+    @Override
+    public String getValue() {
+        return value;
+    }
+}
+
+@Component
+public final class AuthorNameValidator implements ConceptValidator<AuthorName> {
+    @Override
+    public Class<AuthorName> getConceptType() {
+        return AuthorName.class;
+    }
+
+    @Override
+    public List<ValidationResult> validate(AuthorName concept) {
+        if (concept.value().isBlank()) {
+            return List.of(ValidationResult.error("An author needs a name."));
+        }
+        if (concept.value().length() > 200) {
+            return List.of(ValidationResult.error("An author name is at most 200 characters."));
+        }
+
+        return List.of();
+    }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+From Arc for TypeScript, an early source preview whose packages aren't on npm yet:
+
+```typescript
+export class AuthorName extends ConceptAs<string> {
+    static readonly valueType = String;
+}
+
+@validator(AuthorName)
+export class AuthorNameValidator extends ConceptValidator<AuthorName> {
+    constructor() {
+        super();
+        this.ruleFor(name => name.value).notEmpty().withMessage('An author needs a name.');
+        this.ruleFor(name => name.value).maxLength(200).withMessage('An author name is at most 200 characters.');
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+Arc for Elixir doesn't exist, so there's no validator. The Chronicle Elixir client declares the concept:
+
+```elixir
+defmodule MyApp.AuthorName do
+  use Chronicle.Concept, type: :string
+end
+```
+
+</TabItem>
+</Tabs>
+
+Arc walks the whole command, nested models and collection items included, and runs the validator registered for each value's type. A rule on `AuthorName` therefore covers every command and every query argument that carries an author name, including the ones nobody has written yet. A failure is reported on the field that holds the value, `name`, and not on the concept's inner value, in all three Arc implementations. In .NET, FluentValidation's default message still names the inner value, as in `The length of 'Value' must be 200 characters or fewer.`, which is why the C# rules above carry their own messages.
+
+The walk has two edges. In .NET it skips a member that's null, so a concept rule never sees an absent `AuthorName?`, and requiring a value is the command's job. A concept rule also sees one value at a time. A rule that compares two fields, or that applies to one command only, goes in a [`CommandValidator<T>`](https://cratis.io/arc/backend/csharp/commands/validation/). When one command really does need a concept unchecked, it opts out for that one property, with `IgnoreConceptRules()` in .NET, `.ignoreConceptRules()` in TypeScript and a `ConceptValidationExclusion` registration on the JVM.
+
+## What the browser gets
+
+After a backend build, the proxy generator copies the rules it can express into the generated TypeScript, and the form runs them as the user types. What makes the trip depends on the backend:
+
+| Backend | Copied into the generated TypeScript | Stays on the server |
+|---|---|---|
+| .NET | `NotEmpty`, `NotNull`, `EmailAddress`, length rules, `Matches` and numeric comparisons with constants, from command and concept validators, and the matching data annotations | `Must`, `MustAsync`, rules that call services, cross-property comparisons |
+| Kotlin and Java | Literal rules in a `FluentModelValidator<T>`, and Jakarta constraint annotations | `ConceptValidator`, `CommandValidator` and `ModelValidator` rules |
+| TypeScript | Literal, unconditional `ruleFor` chains, including rules on direct concept fields | `when`, `unless`, `must`, `mustAsync` |
+
+A .NET rule inside `When` or `Unless` can be copied without its condition, and the browser then applies it every time. With a .NET or TypeScript backend, both name rules reach the browser from the concept. On the JVM the concept validator above runs on the server only, and [browser rules](https://cratis.io/arc/backend/kotlin/guides/validation/) come from a `FluentModelValidator<T>` or Jakarta annotations on the command's members. Arc for TypeScript reports a diagnostic for each rule [it keeps on the server](https://cratis.io/arc/backend/typescript/proxy-generation/validation/).
+
+In the browser, Arc's `CommandForm` runs the generated validator and shows the message under the field, and the `cratis` template's dialog keeps its confirm button disabled while a rule fails. [*Cratis Components, the React layer*](/cratis-components-the-react-layer/) walks through that dialog. Anyone can call the route without the browser, so the server runs every rule again. [*Arc gotchas*](/arc-gotchas/) lists the other ways the copy can drift from the original.
+
+## The server, in order
+
+Arc runs a command through authorization, validation, `Provide()` and `Handle()`, in that [order](https://cratis.io/arc/backend/csharp/commands/command-pipeline/). In all three implementations, authorization is decided before any validator runs, so a caller who isn't allowed gets a 403 (401 when authentication itself fails) with no validation detail, even when the command is also invalid. In .NET the body says `isAuthorized: false` and carries an empty `validationResults` list.
+
+In .NET, validation runs as two filters, one for data annotations and one for FluentValidation, which covers the command validator and the walk over concept validators. Every rule in the walk runs, so a form gets all of a command's problems in one response. A filter that fails stops the chain, and the next filter doesn't run.
+
+Data annotations have a catch for forms. Arc reports their member as the C# property name, `Name`, and the form matches members exactly against the field's name, `name`. A data-annotation failure from the server therefore doesn't appear under the field, and in the `cratis` template's dialog it doesn't appear at all: the request returns 400 and the dialog stays open without a message. The same goes for a validation result you build yourself with `nameof(Name)`, because Arc sends members you name as written ([Cratis/Arc#2945](https://github.com/Cratis/Arc/issues/2945)). Concept and command validators report `name`.
+
+Each result has a [severity](https://cratis.io/arc/backend/csharp/commands/validation-severity-filtering/). Errors block by default, and warnings and information don't. In .NET, a caller can move that line with the `X-Allowed-Severity` header, and it moves both ways: a header value of `3` removes error results too, so a command whose only problems are errors runs, unless the command carries `[BlockOnValidationSeverity]`, which sets a floor the header can't lower. Arc for TypeScript accepts the header too but caps it at warning, so errors always block there. A validator therefore holds for callers that send the request the way the form does. A rule that has to hold for every caller belongs where the change is stored. For the author name, that's Chronicle.
+
+Every command also gets a [`/validate` route](https://cratis.io/arc/backend/csharp/commands/command-validation/), which a form can call before the user confirms. It runs authorization and validation and stops. `Provide()` and `Handle()` don't run, nothing is appended, and so no constraint is checked. Posting a taken name to the `cratis` template's `/validate` route returns 200 with `isValid: true`. A passing check reserves nothing, and the real call can still fail.
+
+## Rejecting in Provide and Handle
+
+Some rules need data the command has to fetch first. `Provide()` runs after validation, fetches or creates what `Handle()` needs, and can stop the command with a [validation result](https://cratis.io/arc/scenarios/provide-data-to-a-command/) instead. Arc's own example is a loan assessment that needs a credit score:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+[Command]
+public record AssessLoan(LoanId LoanId, ApplicantId Applicant)
+{
+    public Result<CreditScore, ValidationResult> Provide(ICreditBureau bureau)
+    {
+        var score = bureau.GetScore(Applicant);
+        return score is null
+            ? ValidationResult.Error("No credit history", ["applicant"])
+            : score;
+    }
+
+    public LoanAssessment Handle(CreditScore creditScore) => new(LoanId, creditScore);
+}
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+@Command
+data class AssessLoan(val loanId: LoanId, val applicant: ApplicantId) {
+    suspend fun provide(bureau: CreditBureau): Any =
+        bureau.score(applicant)
+            ?: ValidationResult.error("No credit history", listOf("applicant"))
+
+    fun handle(creditScore: CreditScore): LoanAssessment = LoanAssessment(loanId, creditScore)
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+@Command
+public record AssessLoan(LoanId loanId, ApplicantId applicant) {
+    public Object provide(CreditBureau bureau) {
+        var score = bureau.score(applicant);
+        return score == null
+            ? ValidationResult.error("No credit history", List.of("applicant"))
+            : score;
+    }
+
+    public LoanAssessment handle(CreditScore creditScore) {
+        return new LoanAssessment(loanId, creditScore);
+    }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+@command()
+export class AssessLoan {
+    @field(LoanId) loanId!: LoanId;
+    @field(ApplicantId) applicant!: ApplicantId;
+
+    async provide(): Promise<CreditScore | Outcome<never>> {
+        const bureau = await currentServices().resolve(CreditBureau);
+        const score = await bureau.findScore(this.applicant);
+        return score ?? rejected(validation('No credit history', ['applicant']));
+    }
+
+    handle(creditScore: CreditScore): LoanAssessment {
+        return new LoanAssessment(this.loanId, creditScore);
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
+
+</TabItem>
+</Tabs>
+
+The member is the string `applicant` in every tab, because that's the field name the form matches.
+
+`Handle()` can reject too, when the decision itself finds the problem. In C# it returns `Result<AuthorRegistered, ValidationResult>`, and with the Chronicle integration the event is appended only when the result is a success. In Arc for Kotlin and Java, `handle` can return a `ValidationResult`, on its own or as the value an `ArcOneOf` selects, and Arc treats it as a rejection. It can also throw an exception that implements `ValidationFailure`, and Arc turns that into validation results without exposing the exception's message. Arc for TypeScript returns `rejected(...)` for a 400 or `denied(...)` for a 403. Any other exception is a 500. In .NET, a result from `Provide()` goes through the severity filter, and a `ValidationResult` returned from `Handle()` doesn't.
+
+## State is a snapshot
+
+A rule about current state reads a read model, and Arc can [hand one](https://cratis.io/arc/backend/csharp/chronicle/read-models/injecting-into-commands/) to a validator, `Provide()` or `Handle()`, found by the command's key. What arrives is a snapshot. Another request can append between the read and the write, so two registrations of the same name can both read "not taken" and both pass. The uniqueness rule isn't a validator for that reason.
+
+In .NET, `[ProtectedDecision]` on a command changes what a `DecisionRead<T>` parameter in `Provide()` or `Handle()` means. The read is enrolled in the command's Chronicle unit of work, and if an event that would change it is appended for the same key before the command commits, the command fails with a `concurrencyViolation` result and appends nothing. Arc doesn't retry it. A protected command refuses validators that take constructor dependencies, because their reads aren't part of the guard, and only the projection shapes Chronicle admits for decision reads can be protected. [*Rules that hold when you write*](/rules-that-hold-when-you-write/) covers decision reads and their limits. Arc for Kotlin and Java and Arc for TypeScript have no protected decisions, so a read model there is always a snapshot.
+
+## At the append
+
+Chronicle checks every append, whichever client or command sends it.
+
+The first check is the shape. The kernel validates the event's content against the [JSON schema](https://cratis.io/chronicle/events/appending/) registered for that event type and generation. A mismatch comes back as a constraint violation of type `Schema`, named `SchemaValidation`, with the path of the property in its details. Through an Arc command it reaches the client as a 400 with `reason: "constraintViolation"`, `reasonDetail: "SchemaValidation"`, no member, and a message that names the property. A `null` in an event property that isn't nullable gets past every Arc layer when no validator checks it, and the append refuses it here. The schema holds properties and their types, so the 200-character limit, which lives in a validator, isn't part of it. A client also can't change the schema of a generation that's already stored. Registering an incompatible one fails, and a new shape needs a new generation, as [*Year two*](/four-changes-in-year-two/) describes. The Elixir client builds the schema from the struct's field defaults, and a field without a typed default can make an append fail with `expected string but got number`.
+
+The second is the [constraints](https://cratis.io/chronicle/constraints/). The uniqueness rule is one attribute on the event:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+[EventType]
+public record AuthorRegistered(
+    [property: Unique(name: "UniqueAuthorName", message: "That name is already registered.")] AuthorName Name);
+
+[Command]
+public record RegisterAuthor(AuthorId Id, AuthorName Name)
+{
+    public AuthorRegistered Handle() => new(Name);
+}
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+@EventType
+data class AuthorRegistered(
+    @Unique(id = "UniqueAuthorName", message = "That name is already registered.") val name: AuthorName,
+)
+
+@Command
+data class RegisterAuthor(@CommandKey val id: AuthorId, val name: AuthorName) {
+    fun handle(): AuthorRegistered = AuthorRegistered(name)
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+@EventType
+public record AuthorRegistered(
+    @Unique(id = "UniqueAuthorName", message = "That name is already registered.") AuthorName name) {
+}
+
+@Command
+public record RegisterAuthor(@CommandKey AuthorId id, AuthorName name) {
+    public AuthorRegistered handle() {
+        return new AuthorRegistered(name);
+    }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+@eventType()
+export class AuthorRegistered {
+    @unique('UniqueAuthorName', 'That name is already registered.')
+    @field(AuthorName) name: AuthorName;
+
+    constructor(name: AuthorName = new AuthorName('')) {
+        this.name = name;
+    }
+}
+
+@command()
+export class RegisterAuthor {
+    @key() @field(AuthorId) id!: AuthorId;
+    @field(AuthorName) name!: AuthorName;
+
+    handle(): AuthorRegistered {
+        return new AuthorRegistered(this.name);
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+Arc for Elixir doesn't exist, so there's no command. The Chronicle Elixir client declares the event and its constraint:
+
+```elixir
+defmodule MyApp.Events.AuthorRegistered do
+  use Chronicle.Events.EventType, id: "author-registered"
+
+  defstruct name: %MyApp.AuthorName{}
+
+  unique(:name, name: "UniqueAuthorName", message: "That name is already registered.")
+end
+```
+
+</TabItem>
+</Tabs>
+
+The kernel checks a constraint against the values already appended to the same event sequence in the same namespace, and Arc's Chronicle integration maps each tenant to its own namespace. The name is therefore unique within each organization, and two requests with the same name can both pass every layer above while the second append is refused. The constraints you declare come in two kinds, a unique property and one event of a type per event source, and `[RemoveConstraint]` releases a value when an author is removed. A rule that isn't about uniqueness can't be a constraint. [*Rules that hold when you write*](/rules-that-hold-when-you-write/) covers both kinds, narrower scopes and the concurrency scopes that guard the facts behind a single decision.
+
+The kernel's own message names the event type and the member and leaves the value out, because a value worth keeping unique usually identifies someone. The .NET, Kotlin, Java and TypeScript clients replace it with the declared message, and fill `{PropertyName}` and `{PropertyValue}` from the violation's details. The Elixir client accepts `message:`, and its append still returns the kernel's message, inside `{:error, {:constraint_violations, violations}}`.
+
+Two more checks need nothing on the event. An append into an event stream that's been [closed](https://cratis.io/chronicle/closing-streams/) fails with a `StreamClosed` violation, and closing a stream is a call in the .NET client. An append that carries a concurrency scope fails when matching events were appended after the read it was decided on, and by default the first append into a scope isn't checked at all.
+
+## Back to the field
+
+Every layer on the server answers with the same [command result](https://cratis.io/arc/http-contract/). Authorization failures get 403, validation results of any kind get 400, and exceptions get 500, and when a result carries more than one, 403 wins over 400 and 400 over 500. The taken name comes back as a 400 with this body, trimmed to the parts that matter here:
+
+```json
+{
+  "isSuccess": false,
+  "isAuthorized": true,
+  "isValid": false,
+  "validationResults": [
+    {
+      "severity": 3,
+      "message": "That name is already registered.",
+      "members": ["name"],
+      "reason": "constraintViolation",
+      "reasonDetail": "UniqueAuthorName"
+    }
+  ]
+}
+```
+
+The member is the constrained property's name in camel case, and `reasonDetail` is the constraint's name. All three Arc implementations map a violation this way. The message is a diagnostic that's free to change, so code that has to know which rule failed compares `reason` and `reasonDetail`. The other reasons are `rule` for an authored rule, `concurrencyViolation`, `validatorFailed` when a validator threw, `dependencyUnavailable` when something the command needed couldn't be resolved, and `malformedRequest` for a body that couldn't be read.
+
+A form shows a result under a field when one of its members is the field's name, or the name followed by a dot and more. For the author name that works because `RegisterAuthor.Name` and `AuthorRegistered.Name` share a name, and [*Cratis Components, the React layer*](/cratis-components-the-react-layer/) follows a taken name from the append back to that field, step by step. Plenty of rejections have no field to go to.
+
+![A diagram titled Which rejections reach a field. Two columns. The left column, headed Lands under a field: browser rule, name; validators, name; unique property, name; a result you build, if its member is name. The right column, headed No field to land on: authorization, 403; schema, no member; unique event type; concurrency, retry; exception, 500; annotations and nameof, member Name, not name. A band along the bottom reads: Branch on reason and reasonDetail, not the message.](./which-rejections-reach-a-field.png)
+
+*Which rejections find a field, and which need handling of their own.*
+
+`CommandForm` shows field errors, and a form-level panel for exceptions with a generic sentence in place of the exception text. The rest reach the form's `onValidationFailure` callback, or a toast through `toastCommandResult`, which lists the validation messages. A concurrency violation means the state moved on, so the useful response is to read again and resubmit.
+
+## Testing each layer
+
+Most layers have a test that reaches them, and [*Testing with Arc and Chronicle*](/testing-with-arc-and-chronicle/) has the mechanics. In .NET and on the JVM a concept validator is a plain object, so a spec can call it with a value. A command scenario runs authorization, validation, `Provide()` and `Handle()` in one process. In .NET, `ShouldHaveValidationErrors()` refuses to pass when the only rejection was a dependency that couldn't be resolved, `ShouldHaveValidationErrorBecauseOf(...)` pins the reason, and `ShouldHaveConstraintViolationFor("UniqueAuthorName")` pins the constraint by name on a command result. In Arc for TypeScript, `scenario.validate(...)` proves a rule answers on `/validate`. A constraint spec puts the first author in the event log, which is where the constraint looks, and a seeded read model leaves the constraint unexercised.
+
+## Where the author rules live
+
+| Rule | Where it lives | Why there |
+|---|---|---|
+| A name isn't empty and has at most 200 characters | `AuthorNameValidator` on the concept, copied to the browser by the .NET and TypeScript generators | It's true of the value wherever it appears |
+| Only a signed-in user registers an author | Authorization on `RegisterAuthor`, which the snippets above leave out | It's decided before anything reads the values |
+| A name is unique within the organization | `[Unique]` on `AuthorRegistered`, checked in the tenant's namespace | Only the append sees every writer |
+
+The behavior here is that of Arc v22.41.1 and Chronicle v19.25.1.
+
+---
+
+- Previous: [Part 06 — Arc: commands and queries without the plumbing](/arc-commands-and-queries/)
+- Next: [Part 08 — Live UIs](/live-uis-with-arc/)
