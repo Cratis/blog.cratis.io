@@ -521,18 +521,17 @@ end
 </TabItem>
 </Tabs>
 
-Behind the call, Chronicle does six things in order:
+Behind the call, Chronicle does five things in order:
 
 1. It validates the content against the registered schema.
-2. It applies cross-cutting properties.
-3. It associates the event with its event source.
-4. It assigns the next sequence number.
-5. It persists the event and its metadata atomically.
-6. It updates the sequence's state.
+2. It associates the event with its event source.
+3. It assigns the next sequence number.
+4. It persists the event and its metadata atomically.
+5. It updates the sequence's state.
 
 Metadata you leave out gets a stored default: event source type `Default`, event stream type `All` and event stream id `Default`. Some clients, .NET among them, can supply the time the event occurred. Otherwise the server stamps it, which is what you want in almost every case. Setting `Occurred` yourself bypasses the server's clock and can break anything that relies on time ordering, so it belongs to imports and replays of existing history.
 
-[Cross-cutting properties](https://cratis.io/chronicle/events/cross-cutting-properties/) cover data that belongs on every event and in no domain method. A class implementing `ICanProvideAdditionalEventInformation` is discovered automatically, and it can add a tenant id to each append without the code that appends ever touching it.
+[Cross-cutting properties](https://cratis.io/chronicle/events/cross-cutting-properties/) cover data that belongs on every event and in no domain method. A class implementing `ICanProvideAdditionalEventInformation` is discovered automatically, and it can add a tenant id to each append without the code that appends ever touching it. In .NET, the client adds cross-cutting properties before the event is sent.
 
 The result deserves the `if` in the example. An append that reports a schema, constraint or concurrency violation was rejected, and the event wasn't stored. An append that reports an infrastructure error, or that fails on a timeout or a dropped connection, has an unknown outcome, and appending again can store the event twice. A retry becomes safe when the append carries an expected sequence number or when a constraint would reject the duplicate. The `[Unique]` rule on an author's name is one such constraint, and [*Rules that hold when you write*](/rules-that-hold-when-you-write/) covers the rest. [*Inside Chronicle*](/inside-chronicle/) follows the same append through the kernel.
 

@@ -358,7 +358,7 @@ An append that depends on an earlier read needs an explicit scope on every clien
 
 Chronicle Server's [storage provider](https://cratis.io/chronicle/hosting/configuration/storage/) is `MongoDB` by default. The others are `PostgreSql`, `MsSql`, `Sqlite`, which is embedded and file-based, and `InMemory`, which is ephemeral and non-durable. The provider is a server setting, and no client, in any language, sees which one it is.
 
-Read-model sinks follow the configured provider, and the providers don't behave the same. On the SQL providers each read model gets a table, with a JSON column for collections, and `[Index]` creates no index there. Only MongoDB creates them. A live Chronicle read model in the UI is documented on MongoDB, where Arc watches it through change streams. Arc's EF Core observation sees writes from other processes only on PostgreSQL and SQL Server, with provider setup, and not on SQLite.
+The client chooses the read-model sink, not the server's provider. Every client registers read models against the MongoDB sink unless you set the default sink type, and the sinks don't behave the same. On the SQL sink each read model gets a table, with a JSON column for collections, and `[Index]` creates no index there. Only MongoDB creates them. A live Chronicle read model in the UI is documented on MongoDB, where Arc watches it through change streams. Arc's EF Core observation sees writes from other processes only on PostgreSQL and SQL Server, with provider setup, and not on SQLite.
 
 On .NET, Arc's queries can read from MongoDB, or from a relational database through EF Core. Arc's guide to adding event sourcing follows the MongoDB branch, where a Chronicle projection fills the collection an unchanged query already reads, and doesn't cover projecting into the EF Core branch's tables.
 
@@ -372,7 +372,7 @@ The [templates](https://cratis.io/templates/) create JVM applications too, with 
 
 In a clone of the Arc for Kotlin repository, `./Samples/run.sh` starts the Kotlin sample with in-memory storage and the React frontend on port 5173. `--language java` switches to Java, `--database mongodb` to MongoDB, and `--chronicle` starts a development kernel pinned by digest. The Chronicle sample runs backend-only. There are four samples, Kotlin and Java, each with and without Chronicle, and they're applications you run from source.
 
-The author feature carries over. On Spring Boot, `RegisterAuthor` is a `@Command` that returns an `@EventType` event, keyed by a `@CommandKey`, and the generated TypeScript feeds the same React form. What doesn't carry over is the defaults. Set a concurrency scope wherever a decision depends on something you read, and pass the subject when it isn't the event source. On every client outside .NET, turn certificate validation on explicitly before it talks to anything shared.
+The author feature carries over. On Spring Boot, `RegisterAuthor` is a `@Command` that returns an `@EventType` event, keyed by a `@CommandKey`, and the generated TypeScript feeds the same React form. What doesn't carry over is the defaults. Set a concurrency scope wherever a decision depends on something you read, and pass the subject when it isn't the event source. On every client, .NET included, turn certificate validation on (`skipTlsValidation=false`) before it talks to anything shared.
 
 ---
 

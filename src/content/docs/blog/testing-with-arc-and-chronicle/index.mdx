@@ -428,7 +428,7 @@ specification RegisteringADraftInvoice
     invoiceId  = "9c858901-8a57-4791-81fe-4c455b099bc9"
 ```
 
-A `then` can also name a read model, a query result, an error or a denial. The experimental [Stage](https://github.com/Cratis/Stage) specification runner, a container job, compiles the `.play` files, checks each specification against the model and writes the outcome to `results.json`. Nothing else starts: no Arc, no Chronicle, no database and no network. It shows that the example fits the model, and it says nothing about whether the C# behaves that way. Reactions aren't executed at the model level either. [*Screenplay*](/screenplay-an-event-model-you-can-compile/) and [*Stage and Scene*](/stage-and-scene-after-a-model-compiles/) go into the model side.
+A `then` can also name a read model, a query result, an error or a denial. The experimental [Stage](https://github.com/Cratis/Stage) specification runner, a container job, compiles the `.play` files, checks each specification against the model and writes the outcome to `results.json`. With the default engine, nothing else starts: no Arc, no Chronicle, no database and no network. The opt-in semantic engine instead runs commands through Arc's in-memory command pipeline, against an in-memory Chronicle event log. It shows that the example fits the model, and it says nothing about whether the C# behaves that way. Reactions aren't executed at the model level either. [*Screenplay*](/screenplay-an-event-model-you-can-compile/) and [*Stage and Scene*](/stage-and-scene-after-a-model-compiles/) go into the model side.
 
 ## A real Chronicle and a running host
 

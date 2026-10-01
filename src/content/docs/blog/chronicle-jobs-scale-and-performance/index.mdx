@@ -19,7 +19,7 @@ The running example is the feature from [Cratis: from script to stage, and the l
 
 ## What runs as a job
 
-A job is long-running work the kernel does in the background, split into steps. These are the kinds Chronicle 19.22.1 runs:
+A job is long-running work the kernel does in the background, split into steps. These are the kinds Chronicle 19.23.1 runs:
 
 | Job | What it does |
 | --- | --- |
@@ -96,7 +96,7 @@ The `definitionEvolution` setting in the [observer configuration](https://cratis
 { "observers": { "maxRetryAttempts": 10, "definitionEvolution": "PartialOnly" } }
 ```
 
-A recommendation in Chronicle 19.22.1 is always a replay candidate. It's filed for a projection or reducer definition change the policy didn't apply, for a reactor or webhook definition change when `replayOnDefinitionChange` is off, and for a retired projection that wrote to the same container as the one replacing it. Performing a recommendation replays the observer server-side and removes the recommendation when the replay succeeds. Ignoring it drops it.
+A recommendation in Chronicle 19.23.1 is always a replay candidate. It's filed for a projection or reducer definition change the policy didn't apply, for a reactor or webhook definition change when `replayOnDefinitionChange` is off, and for a retired projection that wrote to the same container as the one replacing it. Performing a recommendation replays the observer server-side and removes the recommendation when the replay succeeds. Ignoring it drops it.
 
 We'd set `PartialOnly` or `Manual` on a store where a full replay of a large projection is expensive, so that a deploy doesn't start one on its own and a person decides when it runs.
 

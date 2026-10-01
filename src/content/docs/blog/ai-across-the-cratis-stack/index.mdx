@@ -15,7 +15,7 @@ tags:
 
 Every command in the Cratis CLI declares what it can do to your system. [`cratis llm-context`](https://cratis.io/cli/reference/llm-context/) prints the command catalog as JSON, and each command carries an `effect` of `read-only`, `local`, `mutating` or `destructive`, and says whether it requires confirmation. An assistant reading the catalog can tell `observers list` from `observers replay` without keeping a list of its own.
 
-That catalog is one of six places an assistant meets the Cratis stack. The others run from the corpus in your repository to an MCP server on a running Chronicle. Most of them let an assistant read something, and a few let it propose or change something. The corpus states the principle behind all of them in one of its rules: "A tool grant is not authority. A configured token, an installed CLI, a writable branch, or an MCP server in the session says only that the action is mechanically possible."
+That catalog is one of seven places an assistant meets the Cratis stack. The others run from the corpus in your repository to an MCP server on a running Chronicle. Most of them let an assistant read something, and a few let it propose or change something. The corpus states the principle behind all of them in one of its rules: "A tool grant is not authority. A configured token, an installed CLI, a writable branch, or an MCP server in the session says only that the action is mechanically possible."
 
 The examples below use the author feature from [Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/): a signed-in user registers an author, and author names are unique within the organization.
 
