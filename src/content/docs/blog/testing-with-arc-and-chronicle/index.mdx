@@ -553,22 +553,22 @@ The Java client has no in-memory scenario that checks constraints.
 </TabItem>
 <TabItem label="TypeScript">
 
-This spec uses Vitest. At `@cratis/chronicle` 6.31.1 the in-process `EventScenario` rejects a concept-typed field such as `AuthorName` at run time, though a connected event log appends the same event.
+This spec uses Vitest. The in-process scenario accepts only flat scalar content (Chronicle.TypeScript#170), so the name is a plain string here.
 
 ```typescript
 @eventType()
 class AuthorRegistered {
-    @field(AuthorName) @unique('UniqueAuthorName') name: AuthorName;
-    constructor(name = new AuthorName('')) { this.name = name; }
+    @field(String) @unique('UniqueAuthorName') name: string;
+    constructor(name = '') { this.name = name; }
 }
 
 describe('when registering a taken author name', () => {
-    const scenario = new EventScenario({ artifacts: { eventTypes: [AuthorRegistered] } });
     let result: AppendResult;
 
     beforeEach(async () => {
-        await scenario.given.forEventSource(AuthorId.create().toString()).events(new AuthorRegistered(new AuthorName('Jane Austen')));
-        result = await scenario.when.forEventSource(AuthorId.create().toString()).event(new AuthorRegistered(new AuthorName('Jane Austen')));
+        const scenario = new EventScenario({ artifacts: { eventTypes: [AuthorRegistered] } });
+        await scenario.given.forEventSource(AuthorId.create().toString()).events(new AuthorRegistered('Jane Austen'));
+        result = await scenario.when.forEventSource(AuthorId.create().toString()).event(new AuthorRegistered('Jane Austen'));
     });
 
     it('should be rejected', () => { expect(result.isSuccess).toBe(false); });
