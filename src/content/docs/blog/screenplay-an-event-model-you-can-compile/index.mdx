@@ -13,7 +13,7 @@ tags:
 
 *[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 20 of 26*
 
-`cratis screenplay validate` compiles an event model on a machine where the application has never started. It reads a folder of `.play` files, merges them into one application, and reports each problem with a code that stays the same from one release to the next. [Screenplay](https://cratis.io/screenplay/) is the language those files are written in. Like the rest of the Cratis modeling layer, it's experimental and in early development.
+`cratis screenplay validate` compiles an event model on a machine where the application has never started. It reads a folder of `.play` files, merges them into one application, and reports each problem with a code that stays the same from one release to the next. [Screenplay](https://cratis.io/screenplay/) is the language those files are written in.
 
 In a model, the author feature is a `RegisterAuthor` command, the `AuthorRegistered` event it produces, and a list of authors built from those events. The code below uses the library example from the Screenplay docs, where a member borrows a book. It has the same shape, with one command, one event and one list.
 
