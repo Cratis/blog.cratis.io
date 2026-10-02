@@ -106,7 +106,7 @@ The C# spec is written with [Cratis Specifications](https://cratis.io/specificat
 
 An event is a record, so expecting one is an equality check on a value. The event doesn't even repeat its own event source ID, because Chronicle keeps that in the event context, so the value `Handle()` returns is all there is to compare. The [event-sourced commands lesson](https://cratis.io/arc/backend/csharp/testing/event-sourced-commands/) puts every branch of a decision in direct specs like this one.
 
-Arc also splits getting data from deciding with it. `Provide()` fetches what a command needs, and `Handle()` decides with what it was given, so `Handle` can be a pure function of its arguments. Arc's loan example gets a credit score in `Provide()`, and its spec hands `Handle()` a score directly:
+Arc also splits getting data from deciding with it. `Provide()` fetches what a command needs, and `Handle()` decides with what it was given, so `Handle` can be a pure function of its arguments. Arc's loan example gets a credit score in `Provide()` and rejects an applicant with no credit history, as in [*Validation all the way down*](/validation-all-the-way-down/). In each language below, the direct spec supplies the score to `Handle()` or `handle()` and doesn't exercise that rejection:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
@@ -115,7 +115,13 @@ Arc also splits getting data from deciding with it. `Provide()` fetches what a c
 [Command]
 public record AssessLoan(LoanId LoanId, ApplicantId Applicant)
 {
-    public CreditScore Provide(ICreditBureau bureau) => bureau.GetScore(Applicant);
+    public Result<CreditScore, ValidationResult> Provide(ICreditBureau bureau)
+    {
+        var score = bureau.GetScore(Applicant);
+        return score is null
+            ? ValidationResult.Error("No credit history", ["applicant"])
+            : score;
+    }
 
     public LoanAssessment Handle(CreditScore creditScore) => new(LoanId, creditScore);
 }
@@ -140,7 +146,9 @@ public class when_assessing_a_loan : Specification
 ```kotlin
 @Command
 data class AssessLoan(val loanId: LoanId, val applicant: ApplicantId) {
-    suspend fun provide(bureau: CreditBureau): CreditScore = bureau.score(applicant)
+    suspend fun provide(bureau: CreditBureau): Any =
+        bureau.score(applicant)
+            ?: ValidationResult.error("No credit history", listOf("applicant"))
 
     fun handle(creditScore: CreditScore): LoanAssessment = LoanAssessment(loanId, creditScore)
 }
@@ -164,8 +172,11 @@ class AssessLoanTest {
 ```java
 @Command
 public record AssessLoan(LoanId loanId, ApplicantId applicant) {
-    public CreditScore provide(CreditBureau bureau) {
-        return bureau.score(applicant);
+    public Object provide(CreditBureau bureau) {
+        var score = bureau.score(applicant);
+        return score == null
+            ? ValidationResult.error("No credit history", List.of("applicant"))
+            : score;
     }
 
     public LoanAssessment handle(CreditScore creditScore) {
@@ -189,7 +200,7 @@ class AssessLoanTest {
 </TabItem>
 <TabItem label="TypeScript">
 
-From Arc for TypeScript, an early source preview whose packages aren't on npm yet. As in [*Validation all the way down*](/validation-all-the-way-down/), `provide()` rejects an applicant with no credit history. This direct spec supplies the score to `handle()` and doesn't exercise that rejection:
+From Arc for TypeScript, an early source preview whose packages aren't on npm yet:
 
 ```typescript
 @command()
