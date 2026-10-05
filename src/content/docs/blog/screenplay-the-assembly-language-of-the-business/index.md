@@ -25,7 +25,7 @@ That's what [Screenplay](https://cratis.io/screenplay/) is for, and over the las
 
 ## A quick recap of what Screenplay is
 
-Screenplay is a small, indentation-based language for writing down an event model: modules and features, slices, commands, events, read models, screens, policies, personas and the specifications that say what should happen. It lives in `.play` files next to your code, it has a compiler with stable diagnostic codes, and it prints back to the same text it read. Like the rest of the Cratis model-first layer, it's experimental and in early development, so expect it to keep moving.
+Screenplay is a small, indentation-based language for writing down an event model: modules and features, slices, commands, events, read models, screens, policies, personas and the specifications that say what should happen. It lives in `.play` files next to your code, it has a compiler with stable diagnostic codes, and it prints back to the same text it read. It's young, so expect it to keep moving.
 
 This is a slice from the Library sample that ships with Screenplay:
 
@@ -205,7 +205,7 @@ Which is also why so much of the last couple of weeks went into the language its
 
 ## Wrapping up
 
-I've spent most of my career building platforms for developers, and the one thing I've always wanted is for the model the business talks about and the code we ship to be the *same thing*. Not two things we try to keep in sync. Screenplay is not there yet, it's experimental and there are still things the board can't draw. But for the first time I can point at a single format that people, AI assistants, Studio and our C# code all write, and that VS Code, an MCP host, a running Arc application and the CLI all read and draw the same way.
+I've spent most of my career building platforms for developers, and the one thing I've always wanted is for the model the business talks about and the code we ship to be the *same thing*. Not two things we try to keep in sync. Screenplay is not there yet, and there are still things the board can't draw. But for the first time I can point at a single format that people, AI assistants, Studio and our C# code all write, and that VS Code, an MCP host, a running Arc application and the CLI all read and draw the same way.
 
 If you want to give it a go:
 
