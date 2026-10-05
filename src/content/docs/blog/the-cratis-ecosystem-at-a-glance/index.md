@@ -2,7 +2,7 @@
 title: The Cratis ecosystem at a glance
 date: 2026-08-28
 authors: cratis-team
-excerpt: What Cratis is, what Chronicle covers, and how Arc, Components, the CLI, Workbench, and the experimental model-first layer fit together — all open source and MIT licensed.
+excerpt: What Cratis is, what Chronicle covers, and how Arc, Components, the CLI, Workbench, and the model-first layer fit together — all open source and MIT licensed.
 tags:
   - ecosystem
 ---
@@ -25,12 +25,12 @@ Chronicle's kernel runs on Microsoft Orleans and exposes a language-agnostic gRP
 - **[CLI](https://cratis.io/cli/)** — terminal workflows for inspecting and diagnosing Chronicle: events, observers, projections, read models, and failed partitions.
 - **[Workbench](https://cratis.io/chronicle/workbench/development/)** — the web-based inspection surface for Chronicle event stores.
 
-## The model-first layer (experimental)
+## The model-first layer
 
-Cratis also includes an experimental model-first layer, currently in early development:
+Cratis also includes a model-first layer, parts of which are experimental and currently in early development:
 
-- **[Studio](https://cratis.io/studio/)** — the collaborative environment for designing, visualizing, and editing Screenplay event models (experimental).
-- **[Screenplay](https://cratis.io/screenplay/)** — a model-first language for event-sourced, CQRS systems — commands, events, projections — rendered by Stage into an Arc + Chronicle application (experimental).
+- **[Studio](https://cratis.io/studio/)** — the collaborative environment for designing, visualizing, and editing Screenplay event models (live, in beta).
+- **[Screenplay](https://cratis.io/screenplay/)** — a model-first language for event-sourced, CQRS systems — commands, events, projections — rendered by Stage into an Arc + Chronicle application.
 - **Stage** — renders Screenplay models into reviewable Arc + Chronicle applications (experimental).
 - **Scene** — describing a user interface without describing a platform: the UI model of the model-first layer (experimental).
 - **[Prologue](https://cratis.io/prologue/)** — captures existing system behavior (SQL Server CDC, Postgres logical replication, HTTP, OTLP) into event models for the model-first layer (experimental).
