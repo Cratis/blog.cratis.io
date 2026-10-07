@@ -2,7 +2,7 @@
 title: "From zero to first projection with an AI assistant"
 date: 2026-09-10
 authors: einar
-excerpt: The zero-to-first-projection walkthrough again — same store, same domain, same destination — but this time Claude Code does the typing, using the official .NET templates and the Cratis AI `cratis/application` profile installed with `cratis ai install`, with Arc commands carrying the full loop. Every step was executed against the versions it names.
+excerpt: The zero-to-first-projection walkthrough again — same store, same domain, same destination — but this time Claude Code does the typing, using the official .NET templates and the Cratis AI `cratis/application/csharp` profile installed with the Cratis CLI, with Arc commands carrying the full loop.
 tags:
   - chronicle
   - ai
@@ -10,33 +10,35 @@ tags:
 
 A few weeks ago we published [a walkthrough](/event-sourcing-in-dotnet-with-chronicle/) that scaffolded a full-stack Cratis application from the official .NET templates and built a small library feature by hand: three events, a read model, a React page. This post runs the same journey again with one difference — a human writes one short prompt, and [Claude Code](https://claude.com/claude-code) does the typing.
 
-Like that walkthrough, this is .NET development: the slices here are C# on ASP.NET Core, with [Arc](https://cratis.io/arc/) carrying commands and queries and Chronicle carrying the event log. And this time we start from the official .NET templates rather than an empty folder, because the interesting question is not whether an assistant can write C# — it is whether it can write *your* conventions. [Cratis AI](https://cratis.io/ai/) closes that gap from two sides: skills that teach the assistant how to build, and operating tools that let it inspect a live store. This post uses both, and everything below was executed as written:
+Like that walkthrough, this is .NET development: the slices here are C# on ASP.NET Core, with [Arc](https://cratis.io/arc/) carrying commands and queries and Chronicle carrying the event log. And this time we start from the official .NET templates rather than an empty folder, because the interesting question is not whether an assistant can write C# — it is whether it can write *your* conventions. [Cratis AI](https://cratis.io/ai/) closes that gap from two sides: skills that teach the assistant how to build, and operating tools that let it inspect a live store. This post uses both:
 
 | Piece | Version |
 | --- | --- |
-| Claude Code | 2.1.220, with skills configured by `cratis ai install` (profile `cratis/application`) |
-| [Cratis.Templates](https://github.com/Cratis/Templates) | 1.2.0 — scaffolds with Arc 22.13.1 and Chronicle 18.1.0 |
-| Chronicle kernel container | `cratis/chronicle:18.1.0-development`, digest `sha256:71b70f7abb62cfbaeb30a08f8ffe7896731e381d89614ddfa67a51aff3c80fdf` (Chronicle Server 18.1.0.0) |
-| Chronicle MCP server | `cratis/chronicle-mcp:1.2.0`, digest `sha256:32eae68fe2310e44b7d7ead97004873985689c86c3c0b2c077eac7c8e1fd546c` |
-| [Cratis CLI](https://cratis.io/cli/getting-started/) | 3.1.6 (Homebrew) |
-| .NET SDK | 10.0.400 (`net10.0` target) |
+| Claude Code | 2.1.274, with skills configured by `cratis ai update` (profile `cratis/application/csharp`) |
+| [Cratis.Templates](https://github.com/Cratis/Templates) | 1.7.3 |
+| `Cratis` and `Cratis.Arc.MongoDB` NuGet packages (Arc) | 22.51.0 — brings the Chronicle client for .NET 19.31.2 |
+| `@cratis/arc`, `@cratis/arc.react`, `@cratis/arc.vite` npm packages | 22.51.0 |
+| `@cratis/components` npm package | 4.26.1 |
+| Chronicle container | `cratis/chronicle:19.33.3-development`, digest `sha256:9eab36c7ff1aa77d9fa10cea778d7ca38541e91e7f4a56074354e4cb3a3d4015` (Chronicle Server 19.33.3.0) |
+| Chronicle MCP server | `cratis/chronicle-mcp:1.4.0`, digest `sha256:0aebbb8be2d0d48982f38f8de4ff787e2769273b5d0227d9c8d1f50996b60b23` |
+| [Cratis CLI](https://cratis.io/cli/getting-started/) | 3.29.0 (Homebrew) |
+| .NET SDK | 10.0.401 (`net10.0` target) |
+| Yarn | 4.18.1 |
 
 ## 1. Install the skills and the templates
 
-The skills are passive markdown — a `SKILL.md` your assistant loads when a task matches, plus rules for the conventions that are always on. The [Cratis CLI](https://cratis.io/cli/getting-started/) is the most reliable way to get them into a project, because it resolves the corpus once and configures every harness you name from the same source. [Profiles](https://cratis.io/ai/profiles/) pick the product guidance a repository needs — this is a full Arc-plus-Chronicle application with a React frontend, so the profile that matches is `cratis/application`, not the narrower `cratis/chronicle` and `cratis/arc` pair on their own:
+The skills are passive markdown — a `SKILL.md` your assistant loads when a task matches, plus rules for the conventions that are always on. The [Cratis CLI](https://cratis.io/cli/getting-started/) is the most reliable way to get them into a project, because it resolves the corpus once and configures every harness you name from the same source. [Profiles](https://cratis.io/ai/profiles/) pick the product guidance a repository needs — this is a full Arc-plus-Chronicle application with a React frontend, so the profile that matches is `cratis/application/csharp`, not the narrower `cratis/chronicle` and `cratis/arc` pair on their own.
 
-```shell
-cratis ai install --harnesses claude --profiles cratis/application --languages csharp,typescript
-```
+The template already makes that choice for you: it ships a `.cratis/ai.json` selecting `cratis/application/csharp` for C# and TypeScript, with adapters for Claude Code and five other harnesses. So once the project exists, installing the skills is one command inside it, `cratis ai update`, which you will run in step 2.
 
-That writes the resolved rules and skills into `.cratis/ai`, wires Claude Code's `.claude` folder to it, and records hashes so a later `cratis ai update` only touches what actually changed. Run it without flags and it prompts for harnesses, profiles, and languages instead. Choosing `cratis/application` over the pair is what actually pulls in the frontend skills — `cratis-arc-react-page`, the Components styling and dialog skills, and `cratis-application-react-specifications` — the ones this post's React proxies and dialogs rely on.
+It writes the resolved rules and skills into `.cratis/ai`, wires Claude Code's `.claude` folder to it, and records hashes in `.cratis/ai.manifest.json` so a later `cratis ai update` only touches what actually changed. In a repository without that selection, `cratis ai install --harnesses claude --profiles cratis/application/csharp --languages csharp,typescript` makes the same choice for Claude Code alone; run it without flags and it prompts for harnesses, profiles, and languages instead. Choosing `cratis/application/csharp` over the pair is what actually pulls in the frontend skills — `cratis-arc-react-page`, `cratis-components-styling`, and `cratis-application-react-specifications`, plus the dialog rules — the ones this post's React proxies and dialogs rely on.
 
-> Prefer a single harness with no CLI in the loop? The native path still works: `/plugin marketplace add Cratis/AI` → `/plugin install cratis@cratis` for Claude Code, the equivalent `plugin marketplace`/`plugin install` pair for Codex and Copilot, Cursor's committed marketplace manifest, or `pi install -l npm:@cratis/pi` for Pi. It is the quicker on-ramp for one developer, one tool — see the [agent harness guide](https://cratis.io/ai/harnesses/) for the exact command per host. `cratis ai install` is what this post uses because it is the one command that stays correct across every harness on a team.
+> Prefer a single harness with no CLI in the loop? The native path still works: `/plugin marketplace add Cratis/AI` → `/plugin install cratis@cratis` for Claude Code, the equivalent `plugin marketplace`/`plugin install` pair for Codex and Copilot, Cursor's committed marketplace manifest, or `pi install -l npm:@cratis/pi` for Pi. It is the quicker on-ramp for one developer, one tool — see the [agent harness guide](https://cratis.io/ai/harnesses/) for the exact command per host. The CLI is what this post uses because it is the one tool that stays correct across every harness on a team.
 
 The templates are an ordinary NuGet package — the [Cratis.Templates repository](https://github.com/Cratis/Templates) documents every template it ships, this post uses the full-stack `cratis` one:
 
 ```shell
-dotnet new install Cratis.Templates
+dotnet new install Cratis.Templates@1.7.3
 ```
 
 ## 2. Scaffold the application
@@ -48,14 +50,34 @@ dotnet new cratis -n Library
 cd Library
 ```
 
-The template ships a sample feature with two slices, a `docker-compose.yml` that starts a local Chronicle development container (MongoDB bundled), and a build that compiles clean — zero warnings under the Cratis analyzers — with the TypeScript proxies regenerated on every build:
+Answer yes when `dotnet new` asks to run `yarn install`. The template adds the newest `Cratis` packages at the moment you scaffold and lists its npm packages as version ranges, so pin them — and the SDK — to the versions in the table above:
+
+```shell
+dotnet new globaljson --sdk-version 10.0.401
+dotnet add package Cratis --version 22.51.0
+dotnet add package Cratis.Arc.MongoDB --version 22.51.0
+corepack use yarn@4.18.1
+yarn add @cratis/arc@22.51.0 @cratis/arc.react@22.51.0 @cratis/arc.vite@22.51.0 @cratis/components@4.26.1
+```
+
+`corepack use` records Yarn 4.18.1 in `package.json` and installs the frontend dependencies with it, which also covers an older Yarn 4 on which the template's own `yarn install` fails. Then install the skills the template selected:
+
+```shell
+cratis ai update
+```
+
+The template ships a sample feature with two slices, a `docker-compose.yml` that starts a local Chronicle development container (MongoDB bundled), and a build that compiles clean — zero warnings under the Cratis analyzers — with the TypeScript proxies regenerated on every build. The compose file follows the moving `latest-development` tag, so pin the `chronicle` service's `image:` line in `docker-compose.yml` first:
+
+```yaml
+    image: cratis/chronicle:19.33.3-development@sha256:9eab36c7ff1aa77d9fa10cea778d7ca38541e91e7f4a56074354e4cb3a3d4015
+```
 
 ```shell
 docker compose up -d
 dotnet build
 ```
 
-The sample `SomeModule/SomeFeature` is there to be learned from and then replaced. That replacement is the assistant's job.
+The sample `SomeModule/SomeFeature` is there to be learned from and then replaced. That replacement is the assistant's job. Replacing it also means deleting `LibraryDbContext.cs`: with MongoDB, that file holds nothing but a `using` of the sample's namespace, so the build fails once the sample is gone.
 
 ## 3. One prompt, a few slices
 
@@ -108,60 +130,72 @@ public record Book(
     BorrowerName? BorrowedBy)
 ```
 
-Because the routes are generated from the slices, the full loop needs nothing but curl — add, borrow, and return a book over HTTP:
+Because the routes are generated from the slices, the full loop needs nothing but curl — with the app running (`dotnet run`, on `http://localhost:5000`), add, borrow, and return a book over HTTP:
 
 ```bash
 curl -X POST http://localhost:5000/api/books/add-book \
   -H "Content-Type: application/json" \
   -d '{"title":"The Hobbit","author":"J.R.R. Tolkien"}'
-# → {"isSuccess":true, "response":"60e1a0c1-…"}
+# → {"response":"5df009bb-…","correlationId":"…","isSuccess":true,…}
 
 curl -X POST http://localhost:5000/api/books/borrow-book \
   -H "Content-Type: application/json" \
-  -d '{"id":"60e1a0c1-…","borrower":"Frodo Baggins"}'
-# → {"isSuccess":true}
+  -d '{"id":"5df009bb-…","borrower":"Frodo Baggins"}'
+# → {"correlationId":"…","isSuccess":true,…}
 
 curl -X POST http://localhost:5000/api/books/return-book \
   -H "Content-Type: application/json" \
-  -d '{"id":"60e1a0c1-…"}'
-# → {"isSuccess":true}
+  -d '{"id":"5df009bb-…"}'
+# → {"correlationId":"…","isSuccess":true,…}
 ```
 
-After the borrow, the read model holds `borrowedBy: "Frodo Baggins"`; after the return, it is `null` again. Three events in the log, one read model that always agrees with them, and every request in between handled by the conventions the template put in place.
+After the borrow, the read model — a document in the `books` collection of the `Library` database, in the Chronicle container's bundled MongoDB — holds `borrowedBy: 'Frodo Baggins'`; after the return, it is `null` again. Three events in the log, one read model that always agrees with them, and every request in between handled by the conventions the template put in place.
 
-The prompt asked for slices, not just a backend, and the assistant treated the React side as part of the same slice rather than a separate task. The build had already regenerated typed TypeScript proxies for `AddBook`, `BorrowBook`, `ReturnBook`, and the `AllBooks` query the moment the C# compiled — `Books/AddBook.ts`, `Books/BorrowBook.ts`, `Books/ReturnBook.ts`, `Books/Book.ts`, all marked **DO NOT EDIT**, regenerated on every build. The assistant wrote one file against those proxies: a `Books` page with a dialog per command and a live data table for the query, using the same Components primitives the sample feature demonstrates:
+The prompt asked for slices, not just a backend, and the assistant treated the React side as part of the same slice rather than a separate task. The build had already regenerated typed TypeScript proxies for `AddBook`, `BorrowBook`, `ReturnBook`, and the `AllBooks` query the moment the C# compiled — `Books/AddBook.ts`, `Books/BorrowBook.ts`, `Books/ReturnBook.ts`, `Books/Book.ts`, all marked **DO NOT EDIT**, regenerated on every build. The assistant wrote one file against those proxies: a `Books` page with a dialog per command and a live data table for the query, using the same Components primitives the sample feature demonstrates — `CommandDialog` and `DataPage`:
 
 ```tsx
 const AddBookDialog = () => (
-    <CommandDialog<AddBook>
+    <CommandDialog
         command={AddBook}
-        title="Add book"
-        okLabel="Add"
-        cancelLabel="Cancel">
-        <InputTextField<AddBook> value={c => c.title} title="Title" />
-        <InputTextField<AddBook> value={c => c.author} title="Author" />
+        title='Add book'
+        okLabel='Add'
+        cancelLabel='Cancel'>
+        <InputTextField<AddBook> value={c => c.title} title='Title' />
+        <InputTextField<AddBook> value={c => c.author} title='Author' />
     </CommandDialog>
 );
 
 export const Books = () => {
+    const [selected, setSelected] = useState<Book | null>(null);
     const [AddDialog, showAddDialog] = useDialog(AddBookDialog);
-    // ...BorrowDialog and ReturnDialog follow the same shape
+    // ...BorrowDialog and ReturnDialog follow the same shape, seeded with the selected book's id
 
     return (
-        <div className="p-4">
-            <Button label="Add book" icon="pi pi-plus" onClick={() => showAddDialog()} />
-            <DataTableForObservableQuery query={AllBooks} dataKey="id" emptyMessage="No books added yet.">
-                <Column field="title" header="Title" />
-                <Column field="author" header="Author" />
-                <Column field="borrowedBy" header="Borrowed by" />
-            </DataTableForObservableQuery>
+        <>
+            <DataPage
+                title='Books'
+                query={AllBooks}
+                dataKey='id'
+                emptyMessage='No books added yet.'
+                selection={selected}
+                onSelectionChange={e => setSelected(e.value)}>
+                <DataPage.MenuItems>
+                    <MenuItem icon={MdAdd} label='Add' command={() => { void showAddDialog(); }} />
+                    {/* ...Borrow and Return menu items, disableOnUnselected */}
+                </DataPage.MenuItems>
+                <DataPage.Columns>
+                    <Column field='title' header='Title' />
+                    <Column field='author' header='Author' />
+                    <Column field='borrowedBy' header='Borrowed by' />
+                </DataPage.Columns>
+            </DataPage>
             <AddDialog />
-        </div>
+        </>
     );
 };
 ```
 
-`CommandDialog` wires form fields straight to the generated `AddBook` proxy's properties — `c.title`, `c.author` — so a typo in a field name is a compile error, not a runtime surprise. `DataTableForObservableQuery` subscribes to `AllBooks` over the same WebSocket the generated query proxy opens, so the table updates the moment a projection writes a new state — no polling, no manual refetch after a command succeeds. That is the full power of the stack, exercised entirely through one assistant-written feature: backend slice, generated contract, and UI, all from the same prompt.
+`CommandDialog` wires form fields straight to the generated `AddBook` proxy's properties — `c.title`, `c.author` — so a typo in a field name is a compile error, not a runtime surprise. `DataPage` picks the observable table for `AllBooks` and subscribes over the same WebSocket the generated query proxy opens, so the table updates the moment a projection writes a new state — no polling, no manual refetch after a command succeeds. That is the full power of the stack, exercised entirely through one assistant-written feature: backend slice, generated contract, and UI, all from the same prompt.
 
 ## 4. Teach the assistant your store
 
@@ -171,7 +205,7 @@ Building is half the loop. The other half is operating what you built, and Crati
 cratis init
 ```
 
-One command, and the project gains `CHRONICLE.md` — the CLI's whole command catalog in the assistant's context — plus instruction files and a `chronicle-diagnose` slash command for the tools it detects. After a CLI upgrade, `cratis init --refresh` re-captures the catalog.
+One command, and the project gains `CHRONICLE.md` — the CLI's reference and operating guide — plus a `chronicle-cli` command carrying the full command catalog and a `chronicle-diagnose` command for Claude Code, with matching prompts for the other tools it detects. Instruction files that already resolve into the managed `.cratis/ai` corpus, such as `CLAUDE.md`, are left to `cratis ai update`. After a CLI upgrade, `cratis init --refresh` re-captures the catalog.
 
 ## 5. Ask the store questions
 
@@ -179,45 +213,45 @@ The second operating tool is the [Chronicle MCP server](https://cratis.io/chroni
 
 ```shell
 claude mcp add chronicle -s project \
-  -e Cratis__Chronicle__Mcp__ConnectionString="chronicle://chronicle-dev-client:chronicle-dev-secret@host.docker.internal:35000" \
-  -- docker run -i --rm cratis/chronicle-mcp:1.2.0
+  -- docker run -i --rm \
+  -e Cratis__Chronicle__Mcp__ConnectionString=chronicle://chronicle-dev-client:chronicle-dev-secret@host.docker.internal:35000 \
+  cratis/chronicle-mcp:1.4.0@sha256:0aebbb8be2d0d48982f38f8de4ff787e2769273b5d0227d9c8d1f50996b60b23
 ```
 
-Then, in plain language: *"how many event stores are there, and what is the current state of the book with id `60e1a0c1-…` — on the shelf or borrowed, and by whom?"*
+The connection string goes to `docker run -e`, after the `--`, so it reaches the container; Claude Code's own `-e` would only set it for the `docker` command.
 
-What happened next was the most interesting part of the whole exercise. With only the MCP server connected, the assistant **declined to call it** — the `cratis-chronicle-mcp-inspection` skill it carries gates MCP tooling behind verified evidence, and on this version combination the gate is closed. Governed skills that refuse rather than improvise are exactly what they are supposed to be.
+Then, in plain language: *"how many event stores are there, and what is the current state of the book with id `5df009bb-…` — on the shelf or borrowed, and by whom?"*
 
-After `cratis init` gave the project the CLI catalog, the same question got a complete answer through the CLI — lightly abridged from the actual reply:
+What happened next was the most interesting part of the whole exercise. With only the MCP server connected, the assistant **declined to call it** — the `cratis-chronicle-mcp-inspection` skill it carried gates MCP tooling behind verified evidence, and the gate is closed: the skill is classification-only and admits no Chronicle MCP tool until upstream tool-effect evidence exists. That skill ships in the `cratis/chronicle/mcp` profile, not in `cratis/application/csharp`, so add that profile to `.cratis/ai.json` and run `cratis ai update` if you want the same guardrail. Governed skills that refuse rather than improvise are exactly what they are supposed to be.
 
-> Three event stores: System, Library, default.
->
-> The book `60e1a0c1-…` is **on the shelf**. From `cratis chronicle read-models get "Library.Books.Book" …`: the instance holds only `id`, `title`, `author` — no borrower. The observer `Library.Books.Book` is Active, has handled both events, 0 failed partitions.
+After `cratis init` gave the project the CLI catalog, the same question got a complete answer through the CLI. `cratis chronicle event-stores list` reports two event stores, `System` and `Library`. `cratis chronicle read-models get "Library.Books.Book" <id> --event-store Library` returns an instance holding only `id`, `title`, and `author` — no borrower, so the book is **on the shelf**. `cratis chronicle observers list --event-store Library` shows the `Library.Books.Book` projection as Active, and `cratis chronicle failed-partitions list --event-store Library` comes back empty.
 
 The assistant read the read model, checked the observer's health, and interpreted the state *against the source model it had written itself* — `BorrowedBy` absent means returned or never borrowed. It is also a fair demo of how these tools relate: the MCP server and the CLI are operate-and-inspect tools — they read the log, watch observers, and manage jobs — while changes to application state still go through commands and events. History stays honest.
 
 ## Other harnesses, same guidance
 
-Nothing above is Claude-specific except the `--harnesses claude` flag. `cratis ai install` resolves the identical corpus for every harness it supports, so a team never sees two tools disagree on the conventions:
+Nothing above is Claude-specific except the `claude mcp add` registration. `cratis ai install` resolves the identical corpus for every harness it supports, so a team never sees two tools disagree on the conventions:
 
 ```shell
 cratis ai install \
   --harnesses claude,codex,copilot,cursor,opencode,pi \
-  --profiles cratis/application \
+  --profiles cratis/application/csharp \
   --languages csharp,typescript
 ```
 
-One run configures `.claude`, `AGENTS.md` plus `.agents/skills` for Codex, `.github` for Copilot, `.cursor`, `.opencode`, and `AGENTS.md` plus `.pi` for Pi — all pointed back at the same `.cratis/ai`. Kiro, Junie, and Gemini CLI are pending per-host review. The `cratis init` step from the previous section writes instruction files for Claude Code, GitHub Copilot, Cursor, Windsurf, and Pi, so the operating half is harness-agnostic too.
+That is exactly the selection the template's `.cratis/ai.json` already records, which is why the `cratis ai update` in step 2 configured all of them at once. One run configures `.claude`, `AGENTS.md` plus `.agents/skills` for Codex, `.github` for Copilot, `.cursor`, `.opencode`, and `AGENTS.md` plus `.pi` for Pi — all pointed back at the same `.cratis/ai`. The `cratis init` step from the previous section configures Claude Code, GitHub Copilot, Cursor, Windsurf, and Pi, so the operating half is harness-agnostic too.
 
 > The native, plugin-per-harness path from the note above is still there if a repository only ever uses one tool — it just doesn't give you the shared `.cratis/ai` corpus, the multi-harness configuration in one command, or `cratis ai update`/`uninstall`'s hash-protected lifecycle.
 
 ## Teams and multiple harnesses
 
-A solo developer with one tool can stop reading here — `cratis ai install` (or the native plugin, for a single harness) and the templates alone are the whole setup. For a repository shared by people *and* tools, the [team scenario](https://cratis.io/ai/scenarios/team-repository/) commits the same four things one selection produces: `.cratis/ai.json` (the chosen harnesses, profiles, and languages), the resolved `.cratis/ai/` corpus, `.cratis/ai.manifest.json` (which files are Cratis-managed and their installed hashes), and the harness adapters — symlinks or settings references — that point every tool back at that one corpus:
+A solo developer with one tool can stop reading here — the templates and the Cratis CLI (or the native plugin, for a single harness) alone are the whole setup. For a repository shared by people *and* tools, the [team scenario](https://cratis.io/ai/scenarios/team-repository/) commits the same four things one selection produces: `.cratis/ai.json` (the chosen harnesses, profiles, and languages), the resolved `.cratis/ai/` corpus, `.cratis/ai.manifest.json` (which files are Cratis-managed and their installed hashes), and the harness adapters — symlinks or settings references — that point every tool back at that one corpus:
 
 ```json
 {
-    "harnesses": ["claude", "codex", "copilot", "pi"],
-    "profiles": ["cratis/application"],
+    "schemaVersion": "1.0",
+    "harnesses": ["claude", "codex", "copilot", "cursor", "opencode", "pi"],
+    "profiles": ["cratis/application/csharp"],
     "languages": ["csharp", "typescript"]
 }
 ```
@@ -242,11 +276,11 @@ yarn dev
 <Route path='/books' element={<Books />} />
 ```
 
-The dev-server proxy forwards `/api` and `/.cratis` to the backend on port 5000, so the generated `AddBook`, `BorrowBook`, and `ReturnBook` proxies work exactly as they will in production, and the `AllBooks` table's WebSocket subscription updates live as commands succeed — add a book and it appears in the table with no refresh, borrow it and `Borrowed by` fills in immediately. The template's own `README.md` documents the same two commands for the sample feature; nothing about running it changed by replacing that feature with `Books` — only the route moved from the template's `/demo` to `/books`.
+The dev-server proxy forwards `/api` and `/.cratis` to the backend on port 5000, so the generated `AddBook`, `BorrowBook`, and `ReturnBook` proxies work exactly as they will in production, and the `AllBooks` table's WebSocket subscription updates live as commands succeed — add a book and it appears in the table with no refresh, select it and borrow it and `Borrowed by` fills in immediately. The template's own `README.md` documents the same two commands for the sample feature; nothing about running it changed by replacing that feature with `Books` — only the route moved from the template's `/demo` to `/books`.
 
 ## Status, plainly
 
-Every piece in this post is installable and runnable today, and everything above was executed against the pinned versions. Build with it, push on it, and tell us what breaks — that openness to feedback is deliberate, and it is how the workflow gets better.
+Every piece in this post is installable and runnable today. Build with it, push on it, and tell us what breaks — that openness to feedback is deliberate, and it is how the workflow gets better.
 
 ## Clean up and where to go next
 

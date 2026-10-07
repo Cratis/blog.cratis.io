@@ -13,7 +13,7 @@ tags:
 
 *[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 17 of 26*
 
-`cratis chronicle diagnose` exits nonzero when the server is unreachable or when a failed partition exists. An observer that's far behind the tail leaves the exit code at zero, and that's deliberate.
+`cratis chronicle diagnose` exits nonzero when the server is unreachable, when a failed partition or a quarantined observer exists, or when a check couldn't run. An observer that's far behind the tail leaves the exit code at zero, and that's deliberate.
 
 The Cratis [CLI](https://cratis.io/cli/) inspects and diagnoses Chronicle from a terminal, full-screen workbench included, and it also hosts `cratis new`, `cratis ai`, `cratis screenplay` and `cratis render`.
 
@@ -33,7 +33,7 @@ Completion asks the running server. `cratis completions install` sets it up for 
 
 ## When a view stops updating
 
-We built the CLI so you can ask the running system instead of comparing sequence numbers by hand. Start with [`diagnose`](https://cratis.io/cli/chronicle/diagnose/). Run against a bookshop store (the sample is from an older server), it prints this:
+We built the CLI so you can ask the running system instead of comparing sequence numbers by hand. Start with [`diagnose`](https://cratis.io/cli/chronicle/diagnose/). Against a bookshop store, it prints this:
 
 ```text
 ❯ cratis chronicle diagnose
@@ -42,20 +42,22 @@ We built the CLI so you can ask the running system instead of comparing sequence
   server:      chronicle://chronicle-dev-client:***@localhost:35100/
   event store: Bookshop  /  Default
 
-  ✓  Connection            connected
-  ✓  Server version        16.7.0
-  ✓  Event stores          2 stores: System, Bookshop
-  ✓  Observers             9 active
-  ✗  Failed partitions     1 need attention  → cratis chronicle failed-partitions list
-  ✓  Recommendations       none
-  ✓  Event sequence        tail: 22
+  ✓  Connection             connected
+  ✓  Server version         19.33.3
+  ✓  Event stores           2 stores: System, Bookshop
+  ✓  Observers              9 active  0 quarantined
+  ✓  Quarantined observers  0 quarantined (known count)
+  ✗  Failed partitions      1 need attention  → cratis chronicle failed-partitions list
+  ✓  Recommendations        none
+  ✓  Event sequence         tail: 22
+  !  Bookshop/Default: Failed partition: BookInventory/9780134757599
 
   ✗ Issues detected — review items above
 ```
 
-![Terminal output of cratis chronicle diagnose against the Authors event store. Connection, server version 19.23.1, event stores and observers pass. The failed partitions row reports 1 needing attention and names the command cratis chronicle failed-partitions list. The exit code printed below is 3.](./cli-10-diagnose.png)
+![Terminal output of cratis chronicle diagnose against the Authors event store. Connection, server version, event stores and observers pass. The failed partitions row reports 1 needing attention and names the command cratis chronicle failed-partitions list. The exit code printed below is 3.](./cli-10-diagnose.png)
 
-*The same summary from a current server, with the author feature's store. The exit code is 3 while a partition has failed.*
+*The terminal view of a diagnose run against the author feature's store. The exit code is 3 while a partition has failed.*
 
 The failing row names the next command, and `diagnose` exits nonzero when failed partitions exist, so it works as a check in a script too. [`failed-partitions show`](https://cratis.io/cli/chronicle/failed-partitions/) then gives the exception and a short stack trace for each attempt, shown here trimmed:
 
@@ -82,7 +84,7 @@ Behind that is Chronicle's failure model. When one partition fails, it stops and
 cratis chronicle observers retry-partition Bookshop.OverdueNotices 978-0131177055 -y
 ```
 
-A quarantined partition refuses an ordinary retry, as [*Year two*](/four-changes-in-year-two/) explains. A quarantined observer also blocks retries, and the CLI exits nonzero with a suggestion when the kernel refuses. Even a success only says the retry started, so run `diagnose` again.
+A quarantined partition refuses an ordinary retry until `observers clear-partition-quarantine` releases it, as [*Year two*](/four-changes-in-year-two/) explains. A quarantined observer also blocks retries, and the CLI exits nonzero with a suggestion when the kernel refuses. Even a success only says the retry started, so run `diagnose` again.
 
 Retry the partition before you replay anything. `observers replay` is the bigger hammer. It reprocesses the observer from sequence zero and rebuilds its read model, and on a large store that takes time and costs something.
 
@@ -131,9 +133,9 @@ cratis chronicle failed-partitions show <OBSERVER_ID> <PARTITION> --detailed
 cratis chronicle observers retry-partition <OBSERVER_ID> <PARTITION>
 ```
 
-[*Inside Chronicle*](/inside-chronicle/) explains failure kinds, retry defaults and quarantine thresholds. `failed-partitions show` in CLI 3.21.0 prints the messages and stack trace, not the kind. [*Workbench*](/chronicle-workbench/) shows the same failed partitions from the browser.
+[*Inside Chronicle*](/inside-chronicle/) explains failure kinds, retry defaults and quarantine thresholds. `failed-partitions show` in CLI 3.29.0 prints the messages and stack trace, not the kind. [*Workbench*](/chronicle-workbench/) shows the same failed partitions from the browser.
 
-A quarantined observer needs `observers clear-quarantine`, or Clear quarantine on the browser Workbench's Observers page. The terminal workbench has no key for it.
+A quarantined observer needs `observers clear-quarantine`, or Clear quarantine on the browser Workbench's Observers page. A quarantined partition needs `observers clear-partition-quarantine`, which resets its retry budget and by default starts a retry. The terminal workbench has no key for either.
 
 When the partition's state is wrong and not merely stuck, `observers replay-partition` discards that partition's state and rebuilds it, and leaves every other partition alone. It's the step between one retry and a full replay.
 
@@ -191,17 +193,33 @@ For anything automated, pick the format with `-o` and pin the CLI version the sc
 
 ## A command catalog for agents
 
-Once the feature runs, an assistant that helps operate it needs to know which of its actions change anything. [`cratis llm-context`](https://cratis.io/cli/reference/llm-context/) prints the CLI's command catalog as JSON, and every command states its effect, `read-only`, `local`, `mutating` or `destructive`, and whether it requires confirmation. An agent can tell observing commands from state-changing ones without keeping its own list. [`cratis init`](https://cratis.io/cli/getting-started/) writes that catalog into context files for the tools you use, and you refresh it after upgrading. When the CLI recognizes it's running under an agent tool, it defaults to compact JSON. Only the effect and confirmation fields are meant to stay stable between versions, so pin the CLI version if you rely on anything else.
+Once the feature runs, an assistant that helps operate it needs to know which of its actions change anything. [`cratis llm-context`](https://cratis.io/cli/reference/llm-context/) prints the CLI's command catalog as JSON, and every command states its effect, `read-only`, `local`, `mutating` or `destructive`, and whether it requires confirmation. An agent can tell observing commands from state-changing ones without keeping its own list.
+
+An entry for a destructive command looks like this:
+
+```json
+{
+  "name": "remove",
+  "description": "Removes a user from the Chronicle server. Destructive — prompts for confirmation unless --yes is specified.",
+  "effect": "destructive",
+  "requiresConfirmation": true,
+  "arguments": [
+    { "name": "<USER_ID>", "type": "guid", "description": "The unique identifier of the user to remove (positional)" }
+  ]
+}
+```
+
+[`cratis init`](https://cratis.io/cli/getting-started/) writes that catalog into context files for the tools you use, and you refresh it after upgrading. When the CLI recognizes it's running under an agent tool, it defaults to compact JSON. Only the effect and confirmation fields are meant to stay stable between versions, so pin the CLI version if you rely on anything else.
 
 ![A diagram titled What a command does, four rows stacked from top to bottom, each naming an effect and an example: read-only, diagnose and failed-partitions show; local, context set; mutating, retry-partition; destructive, observers replay. Arrows from the first two rows lead to a bracket reading Observes or stays local. Arrows from the last two lead to a bracket reading Changes the server.](./cli-effects-for-agents.png)
 
 *The catalog marks each command's effect, so an agent can tell observing from changing.*
 
-Besides the effects, the catalog lists every group, command, argument and option, with connection details and guidance on output formats. An `effect` is the strongest change a command can make, and an option such as `--dry-run` can lower it for one run but never raise it. The Chronicle commands in CLI 3.21.0 carry these effects:
+Besides the effects, the catalog lists every group, command, argument and option, with connection details and guidance on output formats. An `effect` is the strongest change a command can make, and an option such as `--dry-run` can lower it for one run but never raise it. The Chronicle commands in CLI 3.29.0 carry these effects:
 
 | Group | `read-only` | `mutating` | `destructive` |
 | --- | --- | --- | --- |
-| `observers` | `list`, `show` | `retry-partition`, `clear-quarantine` | `replay`, `replay-partition`, `remove` |
+| `observers` | `list`, `show` | `retry-partition`, `clear-quarantine`, `clear-partition-quarantine` | `replay`, `replay-partition`, `remove` |
 | `failed-partitions` | `list`, `show` | | |
 | `jobs` | `list`, `get` | `stop`, `resume` | |
 | `recommendations` | `list` | `ignore` | `perform` |
@@ -219,6 +237,13 @@ The label informs an agent, and it enforces nothing. An agent that can run `crat
 ## cratis ai and the other groups
 
 `cratis ai` installs the [Cratis AI corpus](https://cratis.io/ai/), rules, skills, agents, prompts and hooks for building with Cratis, into a repository. The corpus is still in preview. It goes into `.cratis/ai/` once, and each supported assistant (Claude Code, Codex, Copilot, Cursor, OpenCode and pi) gets a thin adapter that links back to that one copy. The selection is recorded in `.cratis/ai.json` and the installed files in a manifest with hashes. `cratis ai install` runs once per repository, `cratis ai update` re-synchronizes the recorded choice after that, and `cratis ai uninstall` removes the managed content you haven't changed.
+
+```bash
+cratis ai install      # choose what this repository needs, and install it
+cratis ai update       # re-synchronize the choice already recorded
+cratis ai status       # what is configured, installed, available, and locally modified
+cratis ai uninstall    # remove unchanged Cratis-managed content
+```
 
 The profile is the choice that matters. `cratis/application/*` is for building an application on Cratis, and `cratis/engineering/*` is for working on a Cratis framework repository itself. `install` and `update` never touch a file you own, and they leave a managed file you've edited alone unless you pass `--force`. `cratis ai status` exits nonzero when managed files were modified locally, which makes it usable as a CI check. [Getting started](https://cratis.io/ai/getting-started/) has the full selection.
 

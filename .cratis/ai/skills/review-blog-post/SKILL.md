@@ -32,6 +32,8 @@ For each gap, identify where the reader gets stuck and a concrete change that wo
 
 - One primary reader and one central question, with an outcome the article actually delivers.
 - The title and excerpt match the body. Flag missing explanations with a specific reader consequence, not a mandatory structure. A small example may resolve the gap without rewriting the post.
+- A mechanism with a code shape that the post explains but does not show (a reducer described only in prose, an attribute named but never applied) is a finding: the reader should see the code, sourced from the published documentation.
+- Post text that says how the post was checked or sourced ("adapted from the docs' example", "not run here") is a finding; that evidence belongs in the pull request.
 - Tutorials explain why the code works, show observable checkpoints, and distinguish demo shortcuts from production responsibilities.
 - Comparisons apply equivalent criteria at equivalent product boundaries. Give competitors their relevant strengths; do not compare one library against the entire Cratis ecosystem or claim absence because a landing page omits a feature.
 - Ecosystem tours explain what each product contributes; a concise product overview is a valid format. Do not require every tour to become a worked application tutorial or an argument for adopting fewer products.
@@ -68,7 +70,7 @@ For each gap, identify where the reader gets stuck and a concrete change that wo
 - The byline matches `write-blog-post`: einar is personal and story-driven; sindre is precise and evidence-led; cratis-team is plain and direct.
 - No fabricated anecdotes or test experience, including under `cratis-team`. Changing the byline does not legitimize invented experience.
 - The `authors` key exists in `src/data/authors.mjs`.
-- Titles, excerpts, and general explanations use unversioned product names. Exact versions belong in reproducible setup and tested-environment notes, not product introductions or "latest stable when revised" asides. Allow version-specific prose only when explaining a release-specific behavior or migration; retain release-pinned evidence links. Verify the demonstrated stack is current separately from this prose check.
+- Titles, excerpts, and general explanations use unversioned product names. Exact versions belong in reproducible setup and a versions note (not a claim about how the post was tested), not product introductions or "latest stable when revised" asides. Allow version-specific prose only when explaining a release-specific behavior or migration; retain release-pinned evidence links. Verify the demonstrated stack is current separately from this prose check.
 - Preserve the original thesis, opening, tone, rhythm, and recognizable phrasing unless a requested change or a verified defect requires an edit. Do not replace an industry observation with a generic prescription, or confident writing with repetitive caveats. A phrase is not a defect just because it would not appear in your own draft.
 - Every rewrite hunk has a concrete justification. Technical fixes do not authorize new framing, scenarios, titles, or conclusions. If the central argument cannot survive a necessary factual correction, flag that conflict for the author rather than silently choosing a new one.
 

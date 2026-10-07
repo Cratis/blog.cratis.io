@@ -359,6 +359,118 @@ A reactor can see the same event more than once in two different situations, and
 
 The first is a replay. You rewind the observer, or a redaction or a revision rewinds the affected partition. [`[OnceOnly]`](https://cratis.io/chronicle/reactors/once-only/) on a method skips that handler for events that arrive as part of a replay, and on the class it makes the whole reactor non-replayable. [`[Replay]`](https://cratis.io/chronicle/reactors/replay/) on a second handler for the same event type makes that handler the only one that runs during a replay, for when a replay should do something different instead of nothing. Without a replay handler, the normal handler runs again unless replay is excluded.
 
+A handler pair looks like this:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.Reactors;
+
+[EventType]
+public record ReplayAwareOrderPlaced(string OrderId);
+
+public class ReplayAwareOrderReactor : IReactor
+{
+    public void SendConfirmation(ReplayAwareOrderPlaced @event)
+    {
+        // Runs as the event happens.
+    }
+
+    [Replay]
+    public void RebuildProjectionCache(ReplayAwareOrderPlaced @event)
+    {
+        // Runs instead of SendConfirmation while the observer is replaying.
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import io.cratis.chronicle.events.EventType
+import io.cratis.chronicle.observation.Reactor
+import io.cratis.chronicle.observation.Replay
+
+@EventType
+data class ReplayAwareOrderPlaced(val orderId: String)
+
+@Reactor
+class ReplayAwareOrderReactor {
+    fun sendConfirmation(event: ReplayAwareOrderPlaced) {
+        // Runs as the event happens.
+    }
+
+    @Replay
+    fun rebuildProjectionCache(event: ReplayAwareOrderPlaced) {
+        // Runs instead of sendConfirmation while the observer is replaying.
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+import io.cratis.chronicle.events.EventType;
+import io.cratis.chronicle.observation.Reactor;
+import io.cratis.chronicle.observation.Replay;
+
+@EventType
+record ReplayAwareOrderPlaced(String orderId) {}
+
+@Reactor
+class ReplayAwareOrderReactor {
+    void sendConfirmation(ReplayAwareOrderPlaced event) {
+        // Runs as the event happens.
+    }
+
+    @Replay
+    void rebuildProjectionCache(ReplayAwareOrderPlaced event) {
+        // Runs instead of sendConfirmation while the observer is replaying.
+    }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { eventType, reactor, replay } from '@cratis/chronicle';
+import { field } from '@cratis/fundamentals';
+
+@eventType()
+class ReplayAwareOrderPlaced {
+    @field(String) readonly orderId: string;
+
+    constructor(orderId: string = '') {
+        this.orderId = orderId;
+    }
+}
+
+@reactor()
+class ReplayAwareOrderReactor {
+    replayAwareOrderPlaced(event: ReplayAwareOrderPlaced): void {
+        // Runs as the event happens.
+    }
+
+    @replay()
+    replayReplayAwareOrderPlaced(event: ReplayAwareOrderPlaced): void {
+        // Runs instead of replayAwareOrderPlaced during replay.
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+Elixir does not support this workflow yet.
+
+</TabItem>
+</Tabs>
+
 The second is recovery after a failure. The partition paused, and recovery delivers the event again as an ordinary observation, so neither `[OnceOnly]` nor `[Replay]` applies. If the handler charged the card before it threw, the retry charges it again.
 
 For that case the .NET client has [delivery identity](https://cratis.io/chronicle/reactors/delivery-identity/). Declare a `ReactorDelivery` parameter and Chronicle passes in a stable identity for this delivery of this event to this reactor. `delivery.Id` is built from six values Chronicle already has: the reactor id, the event store, the namespace, the event sequence, the partition and the event's sequence number. The same delivery gets the same id on a replay and on a partition recovery. Keep a receipt under that id, check it before the side effect and write it after:
@@ -676,6 +788,46 @@ end
 </Tabs>
 
 Without the builder callback it forwards every event type your client knows. With the implicit form, you put `[EventStore("service-name")]` on the event types in a contracts package such as `Authors.Events.Contracts`, and Chronicle routes an observer to the inbox when every type it handles belongs to that store. Reactors, projections and reducers read from `EventSequenceId.Inbox`, and the SDK routes that to the inbox for the right source.
+
+The attribute goes on each contract event type:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+using Cratis.Chronicle.Events;
+
+[EventType]
+[EventStore("fulfillment-service")]
+public record SubscriptionsImplicitShipmentDispatched(Guid OrderId, string TrackingNumber);
+
+[EventType]
+[EventStore("fulfillment-service")]
+public record SubscriptionsImplicitShipmentFailed(Guid OrderId, string Reason);
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+Kotlin does not support this workflow yet.
+
+</TabItem>
+<TabItem label="Java">
+
+Java does not support this workflow yet.
+
+</TabItem>
+<TabItem label="TypeScript">
+
+TypeScript does not support this workflow yet.
+
+</TabItem>
+<TabItem label="Elixir">
+
+Elixir does not support this workflow yet.
+
+</TabItem>
+</Tabs>
 
 Personal data travels with its subject. The subject and its encryption key identity are preserved, and the key is copied into the target store unless that subject was erased there. A forwarded event carrying a `[PII]` value for an erased subject can't be appended in the target until someone authorizes a new key with `AllowNewEncryptionKeyFor`, and until then that event source's partition fails while the rest of the subscription keeps flowing ([compliance and PII in subscriptions](https://cratis.io/chronicle/subscriptions/compliance-and-pii/)). [*Personal data in an event log*](/personal-data-in-an-event-log/) follows that key further.
 

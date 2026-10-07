@@ -14,7 +14,7 @@ tags:
 
 *[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 21 of 26*
 
-A Screenplay model in which one event declares two generations passes `cratis screenplay validate`. Hand the same model to `cratis render`, and it reports `STAGE-ESM-016`, explains it with `CLI-RENDER-003`, and publishes nothing. The model is valid, and the renderer can't turn it into code faithfully, so it doesn't turn it into code at all.
+A Screenplay model in which one event declares two generations passes `cratis screenplay validate`. Hand the same model to `cratis render`, and it reports `STAGE-ESM-026`, names the event and its revision, and publishes nothing. The model is valid, and the renderer can't turn it into code faithfully, so it doesn't turn it into code at all.
 
 [Stage](https://github.com/Cratis/Stage) is the experimental part of the Cratis modeling layer that takes a compiled model somewhere. It renders the part of the model it supports into a C# application on Arc and Chronicle, boots a disposable sandbox, and runs the model's Given/When/Then examples. [Scene](https://github.com/Cratis/Scene), also experimental, describes a user interface without describing a platform, and it's how a `screen` in the model reaches React. Both are in early development.
 
@@ -47,7 +47,7 @@ cratis render ./plays \
 
 `cratis render` publishes new files only after the model compiles, binds to an executable model, is admitted for execution, plans for the target and passes artifact validation. If an earlier publication was interrupted, it recovers that first. The output is deterministic, down to a manifest that records the model's semantic revision and the hash of every file. It refuses to overwrite a generated file you've edited unless you pass `--force`, and it never overwrites a file it didn't generate, with or without `--force`. It runs no Git command. `--name` sets the application's identity, while `--project-name` and `--root-namespace` change only how it's rendered.
 
-`cratis` is the only target that ships, and the [renderer-target guide](https://cratis.io/screenplay/stage/guides/build-renderer-target/) describes how another one would be built. A plan for a whole application holds the generated C# for concepts, commands, events, projections and specifications, a frontend shell, and eight backend scaffold files. With cli 3.21.0, an author model renders to this, scaffold files marked:
+`cratis` is the only target that ships, and the [renderer-target guide](https://cratis.io/screenplay/stage/guides/build-renderer-target/) describes how another one would be built. A plan for a whole application holds the generated C# for concepts, commands, events, projections and specifications, a frontend shell, and eight backend scaffold files. An author model renders to this, scaffold files marked:
 
 ```text
 out/
@@ -89,7 +89,7 @@ out/
 └── tsconfig.json
 ```
 
-Stage 4.22.1 renders for .NET 10 and pins Arc 22.25.0 and Chronicle 19.8.1, with Components 4.14.0, Scene 4.2.0 and Fundamentals 7.19.6 for the frontend. cli 3.21.0 renders with, and `cratis run` starts, Stage 4.20.0, which has the same pins. The specification runner described below is the 4.22.1 image, which you pull by tag. Those versions belong to those Stage releases, and they say nothing about which other versions work.
+Stage 4.24.3 renders for .NET 10 and pins Arc 22.25.0 and Chronicle 19.8.1, with Components 4.14.0, Scene 4.2.0 and Fundamentals 7.19.6 for the frontend. cli 3.29.0 renders with, and `cratis run` starts, Stage 4.24.2, which has the same pins. The specification runner described below is the 4.24.3 image, which you pull by tag. Those versions belong to those Stage releases, and they say nothing about which other versions work.
 
 The generated code follows the model closely. A command implements `ICanProvideEventSourceId` from the property the model marks as `identifier`, its event is appended through the value `Handle()` returns, and the generated acceptance specs check both the event source ID and the payload.
 
@@ -97,11 +97,11 @@ The generated code follows the model closely. A command implements `ICanProvideE
 
 The `cratis` target covers a narrow backend vertical. It admits concepts and composite types, one command-to-event production path with `not empty` validation, the event with its mappings, a one-instance projection, an optional by-key query over a snapshot, and the model's specifications. Anything reachable outside that is a blocking diagnostic. The renderer doesn't leave behavior out, and it doesn't generate TODOs.
 
-The refusals have codes. An event with more than one declared generation gets `STAGE-ESM-016`. Code validations, named rule predicates and code validations on concepts get `STAGE-ESM-005`, because Arc doesn't give a generated validator the received-at time in `RuleContext.Occurred`. A guarded production gets `STAGE-ESM-006`. Through `cratis render`, bodied reducers and opaque policies are refused as well, for now.
+The refusals have codes. An event with more than one declared generation gets `STAGE-ESM-026`. Code validations, named rule predicates and code validations on concepts get `STAGE-ESM-005`, because Arc doesn't give a generated validator the received-at time in `RuleContext.Occurred`. A guarded production gets `STAGE-ESM-006`. Through `cratis render`, opaque policies are refused as well, and so is a bodied reducer unless its body passes Stage's pure-code check (`STAGE-ESM-019`).
 
 The renderer also admits declarative unique constraints, rendered as named Chronicle constraints, and policies whose expression requires a signed-in caller. The author feature's unique name and its sign-in rule are both inside. A policy that checks only a role or claim, or one written as code, gets `STAGE-ESM-015`. For that vertical you stop typing the concepts, command, event, constraint, policy, projection, query and specs by hand, and everything outside it is still code somebody writes.
 
-![A diagram titled The refusal gate. A .play file leads down to the first gate, validate: source is valid, which belongs to Screenplay. It leads to the second gate, plan: backend admitted, which belongs to Stage. From the second gate, an arrow labeled published leads to a manifest with a SHA-256 per file, and an arrow labeled refused leads down to a red box that reads nothing published and lists STAGE-ESM-016, STAGE-ESM-005 and STAGE-ESM-006.](./refusal-gate.png)
+![A diagram titled The refusal gate. A .play file leads down to the first gate, validate: source is valid, which belongs to Screenplay. It leads to the second gate, plan: backend admitted, which belongs to Stage. From the second gate, an arrow labeled published leads to a manifest with a SHA-256 per file, and an arrow labeled refused leads down to a red box that reads nothing published and lists STAGE-ESM-026, STAGE-ESM-005 and STAGE-ESM-006.](./refusal-gate.png)
 
 *Valid Screenplay is the first gate. The renderer adds its own, and a refusal publishes nothing.*
 
@@ -138,7 +138,7 @@ That makes the folder a seam for agents too. Code written by hand, by a person o
 
 ## A sandbox to poke at
 
-[`cratis run`](https://cratis.io/cli/reference/run/) starts the model before anyone renders it. It needs Docker, mounts the file or folder read-only, and starts the `cratis/stage` image, pulled on first use at the Stage version the CLI renders with, 4.20.0 for cli 3.21.0:
+[`cratis run`](https://cratis.io/cli/reference/run/) starts the model before anyone renders it. It needs Docker, mounts the file or folder read-only, and starts the `cratis/stage` image, pulled on first use at the Stage version the CLI renders with, 4.24.2 for cli 3.29.0:
 
 ```text
 cratis run [PATH]
@@ -158,7 +158,14 @@ Calling a command appends the events its `produces` block maps to Chronicle and 
 
 ## Running the model's examples
 
-The specification runner is for a build pipeline. It compiles the model, checks its specifications and writes a results file, and it starts no server and needs no event store. Exit code 0 means the run completed and the file was written. A failing specification still completes the run, so a pipeline has to read the outcomes.
+The specification runner is for a build pipeline. It compiles the model, checks its specifications and writes a results file, and it starts no server and needs no event store. Exit code 0 means the run completed and the file was written. A failing specification still completes the run, so a pipeline has to read the outcomes:
+
+```bash
+docker run --rm \
+    -v /path/to/screenplays:/model:ro \
+    -v /path/to/results:/output \
+    cratis/stage-specrunner:4.24.3
+```
 
 The model-first Library model in [Cratis Samples](https://cratis.io/samples/) has a specification of this kind:
 

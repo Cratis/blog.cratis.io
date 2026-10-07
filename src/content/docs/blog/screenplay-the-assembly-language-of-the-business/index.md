@@ -94,7 +94,7 @@ createRoot(document.getElementById('root')!).render(
 );
 ```
 
-That's the snippet I ran in a throwaway Vite app to take the screenshot below, with `@cratis/event-models` and `@cratis/scene` at `0.117.3` and `@cratis/components` at `4.25.0`. The JSON it reads is the board model of a small library application, which I'll get to in a moment.
+The JSON it reads is the board model of a small library application, which I'll get to in a moment.
 
 ![The Cratis event model board rendered by the @cratis/event-models package in a plain web page. A Lending module holds Catalog and Loans features with the slices AddBook, Books, BooksOnLoan, BorrowBook and ReturnBook, each showing its command or read model above the event it produces or consumes.](./event-models-package.png)
 
@@ -145,8 +145,6 @@ The board then shows the application as the sketch would leave it, with a **Curr
 
 *A sketch of a Reservations feature drawn over the Library sample. Nothing is written to disk.*
 
-To be honest about how I took that one: I didn't screenshot Claude Desktop. The capture is the actual `ui://` view served by `cratis screenplay mcp` (Screenplay 4.60.1, as bundled in Cratis CLI 3.27.0), rendered in a minimal MCP Apps host I put together with the official `@modelcontextprotocol/ext-apps` bridge, so I could drive it from a script. The sketch it draws is a real `.play` document. I compiled it together with the sample with `cratis screenplay validate` first, and the server's own summary of it read *"which would have 10 slice(s), 6 event(s), 0 error(s)"*.
-
 This changes the conversation with an assistant quite a bit. Instead of reading a wall of generated text and trying to imagine what it does to the model, you *look* at what it would do, before anything is written. And since the board is the same board you'd see in Studio or VS Code, there's nothing new to learn.
 
 ![A still of the Proposed view of the Reservations sketch on the MCP board, with the new ReserveBook and ReservationQueue slices at the right of the Lending module.](./mcp-sketch-proposed.png)
@@ -155,9 +153,9 @@ This changes the conversation with an assistant quite a bit. Instead of reading 
 
 Now for the other direction. Everything so far is about a Screenplay someone, or something, wrote. But what about the code you already have?
 
-In [Arc](https://cratis.io/arc/), we've added `Cratis.Arc.Screenplay.Embedded`. During compilation it analyzes your commands, events, read models, projections and reactors, generates Screenplay documents from them, one for the assembly and one per module and feature, and embeds them in your assembly. Generation errors fail the build rather than embedding something the Screenplay compiler would reject. The `Cratis` metapackage includes it, and `UseCratis()` maps a read-only explorer at `/.cratis/event-model/` for a Debug-built application. You don't have to do anything.
+In [Arc](https://cratis.io/arc/), we've added `Cratis.Arc.Screenplay.Embedded`. During compilation it analyzes your commands, events, read models, projections and reactors, generates Screenplay documents from them, one for the assembly and one per module and feature, and embeds them in your assembly. Generation errors fail the build rather than embedding something the Screenplay compiler would reject. The `Cratis` metapackage includes it, and `UseCratis()` maps a read-only explorer at `/.cratis/event-model/` for a Debug-built application running in Development. You don't have to do anything.
 
-I verified that with a fresh application from the template (`dotnet new cratis`, `Cratis` 22.50.3), where I replaced the sample feature with a small library (adding books, borrowing and returning them, registering members and a reactor welcoming them), ran it with `dotnet run`, and opened the explorer.
+Here's the explorer in a fresh application from the template (`dotnet new cratis`), where I replaced the sample feature with a small library (adding books, borrowing and returning them, registering members and a reactor welcoming them) and ran it with `dotnet run`.
 
 ![The embedded event model explorer at /.cratis/event-model/ in a running Arc application. A sidebar lists the Library assembly, the Lending module and the Catalog, Loans and Members features. The Members board shows RegisterMember producing MemberRegistered and a WelcomeMembers automation reacting to it. The View menu is open with detail level, properties and visualization options. Warnings at the top list what the board cannot show.](./arc-embedded-explorer.png)
 
@@ -169,7 +167,15 @@ This is source-derived documentation, not a view of live data. It shows what you
 
 The board is honest about what it can't draw. See those warnings at the top? The analysis found things a board card can't express, like a reaction whose body is code, or property mappings on a produced event, and instead of quietly dropping them it tells you. The **Source** tab always gives you the full generated Screenplay.
 
-And debug detection isn't authorization. The explorer exposes your application's structure, so the [docs](https://cratis.io/arc/backend/csharp/embedded-event-model/) cover turning it off or putting a policy on it if a debug build is reachable by anyone but you.
+And being a Debug build in Development isn't authorization. The explorer exposes your application's structure, so the [docs](https://cratis.io/arc/backend/csharp/embedded-event-model/) cover turning it off or putting a policy on it if that instance is reachable by anyone but you. Turning it off is one line, and a policy goes on the route group:
+
+```csharp
+builder.Services.AddCratisEventModelViewer(options => options.Enabled = false);
+```
+
+```csharp
+app.MapCratisEventModel().RequireAuthorization("Developers");
+```
 
 One thing I ran into while writing this: a project that pulls in `Microsoft.CodeAnalysis.Analyzers` transitively can hit an MSBuild target cycle with the embedded generation in Debug ([Arc#2979](https://github.com/Cratis/Arc/issues/2979)). Our own Library showcase in the Samples repository turns the generation off for that reason until it's fixed. The template app doesn't have the problem.
 
@@ -189,7 +195,7 @@ If the built assembly embeds Screenplay documents, those are what you see. If it
 
 ![The Source tab of cratis view, showing the generated Screenplay for the library application with syntax highlighting: the Library domain, its concepts, the Lending module and its Catalog and Loans features.](./cratis-view-source.png)
 
-*The same application through `cratis view` (Cratis CLI 3.27.0), without starting it. Board on top, the generated Screenplay below.*
+*The same application through `cratis view`, without starting it. Board on top, the generated Screenplay below.*
 
 That last screenshot is the one I keep coming back to. That's C# code, compiled down to the business's assembly language, and then drawn as an event model. It's ILDASM for your domain.
 
@@ -214,7 +220,3 @@ If you want to give it a go:
 - Connect the [Screenplay MCP server](https://cratis.io/screenplay/mcp/install/) to Claude Desktop or Copilot in VS Code, and ask it to show you the board.
 
 And if you build something that reads or writes Screenplay, I'd love to hear about it. That's kind of the whole point.
-
----
-
-*Tested with: .NET SDK 10.0.400, Cratis CLI 3.27.0 (bundling Screenplay 4.60.1), the `cratis.screenplay` VS Code extension 4.62.1, `Cratis` 22.50.3 from `Cratis.Templates`, and `@cratis/event-models` 0.117.3, on October 5, 2026.*

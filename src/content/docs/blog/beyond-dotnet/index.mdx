@@ -23,7 +23,7 @@ That's one line in a table of differences, and it matters the day a second team 
 
 Not every team is on .NET, and not every service in one system should have to be. Arc's [HTTP contract](https://cratis.io/arc/http-contract/) is shared across three server implementations, and each generates TypeScript proxies for the frontend, though each has gaps of its own.
 
-On the JVM, [Arc for Kotlin](https://cratis.io/arc/backend/kotlin/) is a Spring Boot implementation for Kotlin and Java, published to Maven Central. This command and its event come from its Chronicle Spring Boot sample, trimmed and with the id and title as concepts. The C# and TypeScript tabs have the same command, the TypeScript one from Arc for TypeScript's Chronicle guide:
+On the JVM, [Arc for Kotlin](https://cratis.io/arc/backend/kotlin/) is a Spring Boot implementation for Kotlin and Java, published to Maven Central. The same command and its event, in each language:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
@@ -122,7 +122,7 @@ Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
 
 The command returns the event, and Arc's Chronicle integration, which the sample uses, appends it to the event source named by `@CommandKey`. Arc for Kotlin also has validation, authorization, tenancy, observable queries and in-process command scenarios. It isn't at parity with .NET. Command operations and aggregates aren't in it, and it runs only on Spring Boot.
 
-The Node.js command is a decorated class, here from the source-only Tasks sample described in [*Arc for TypeScript, from source*](/beyond-dotnet/#arc-for-typescript-from-source):
+The Node.js command is a decorated class, as in the source-only Tasks sample described in [*Arc for TypeScript, from source*](/beyond-dotnet/#arc-for-typescript-from-source):
 
 ```typescript
 @command()
@@ -151,7 +151,7 @@ Two things are shared and everything else belongs to a language. The Chronicle k
 
 A command is a `@Command` class with a `handle()` method, and a query is a companion or static method on a `@ReadModel` type. KSP generates the handlers at compile time, so nothing is found by reflection when the application runs. Routes come from names, and `CreateTask` becomes `POST /api/create-task`. The package segments to leave out of a route are set twice, once in the Gradle plugin as `cratisArc.endpoints.segmentsToSkip` and once at runtime as `cratis.arc.endpoints.segments-to-skip-for-route`. If the two disagree, the starter refuses to start. [*Arc gotchas*](/arc-gotchas/) covers names doing the mapping on .NET. On the JVM, a mismatch is caught at startup.
 
-A query stays live by returning something that emits. In Kotlin that's a `Flow` or a `StateFlow`. In Java it's a JDK `Flow.Publisher` or Arc's `ObservableState<T>`, and with the optional `arc-rxjava3` artifact it can be an RxJava 3 `Observable`. The Kotlin and Java tabs follow the [observable queries guide](https://cratis.io/arc/backend/kotlin/guides/observable-queries/), the TypeScript tab follows Arc for TypeScript's guide to observable queries, and the C# tab is the same query for .NET. Like the guides, each keeps the tasks in one value for the whole process, not one per tenant:
+A query stays live by returning something that emits. In Kotlin that's a `Flow` or a `StateFlow`. In Java it's a JDK `Flow.Publisher` or Arc's `ObservableState<T>`, and with the optional `arc-rxjava3` artifact it can be an RxJava 3 `Observable`. The [observable queries guide](https://cratis.io/arc/backend/kotlin/guides/observable-queries/) covers the JVM side. Each of these keeps the tasks in one value for the whole process, not one per tenant:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
@@ -259,7 +259,7 @@ A successful append means the fact is stored. The read model catches up asynchro
 
 ## Chronicle in TypeScript
 
-`@cratis/chronicle` is on npm. Its artifacts are decorators, such as `@eventType` for an event and `@projection` or `@reducer` for a read model. An append goes from a `ChronicleClient` to an `EventStore` to its `EventLog`. The [appending example](https://cratis.io/chronicle/events/appending/), without its service wrapper and with `CustomerId` and `Money` in place of a string and a number:
+`@cratis/chronicle` is on npm. Its artifacts are decorators, such as `@eventType` for an event and `@projection` or `@reducer` for a read model. An append goes from a `ChronicleClient` to an `EventStore` to its `EventLog`. The [appending example](https://cratis.io/chronicle/events/appending/) looks like this:
 
 ```typescript
 @eventType()
@@ -304,7 +304,7 @@ case Chronicle.append(order_id, %MyApp.Events.OrderPlaced{
 end
 ```
 
-`Chronicle.append` returns `:ok` or `{:error, reason}`, so there's no sequence number to read back from a successful append. The client is a supervised child of your application, `{Chronicle.Client, connection_string: ..., event_store: ..., otp_app: ...}`. It connects and registers in the background with backoff, and until registration has finished, calls return `{:error, :not_connected}`. `Lifecycle.wait_until(..., :registered)` waits for it.
+`Chronicle.append` returns `:ok` or `{:error, reason}`, so there's no sequence number to read back from a successful append. The client is a supervised child of your application, `{Chronicle.Client, connection_string: ..., event_store: ..., otp_app: ...}`. It connects and registers in the background with backoff. Until the client has a channel, calls return `{:error, :not_connected}`, and registration finishes a little later. `Lifecycle.wait_until(..., :registered)` waits for it.
 
 The client needs Elixir 1.18 or later and a kernel with contracts 19.19 or later. The Mint gRPC adapter needs `enable_push: false`, among other caveats. TLS has the same default as in TypeScript. Version 3.5.0 had defects, so take 3.5.1 or later.
 
@@ -342,6 +342,161 @@ These are the [differences between the clients](https://cratis.io/chronicle/clie
 | `AllowNewEncryptionKeyFor` | Yes | No | Yes | No |
 | Reactors and replay | `[OnceOnly]`, `[Replay]` | `@OnceOnly`, `@Replay` | `@onceOnly()`, `@replay()` | Replayable, no once-only marker |
 | Delivery identity for reactors | `ReactorDelivery.Id` | Build your own key | Build your own key | Build your own key |
+
+An explicit [concurrency scope](https://cratis.io/chronicle/events/concurrency/) looks like this on each client:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.EventSequences;
+using Cratis.Chronicle.EventSequences.Concurrency;
+
+[EventType]
+public record ConcurrencyAccountOpened(string AccountName);
+
+public class ConcurrencyBankAccountService(IEventLog eventLog)
+{
+    public async Task OpenAccount(EventSourceId accountId, string accountName)
+    {
+        var concurrencyScope = new ConcurrencyScope(
+            SequenceNumber: 42,
+            EventSourceId: accountId);
+
+        await eventLog.Append(
+            accountId,
+            new ConcurrencyAccountOpened(accountName),
+            concurrencyScope: concurrencyScope);
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import io.cratis.chronicle.IEventStore
+import io.cratis.chronicle.eventSequences.AppendOptions
+import io.cratis.chronicle.eventSequences.EventSequenceNumber
+import io.cratis.chronicle.eventSequences.concurrency.ConcurrencyScopeBuilder
+import io.cratis.chronicle.events.EventType
+
+@EventType
+data class ConcurrencyStockReserved(val sku: String = "", val quantity: Int = 0)
+
+/**
+ * Appends only if the event source is still at the expected sequence number — the kernel
+ * rejects the append with a concurrency violation if another writer got there first.
+ */
+suspend fun reserveStockIfUnchanged(store: IEventStore, sku: String, expectedSequenceNumber: Long) {
+    val scope = ConcurrencyScopeBuilder()
+        .withSequenceNumber(EventSequenceNumber(expectedSequenceNumber))
+        .withEventSourceId()
+        .build()
+
+    val result = store.eventLog.append(sku, ConcurrencyStockReserved(sku, 1), AppendOptions(concurrencyScope = scope))
+    val violation = result.concurrencyViolation
+    if (!result.isSuccess && violation != null) {
+        println("Concurrency violation: expected ${violation.expectedSequenceNumber}, actual ${violation.actualSequenceNumber}")
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+import io.cratis.chronicle.EventStore;
+import io.cratis.chronicle.events.EventType;
+import io.cratis.chronicle.eventSequences.AppendOptions;
+import io.cratis.chronicle.eventSequences.AppendResult;
+import io.cratis.chronicle.eventSequences.concurrency.ConcurrencyScope;
+import io.cratis.chronicle.eventSequences.concurrency.ConcurrencyScopeBuilder;
+import io.cratis.chronicle.eventSequences.concurrency.ConcurrencyViolation;
+
+import io.cratis.chronicle.java.ConcurrencyScopeBuilderJavaBridge;
+import io.cratis.chronicle.java.EventLogJavaBridge;
+
+@EventType
+record ConcurrencyStockReserved(String sku, int quantity) {}
+
+class EventsConcurrencyBasic {
+    // Appends only if the event source is still at the expected sequence number — the kernel
+    // rejects the append with a concurrency violation if another writer got there first.
+    void reserveStockIfUnchanged(EventStore store, String sku, long expectedSequenceNumber) {
+        ConcurrencyScope scope = ConcurrencyScopeBuilderJavaBridge
+            .withSequenceNumber(new ConcurrencyScopeBuilder(), expectedSequenceNumber)
+            .withEventSourceId()
+            .build();
+
+        AppendResult result = EventLogJavaBridge.append(
+            store.getEventLog(), sku, new ConcurrencyStockReserved(sku, 1), new AppendOptions(null, scope));
+
+        ConcurrencyViolation violation = result.getConcurrencyViolation();
+        if (!result.isSuccess() && violation != null) {
+            System.out.println("Concurrency violation for event source: " + violation.getEventSourceId());
+        }
+    }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { eventType, IEventStore } from '@cratis/chronicle';
+import { field } from '@cratis/fundamentals';
+
+@eventType()
+class ConcurrencyAccountOpened {
+    @field(String) readonly accountName: string;
+
+    constructor(accountName: string) {
+        this.accountName = accountName;
+    }
+}
+
+class ConcurrencyBankAccountService {
+    constructor(private readonly store: IEventStore) {}
+
+    async openAccount(accountId: string, accountName: string): Promise<void> {
+        await this.store.eventLog.append(accountId, new ConcurrencyAccountOpened(accountName), {
+            concurrencyScope: {
+                sequenceNumber: 42n,
+                eventSourceId: true
+            }
+        });
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+```elixir
+defmodule MyApp.Events.ConcurrencyAccountOpened do
+  use Chronicle.Events.EventType, id: "concurrency-account-opened"
+
+  defstruct [:account_name]
+end
+
+defmodule MyApp.ConcurrencyBankAccountService do
+  alias Chronicle.Events.ConcurrencyScope
+  alias MyApp.Events.ConcurrencyAccountOpened
+
+  def open_account(account_id, account_name) do
+    scope = ConcurrencyScope.for_event_source(42)
+
+    Chronicle.append(account_id, %ConcurrencyAccountOpened{account_name: account_name},
+      concurrency_scope: scope
+    )
+  end
+end
+```
+
+</TabItem>
+</Tabs>
 
 An append that depends on an earlier read needs an explicit scope on every client. The .NET default only catches an append that lands between its own read of the tail and its write, and the first append into an empty scope isn't checked unless you opt in. Outside .NET, an append without a scope isn't checked at all. The subject row matters for [personal data](https://cratis.io/chronicle/concepts/subject/): outside .NET, pass the subject explicitly whenever it isn't the event source. [*Personal data in an event log*](/personal-data-in-an-event-log/) explains what the subject decides. A reactor that needs a stable key for its side effects has one on .NET, and elsewhere you build it from the event store, the namespace, the sequence, the reactor and the position, as [*Reacting to facts*](/reacting-to-facts/) describes. Seeding behaves differently per client as well, in what it targets and how it handles duplicates.
 

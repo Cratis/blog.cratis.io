@@ -62,7 +62,7 @@ Every .NET example targets .NET 10 (`net10.0`) and is verified with the current 
 
 This is an implementation rule, not a prose-branding rule:
 
-- Titles, excerpts and general explanations use plain product names — "Chronicle" and ".NET", not "Chronicle 18.1.5" and ".NET 10". Put exact versions in the setup commands and a short tested-environment note, and mention a version in prose only when a release-specific behavior is the subject.
+- Titles, excerpts and general explanations use plain product names — "Chronicle" and ".NET", not "Chronicle 18.1.5" and ".NET 10". Put exact versions in the setup commands and a short versions note (which versions the post uses, never how or when it was checked), and mention a version in prose only when a release-specific behavior is the subject.
 - Pin packages and SDK selection, and pin the container by digest in the command a reader actually runs. A digest in a table next to a moving tag is not a pin.
 - Check the running server's reported version against the baseline: packages and image variants can finish publishing at different times, and a mismatch is a failed verification, not a detail.
 - Distinguish Microsoft's .NET SDK from Chronicle's client SDK for .NET, and do not treat version currency as evidence that independently versioned pieces work together.

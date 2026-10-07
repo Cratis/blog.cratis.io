@@ -19,7 +19,7 @@ A C# record marked `[Command]` with a public `Handle()` method is enough for Arc
 
 Arc handles the author registration between the edge that knows who the user is and the event store that records what happened.
 
-![A diagram titled One feature, layer by layer. A frame labeled Tenant: Acme holds six numbered cards in two columns, each naming its product. 1 AuthProxy: sign-in and tenant, Tenant-ID header. 2 Arc: command, generated TypeScript proxy. 3 Chronicle: namespace, one per tenant, via Arc. 4 Chronicle: append, unique name checked, AuthorRegistered. 5 Chronicle: view, the Author read model, by projection. 6 Components: screen, React, aligned with Arc.](./one-feature-by-layer.png)
+![A diagram titled One feature, layer by layer. A frame labeled Tenant: Acme holds six numbered cards in two columns, each naming its product. 1 AuthProxy: sign-in and tenant, x-cratis-tenant-id. 2 Arc: command, generated TypeScript proxy. 3 Chronicle: namespace, one per tenant, via Arc. 4 Chronicle: append, unique name checked, AuthorRegistered. 5 Chronicle: view, the Author read model, by projection. 6 Components: screen, React, aligned with Arc.](./one-feature-by-layer.png)
 
 *The author feature, step by step, and the product that owns each step.*
 
@@ -324,7 +324,82 @@ Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
 
 When a command needs data loaded first, such as a read model or an answer from another service, `Provide()` loads it. It runs after the request has passed authorization and validation, whatever it returns is handed to `Handle()`, and it can also stop the command with a validation result.
 
-In .NET, what `Handle()` returns decides the response. `void` and `Task` give no response. A plain `T` or `Task<T>` becomes the response, unless a response handler claims it. A `Result<TSuccess, TError>` from `Cratis.Monads` is processed for whichever alternative is active. A tuple is split. Arc processes the values it has handlers for and allows at most one unhandled value, which becomes the response. In the command above, the Chronicle integration appends the event under the new `AuthorId`, and the id goes back to the caller as the response. Two unhandled values fail with `MultipleUnhandledTupleValues`. An arbitrary error record doesn't mark a command as failed on its own, and a returned `ValidationResult` does.
+A credit check before an assessment is the usual shape:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+[Command]
+public record AssessLoan(LoanId LoanId, ApplicantId Applicant)
+{
+    public CreditScore Provide(ICreditBureau bureau) => bureau.GetScore(Applicant);
+
+    public LoanAssessment Handle(CreditScore creditScore) => new(LoanId, creditScore);
+}
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+@Command
+data class AssessLoan(val loanId: LoanId, val applicant: ApplicantId) {
+    suspend fun provide(bureau: CreditBureau): CreditScore = bureau.score(applicant)
+
+    fun handle(creditScore: CreditScore): LoanAssessment = LoanAssessment(loanId, creditScore)
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+@Command
+public record AssessLoan(LoanId loanId, ApplicantId applicant) {
+    public CreditScore provide(CreditBureau bureau) {
+        return bureau.score(applicant);
+    }
+
+    public LoanAssessment handle(CreditScore creditScore) {
+        return new LoanAssessment(loanId, creditScore);
+    }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { field } from '@cratis/fundamentals';
+import { command, currentServices } from '@cratis/arc.core';
+
+@command()
+export class AssessLoan {
+    @field(LoanId) loanId!: LoanId;
+    @field(ApplicantId) applicant!: ApplicantId;
+
+    // provide() takes no parameters, so it resolves its services from the execution scope.
+    async provide(): Promise<CreditScore> {
+        const bureau = await currentServices().resolve(CreditBureau);
+        return bureau.scoreFor(this.applicant);
+    }
+
+    handle(creditScore: CreditScore): LoanAssessment {
+        return new LoanAssessment(this.loanId, creditScore);
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
+
+</TabItem>
+</Tabs>
+
+In .NET, what `Handle()` returns decides the response. `void` and `Task` give no response. A plain `T` or `Task<T>` becomes the response, unless a response handler claims it. A `Result<TSuccess, TError>` from `Cratis.Monads` is processed for whichever alternative is active. A tuple is split. Arc processes the values it has handlers for and allows at most one unhandled value, which becomes the response. In `RegisterNewAuthor` above, the Chronicle integration appends the event under the new `AuthorId`, and the id goes back to the caller as the response. Two unhandled values fail with `MultipleUnhandledTupleValues`. An arbitrary error record doesn't mark a command as failed on its own, and a returned `ValidationResult` does.
 
 ## The order is part of the contract
 
@@ -497,9 +572,9 @@ Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
 
 A role says what kind of caller someone is. It doesn't say which records are theirs. An account reader in that example can read every account. If each caller should only see their own, the query has to derive the owner from the authenticated principal and filter on it, and Arc has no universal mapping from a claim to an owner that could do it for you.
 
-Arc doesn't authenticate anyone either. The host establishes the principal, through ASP.NET authentication or an edge proxy such as AuthProxy, and Arc's attributes check it. Arc doesn't validate or modify the identity provider's token. An [identity details provider](https://cratis.io/arc/understanding-identity-and-access/) can compose application-specific details from the principal, and Arc registers `/.cratis/me` for the frontend only when such a provider exists. The `.cratis-identity` cookie that carries those details is unsigned and under the client's control. It's display data, and backend authorization must never rest on it.
+Arc doesn't authenticate anyone either. The host establishes the principal, through ASP.NET authentication or an edge proxy such as AuthProxy, and Arc's attributes check it. Arc doesn't validate or modify the identity provider's token. An [identity details provider](https://cratis.io/arc/understanding-identity-and-access/) can compose application-specific details from the principal, and in .NET Arc maps `/.cratis/me` for the frontend by default, with a default provider when you register none. Arc derives that identity from the authenticated request each time and in .NET no longer reads or writes the `.cratis-identity` cookie. It's display data, and backend authorization must never rest on it.
 
-Two more endpoints are open by default. `/.cratis/commands` and `/.cratis/queries` list every command and query with its route and schema, and on .NET they're anonymous unless you configure them otherwise.
+Two more endpoints are open in Development by default. `/.cratis/commands` and `/.cratis/queries` list every command and query with its route and schema, and on .NET they require an authenticated caller elsewhere unless you configure them otherwise. On the JVM they're always anonymous.
 
 A resolver, whether it reads a header, a query string, a claim or a subdomain, selects a tenant. It doesn't check that the caller belongs to it, and a header the caller controls isn't evidence of membership. [*Tenancy and identity end to end*](/tenancy-and-identity-end-to-end/) follows the tenant from the edge to the event store.
 

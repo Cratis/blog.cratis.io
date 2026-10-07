@@ -19,7 +19,7 @@ Change the projection behind the `Author` read model and deploy it, and Chronicl
 
 ## What runs as a job
 
-A job is long-running work the kernel does in the background, split into steps. These are the kinds it runs as of Chronicle 19.23.1:
+A job is long-running work the kernel does in the background, split into steps. These are the kinds it runs as of Chronicle 19.33.3:
 
 | Job | What it does |
 | --- | --- |
@@ -44,7 +44,7 @@ A job moves through `PreparingJob`, `PreparingSteps`, `StartingSteps` and `Runni
 
 The controls are stop and resume. Stopping keeps the job's progress, and resuming a stopped job continues where it left off. A job that ended as `Failed` doesn't resume.
 
-Stop and resume have two rules for replays. Resuming a replay needs the observer to be subscribed, so a replay you stopped can't continue while the application is down. And starting a replay deletes the observer's other jobs, so a stopped replay doesn't survive the next one.
+Stop and resume have two rules for replays. Resuming a replay needs the observer to be subscribed and not quarantined or disconnected, so a replay you stopped can't continue while the application is down. And starting a replay deletes the observer's other jobs, so a stopped replay doesn't survive the next one.
 
 The kernel cleans up after itself on a schedule. A job stuck in preparation with no steps is removed after an hour. Every 60 seconds a watchdog checks that running replay and catch-up jobs are still making progress, and an observer that stays stuck preparing a catch-up is quarantined after five recovery attempts.
 
@@ -70,7 +70,7 @@ In `chronicle.json` it goes at the top level:
 
 As an environment variable, it's `Cratis__Chronicle__Jobs__MaxParallelSteps=4`. Don't nest the section under `Cratis` and `Chronicle` inside `chronicle.json`. Chronicle already publishes that file under the `Cratis:Chronicle:` path, so a nested copy binds to the wrong path and is silently ignored.
 
-There's a second ceiling in the kernel's own code. The effective cap is the smaller of `MaxParallelSteps` and `Observers.MaxConcurrentPartitions`, which defaults to 32 and isn't in the configuration reference. On a machine with 34 or more cores the default stops tracking the processor count, and a configured value above 32 is capped at 32 as well.
+There's a second ceiling in the kernel's own code. The effective cap is the smaller of `MaxParallelSteps` and `Observers.MaxConcurrentPartitions`, which defaults to 32. On a machine with 34 or more cores the default stops tracking the processor count, and a configured value above 32 is capped at 32 as well, unless you raise `maxConcurrentPartitions` with it.
 
 For the author feature, that cap matters for reducers and reactors, whose replays are made of many small steps. A projection's replay is one step, so the cap doesn't speed it up.
 
@@ -94,7 +94,7 @@ The classification and `definitionEvolution` policy in [*From event to read mode
 { "observers": { "maxRetryAttempts": 10, "definitionEvolution": "PartialOnly" } }
 ```
 
-As of Chronicle 19.23.1, a recommendation is always a replay candidate. It's filed for a projection or reducer definition change the policy didn't apply, for a reactor or webhook definition change when `replayOnDefinitionChange` is off, and for a retired projection that wrote to the same container as the one replacing it. Performing a recommendation replays the observer server-side and removes the recommendation when the replay succeeds. Ignoring it drops it.
+As of Chronicle 19.33.3, a recommendation is always a replay candidate. It's filed for a projection or reducer definition change the policy didn't apply, for a reactor or webhook definition change when `replayOnDefinitionChange` is off, and for a retired projection that wrote to the same container as the one replacing it. Performing a recommendation replays the observer server-side and removes the recommendation when the replay succeeds. Ignoring it drops it.
 
 We'd set `PartialOnly` or `Manual` on a store where a full replay of a large projection is expensive, so that a deploy doesn't start one on its own and a person decides when it runs.
 
