@@ -259,7 +259,7 @@ The validation rules are written once, on the server, and the generator carries 
 
 A uniqueness check against a read model races. Two requests in the same second both look, both see no "Jane Austen", and both write.
 
-Chronicle checks [constraints](https://cratis.io/chronicle/constraints/), such as uniqueness, in the kernel when an event is appended, and rejects the append that would break one. A constraint is scoped to its event sequence and namespace, and with a namespace per tenant, the name is unique within each tenant, which is the rule the sticky note asked for. The declaration is one marker on the event's `Name`. This separate published example shows the attribute on the event, with its own `AuthorName` concept:
+Chronicle checks [constraints](https://cratis.io/chronicle/constraints/), such as uniqueness, in the kernel when an event is appended, and rejects the append that would break one. A constraint is scoped to its event sequence and namespace, and with a namespace per tenant, the name is unique within each tenant, which is the rule the sticky note asked for. The declaration is one marker on the event's `Name`. Declared on the event, the rule is one marker on its `Name`, with its own `AuthorName` concept:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
@@ -613,13 +613,15 @@ An observer that has stopped looks exactly like one with nothing to do. For the 
   server:      chronicle://chronicle-dev-client:***@localhost:35100/
   event store: Bookshop  /  Default
 
-  ✓  Connection            connected
-  ✓  Server version        16.7.0
-  ✓  Event stores          2 stores: System, Bookshop
-  ✓  Observers             9 active
-  ✗  Failed partitions     1 need attention  → cratis chronicle failed-partitions list
-  ✓  Recommendations       none
-  ✓  Event sequence        tail: 22
+  ✓  Connection             connected
+  ✓  Server version         16.7.0
+  ✓  Event stores           2 stores: System, Bookshop
+  ✓  Observers              9 active  0 quarantined
+  ✓  Quarantined observers  0 quarantined (known count)
+  ✗  Failed partitions      1 need attention  → cratis chronicle failed-partitions list
+  ✓  Recommendations        none
+  ✓  Event sequence         tail: 22
+  !  Bookshop/Default: Failed partition: BookInventory/9780134757599
 
   ✗ Issues detected — review items above
 ```

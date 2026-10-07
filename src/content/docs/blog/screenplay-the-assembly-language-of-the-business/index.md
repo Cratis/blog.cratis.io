@@ -223,4 +223,4 @@ And if you build something that reads or writes Screenplay, I'd love to hear abo
 
 ---
 
-*Versions: .NET SDK 10.0.400, Cratis CLI 3.27.0 (bundling Screenplay 4.60.1), the `cratis.screenplay` VS Code extension 4.62.1, `Cratis` 22.50.3 from `Cratis.Templates`, and `@cratis/event-models` 0.117.3.*
+*Versions: .NET SDK 10.0.400, Cratis CLI 3.27.0 (bundling Screenplay 4.60.1), the `cratis.screenplay` VS Code extension 4.62.1, `Cratis` 22.51.0 from `Cratis.Templates`, and `@cratis/event-models` 0.117.3.*

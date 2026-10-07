@@ -42,20 +42,22 @@ We built the CLI so you can ask the running system instead of comparing sequence
   server:      chronicle://chronicle-dev-client:***@localhost:35100/
   event store: Bookshop  /  Default
 
-  ✓  Connection            connected
-  ✓  Server version        16.7.0
-  ✓  Event stores          2 stores: System, Bookshop
-  ✓  Observers             9 active
-  ✗  Failed partitions     1 need attention  → cratis chronicle failed-partitions list
-  ✓  Recommendations       none
-  ✓  Event sequence        tail: 22
+  ✓  Connection             connected
+  ✓  Server version         16.7.0
+  ✓  Event stores           2 stores: System, Bookshop
+  ✓  Observers              9 active  0 quarantined
+  ✓  Quarantined observers  0 quarantined (known count)
+  ✗  Failed partitions      1 need attention  → cratis chronicle failed-partitions list
+  ✓  Recommendations        none
+  ✓  Event sequence         tail: 22
+  !  Bookshop/Default: Failed partition: BookInventory/9780134757599
 
   ✗ Issues detected — review items above
 ```
 
 ![Terminal output of cratis chronicle diagnose against the Authors event store. Connection, server version 19.23.1, event stores and observers pass. The failed partitions row reports 1 needing attention and names the command cratis chronicle failed-partitions list. The exit code printed below is 3.](./cli-10-diagnose.png)
 
-*The same summary from a current server, with the author feature's store. The exit code is 3 while a partition has failed.*
+*The same summary against the author feature's store, from a server running 19.23.1. The exit code is 3 while a partition has failed.*
 
 The failing row names the next command, and `diagnose` exits nonzero when failed partitions exist, so it works as a check in a script too. [`failed-partitions show`](https://cratis.io/cli/chronicle/failed-partitions/) then gives the exception and a short stack trace for each attempt, shown here trimmed:
 

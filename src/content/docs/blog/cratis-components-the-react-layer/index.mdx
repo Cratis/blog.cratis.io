@@ -130,14 +130,14 @@ The confirm button is focused when the dialog opens. With a required field the b
 
 ## When the name is taken
 
-A registration that reuses a taken name passes every client rule, so the rejection comes from the server, after **Register** is clicked. The template has no uniqueness rule. The author feature needs one, and in the template it's a Chronicle [constraint](https://cratis.io/chronicle/constraints/) on the event, `[property: Unique(message: "That name is already registered.")]` on the `Name` of the `Registered` record. [*Rules that hold when you write*](/rules-that-hold-when-you-write/) explains why the check has to live at the append. A rule that spans more than one event type goes in a class that implements `IConstraint`, the [declarative form](https://cratis.io/chronicle/constraints/declarative/), where the constraint takes the class name unless `WithName` gives it another. The attribute form looks like this, in a published example with its own message:
+A registration that reuses a taken name passes every client rule, so the rejection comes from the server, after **Register** is clicked. The template has no uniqueness rule. The author feature needs one, and in the template it's a Chronicle [constraint](https://cratis.io/chronicle/constraints/) on the event, `[property: Unique(message: "That name is already registered.")]` on the `Name` of the `Registered` record. [*Rules that hold when you write*](/rules-that-hold-when-you-write/) explains why the check has to live at the append. A rule that spans more than one event type goes in a class that implements `IConstraint`, the [declarative form](https://cratis.io/chronicle/constraints/declarative/), where the constraint takes the class name unless `WithName` gives it another. The attribute form looks like this, with its own message:
 
 ```csharp
 using Cratis.Chronicle.Events;
 using Cratis.Chronicle.Events.Constraints;
 
 [EventType]
-public record ConstraintsModelBoundUniqueMessageProjectCreated([property: Unique(message: "A project with this name already exists.")] string Name, string Description);
+public record ProjectCreated([property: Unique(message: "A project with this name already exists.")] string Name, string Description);
 ```
 
 With the same attribute on the template's `Registered` record, carrying the message "That name is already registered.", registering "Anselm Brackenridge" a second time through the template's dialog goes like this in .NET:

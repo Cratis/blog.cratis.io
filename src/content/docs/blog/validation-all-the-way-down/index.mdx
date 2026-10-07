@@ -275,19 +275,19 @@ The member is the string `applicant` in every tab, because that's the field name
 
 A rule about current state reads a read model, and Arc can [hand one](https://cratis.io/arc/backend/csharp/chronicle/read-models/injecting-into-commands/) to a validator, `Provide()` or `Handle()`, found by the command's key. What arrives is a snapshot. Another request can append between the read and the write, so two registrations of the same name can both read "not taken" and both pass. The uniqueness rule isn't a validator for that reason.
 
-In .NET, `[ProtectedDecision]` on a command changes what a `DecisionRead<T>` parameter in `Provide()` or `Handle()` means. The read is enrolled in the command's Chronicle unit of work, and if an event that would change it is appended for the same key before the command commits, the command fails with a `concurrencyViolation` result and appends nothing. Arc doesn't retry it. A command opts in with the attribute and reads through `DecisionRead<T>`, and its validator stays parameterless:
+In .NET, `[ProtectedDecision]` on a command changes what a `DecisionRead<T>` parameter in `Provide()` or `Handle()` means. The read is enrolled in the command's Chronicle unit of work, and if an event that would change it is appended for the same key before the command commits, the command fails with a `concurrencyViolation` result and appends nothing. Arc doesn't retry it. A command opts in with the attribute and reads through `DecisionRead<T>`, and its validator stays parameterless. Renaming a ledger shows the shape:
 
 ```csharp
 [Command]
 [ProtectedDecision]
-public record RenameAuthor(EventSourceId AuthorId, string Name)
+public record RenameLedger(EventSourceId LedgerId, string Name)
 {
-    public AuthorRenamed Handle(DecisionRead<Author> author) => new(Name);
+    public LedgerRenamed Handle(DecisionRead<LedgerBalance> balance) => new(Name);
 }
 
-public class RenameAuthorValidator : CommandValidator<RenameAuthor>
+public class RenameLedgerValidator : CommandValidator<RenameLedger>
 {
-    public RenameAuthorValidator() =>
+    public RenameLedgerValidator() =>
         RuleFor(command => command.Name).NotEmpty().WithMessage("A ledger needs a name.");
 }
 ```

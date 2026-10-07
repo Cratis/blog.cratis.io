@@ -270,7 +270,7 @@ With command-name skipping on, the generator restores command names when more th
 
 ### Which stream a command appends to
 
-A command that appends through Arc's [Chronicle integration](https://cratis.io/arc/backend/csharp/chronicle/commands/events/) needs an event source ID. `ICanProvideEventSourceId` wins if the command implements it. Otherwise Arc takes the first property that is an `EventSourceId`, derives from `EventSourceId<T>` or carries `[Key]`, with no preference for the typed one, so a command should have exactly one candidate. If no property matches, a new `EventSourceId` is created so the append still succeeds. A command meant to add to an existing author's stream then starts a new stream, and nothing reports an error. Each of these commands names its identity:
+A command that appends through Arc's [Chronicle integration](https://cratis.io/arc/backend/csharp/chronicle/commands/events/) needs an event source ID. `ICanProvideEventSourceId` wins if the command implements it. Otherwise Arc takes the first property that is an `EventSourceId`, derives from `EventSourceId<T>` or carries `[Key]`, with no preference for the typed one, so a command should have exactly one candidate. If no property matches, a new `EventSourceId` is created so the append still succeeds. A command meant to add to an existing author's stream then starts a new stream, and nothing reports an error. Each of these commands names its identity, shown without their `Handle()` methods:
 
 ```csharp
 using Cratis.Arc.Commands.ModelBound;

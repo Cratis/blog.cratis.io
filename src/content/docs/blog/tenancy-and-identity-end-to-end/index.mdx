@@ -80,9 +80,15 @@ AuthProxy authenticates before a request reaches your code, and it forwards the 
 
 Arc doesn't sign anyone in. The host establishes the principal, and Arc's [authorization attributes](https://cratis.io/arc/backend/csharp/authorizing-commands-and-queries/) check it on each command and query: `[Authorize]` for any authenticated user, `[Roles]` for any of the listed roles, a named policy, or `[AllowAnonymous]`. With no requirement declared, the built-in evaluator allows the call. A role isn't ownership either. "Only the librarian who registered an author may rename it" is a rule the application writes, by deriving the owner from the principal and constraining the query, and Arc has no universal mapping from a claim to an owner.
 
-For the frontend, an [identity details provider](https://cratis.io/arc/understanding-identity-and-access/) composes application-specific details from the authenticated principal, and Arc serves them at `/.cratis/me`. The endpoint exists only when a provider is registered. The `.cratis-identity` cookie that carries those details to the browser is unsigned presentation data the client controls, so nothing on the backend should ever authorize on it. `/.cratis/me` doesn't authorize commands or queries.
+For the frontend, an [identity details provider](https://cratis.io/arc/understanding-identity-and-access/) composes application-specific details from the authenticated principal, and Arc serves them at `/.cratis/me`. In .NET, Arc maps the endpoint by default and falls back to a default provider when you register none. Arc derives the identity from the authenticated request each time and no longer reads or writes the `.cratis-identity` cookie there. (Arc for Kotlin and Java still writes it.) Behind AuthProxy, the proxy writes that cookie. It is unsigned presentation data the client controls, so nothing on the backend should ever authorize on it, and the frontend's identity provider reads it only when `/.cratis/me` answers 404, a transition fallback that goes away in a future major version. `/.cratis/me` doesn't authorize commands or queries.
 
-Identity and tenant arrive by the same route, as headers the proxy sets. Arc trusts both, and the difference is in what Arc does with them. The principal goes through authorization. The tenant only selects where data goes.
+Identity and tenant arrive by the same route, as headers the proxy sets, but Arc treats them differently. The tenant header is picked up by default. The identity headers are not: in .NET, Arc ignores them and requests stay anonymous until the host sets `TrustForwardedIdentityHeaders`, which defaults to `false`. The principal goes through authorization. The tenant only selects where data goes. The opt-in is one line:
+
+```csharp
+builder.AddCratisArc(options => options.TrustForwardedIdentityHeaders = true);
+```
+
+Opt in only when every request reaches the application through an ingress that strips caller-supplied identity headers and sets its own, such as AuthProxy, and that blocks direct access to the backend. Arc for TypeScript reads the headers only when `microsoftIdentityPlatform()` is registered as an authentication handler. Arc for Kotlin and Java ships its platform identity bridge off, and enabling it with `cratis.arc.platform-identity.enabled=true` also needs an `ArcPlatformIdentityTrust` bean.
 
 ## The header hop into Arc
 
