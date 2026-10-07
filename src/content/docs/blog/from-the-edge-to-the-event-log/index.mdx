@@ -174,7 +174,7 @@ Arc recommends a [vertical slice](https://cratis.io/arc/vertical-slices/), with 
 
 ### At the edge: sign-in, tenant and onboarding
 
-[AuthProxy](https://cratis.io/authproxy/) sits in front of the backend and the frontend. It handles OIDC and OAuth2 sign-in, plus JWT bearer authentication, resolves a tenant for each request and forwards it downstream in a header named `x-cratis-tenant-id`, after stripping any tenant header the caller sent. That's the header Arc reads by default, so Arc picks the tenant up with no tenancy configuration, and Arc's Chronicle integration maps each tenant to its own Chronicle namespace. Selecting a tenant isn't authorizing it, and membership stays your rule. A user who has signed in but belongs to no tenant yet goes to [Ante](https://github.com/Cratis/Ante), a separate invitation and onboarding lobby that publishes the acceptance for your application to act on.
+[AuthProxy](https://cratis.io/authproxy/) sits in front of the backend and the frontend. It handles OIDC and OAuth2 sign-in, plus JWT bearer authentication, resolves a tenant for each request and forwards it downstream in a header named `x-cratis-tenant-id`, after stripping any tenant header the caller sent. That's the header Arc reads by default, so Arc picks the tenant up with no tenancy configuration, and Arc's Chronicle integration maps each tenant to its own Chronicle namespace. Selecting a tenant isn't authorizing it, and membership stays your rule. To accept the signed-in user, .NET Arc needs `TrustForwardedIdentityHeaders` set, which defaults to `false`, behind a proxy that strips caller-supplied identity headers. A user who has signed in but belongs to no tenant yet goes to [Ante](https://github.com/Cratis/Ante), a separate invitation and onboarding lobby that publishes the acceptance for your application to act on.
 
 ### The command
 
@@ -259,7 +259,7 @@ The validation rules are written once, on the server, and the generator carries 
 
 A uniqueness check against a read model races. Two requests in the same second both look, both see no "Jane Austen", and both write.
 
-Chronicle checks [constraints](https://cratis.io/chronicle/constraints/), such as uniqueness, in the kernel when an event is appended, and rejects the append that would break one. A constraint is scoped to its event sequence and namespace, and with a namespace per tenant, the name is unique within each tenant, which is the rule the sticky note asked for. The declaration is one marker on the event's `Name`. Declared on the event, the rule is one marker on its `Name`, with its own `AuthorName` concept:
+Chronicle checks [constraints](https://cratis.io/chronicle/constraints/), such as uniqueness, in the kernel when an event is appended, and rejects the append that would break one. A constraint is scoped to its event sequence and namespace, and with a namespace per tenant, the name is unique within each tenant, which is the rule the sticky note asked for. The declaration is one marker on the event's `Name`, shown here with a standalone `AuthorName` concept:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
@@ -322,7 +322,7 @@ class AuthorName extends ConceptAs<string> {
     static readonly valueType = String;
 }
 
-@eventType('constraints-model-bound-author-registered')
+@eventType('author-registered')
 class AuthorRegistered {
     @unique('UniqueAuthorName') name = new AuthorName('');
 }
@@ -337,7 +337,7 @@ defmodule MyApp.Concepts.AuthorName do
 end
 
 defmodule MyApp.Events.AuthorRegistered do
-  use Chronicle.Events.EventType, id: "constraints-model-bound-unique-author-registered"
+  use Chronicle.Events.EventType, id: "author-registered"
 
   unique :name, name: "UniqueAuthorName"
 

@@ -195,7 +195,7 @@ If the built assembly embeds Screenplay documents, those are what you see. If it
 
 ![The Source tab of cratis view, showing the generated Screenplay for the library application with syntax highlighting: the Library domain, its concepts, the Lending module and its Catalog and Loans features.](./cratis-view-source.png)
 
-*The same application through `cratis view` (Cratis CLI 3.27.0), without starting it. Board on top, the generated Screenplay below.*
+*The same application through `cratis view`, without starting it. Board on top, the generated Screenplay below.*
 
 That last screenshot is the one I keep coming back to. That's C# code, compiled down to the business's assembly language, and then drawn as an event model. It's ILDASM for your domain.
 
@@ -220,7 +220,3 @@ If you want to give it a go:
 - Connect the [Screenplay MCP server](https://cratis.io/screenplay/mcp/install/) to Claude Desktop or Copilot in VS Code, and ask it to show you the board.
 
 And if you build something that reads or writes Screenplay, I'd love to hear about it. That's kind of the whole point.
-
----
-
-*Versions: .NET SDK 10.0.400, Cratis CLI 3.27.0 (bundling Screenplay 4.60.1), the `cratis.screenplay` VS Code extension 4.62.1, `Cratis` 22.51.0 from `Cratis.Templates`, and `@cratis/event-models` 0.117.3.*
