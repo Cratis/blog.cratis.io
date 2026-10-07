@@ -205,7 +205,7 @@ Building is half the loop. The other half is operating what you built, and Crati
 cratis init
 ```
 
-One command, and the project gains `CHRONICLE.md` — the CLI's whole command catalog — plus a `chronicle-cli` command carrying that catalog and a `chronicle-diagnose` command for Claude Code, with matching prompts for the other tools it detects. Instruction files that already resolve into the managed `.cratis/ai` corpus, such as `CLAUDE.md`, are left to `cratis ai update`. After a CLI upgrade, `cratis init --refresh` re-captures the catalog.
+One command, and the project gains `CHRONICLE.md` — the CLI's reference and operating guide — plus a `chronicle-cli` command carrying the full command catalog and a `chronicle-diagnose` command for Claude Code, with matching prompts for the other tools it detects. Instruction files that already resolve into the managed `.cratis/ai` corpus, such as `CLAUDE.md`, are left to `cratis ai update`. After a CLI upgrade, `cratis init --refresh` re-captures the catalog.
 
 ## 5. Ask the store questions
 

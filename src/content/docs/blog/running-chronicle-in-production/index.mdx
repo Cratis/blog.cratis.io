@@ -34,7 +34,7 @@ docker run -d \
   -e Cratis__Chronicle__Tls__CertificatePassword="$CHRONICLE_CERTIFICATE_PASSWORD" \
   -e Cratis__Chronicle__EncryptionCertificate__CertificatePath=/certs/encryption-cert.pfx \
   -e Cratis__Chronicle__EncryptionCertificate__CertificatePassword="$ENCRYPTION_CERTIFICATE_PASSWORD" \
-  cratis/chronicle:19.23.1
+  cratis/chronicle:19.33.3
 ```
 
 The storage connection defaults to an empty string, so there's nothing to fall back to. An unset storage type means MongoDB. The TLS certificate is for port 35000, where gRPC for the clients and HTTP/1.1 for the REST API, the Workbench, OAuth and the health endpoint share one TLS port. The [encryption certificate](https://cratis.io/chronicle/hosting/encryption-certificate/) protects the signing and encryption keys of the internal OAuth authority. You can do without it only when that authority isn't in use, either because you've pointed Chronicle at an external authority or turned the `oAuthAuthority` feature off, and encrypting a value later still needs a certificate. A certificate path that points at a missing file stops startup with `EncryptionCertificateFileNotFound`, so a typo can't leave you running without one.
