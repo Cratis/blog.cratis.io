@@ -127,7 +127,7 @@ Chronicle accepts a projection in three forms, and all of them end up as the sam
 
 Model-bound is [the default](https://cratis.io/chronicle/projections/) for most projections, because the read model then is the projection and there's one file to read. The fluent builder takes over when attributes can't express the logic. PDL suits tooling and previews, where a projection is written and tried out without touching application code.
 
-![A diagram titled Three ways in, one definition. On the left, a group labeled In your app holds two rows: Model-bound, attributes read by reflection; and Fluent, IProjectionFor<T>. Below the group sits a third row: PDL, Screenplay's language, compiled on the server. Arrows from all three converge on a tall card in the middle: Projection definition, stored in the kernel. An arrow leads right to Projection engine, in the kernel, and from there down to Sink, MongoDB or SQL. A line underneath reads: Reducers are code and stay in your app; the kernel stores what they return.](./three-ways-one-definition.png)
+![A diagram titled Three ways in, one definition. On the left, a group labeled In your app holds two rows: Model-bound, attributes read by reflection; and Fluent, IProjectionFor&lt;T&gt;. Below the group sits a third row: PDL, Screenplay's language, compiled on the server. Arrows from all three converge on a tall card in the middle: Projection definition, stored in the kernel. An arrow leads right to Projection engine, in the kernel, and from there down to Sink, MongoDB or SQL. A line underneath reads: Reducers are code and stay in your app; the kernel stores what they return.](./three-ways-one-definition.png)
 
 *Three ways to write a projection, one definition in the kernel.*
 
@@ -523,6 +523,203 @@ The operations inside a projection are a short list: set, add, subtract, increme
 ## When attributes can't say it: reducers
 
 A [reducer](https://cratis.io/chronicle/reducers/) implements `IReducerFor<TModel>` and has one method per event, such as `OnBookBorrowed(BookBorrowed @event, Model? current, EventContext context) => current! with { IsBorrowed = true }`. It takes the event, the current state and the event's context, and returns the next state. `current` has to be nullable, because the first event for an instance arrives before there's any state.
+
+An account balance shows the shape, one method per event:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.Reducers;
+
+[EventType]
+public record DepositMade(decimal Amount);
+
+[EventType]
+public record WithdrawalMade(decimal Amount);
+
+public record AccountBalance(decimal Balance, DateTimeOffset LastUpdated);
+
+public class AccountBalanceReducer : IReducerFor<AccountBalance>
+{
+    public AccountBalance Deposited(DepositMade @event, AccountBalance? current, EventContext context)
+    {
+        var currentBalance = current?.Balance ?? 0m;
+        return new AccountBalance(currentBalance + @event.Amount, context.Occurred);
+    }
+
+    public AccountBalance WithdrawalMade(WithdrawalMade @event, AccountBalance? current, EventContext context)
+    {
+        var currentBalance = current?.Balance ?? 0m;
+        return new AccountBalance(currentBalance - @event.Amount, context.Occurred);
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import io.cratis.chronicle.events.EventType
+import io.cratis.chronicle.observation.Reducer
+import io.cratis.chronicle.readModels.ReadModel
+import java.time.Instant
+
+@EventType
+data class DepositMade(val amount: Double)
+
+@EventType
+data class WithdrawalMade(val amount: Double)
+
+@ReadModel
+data class AccountBalance(val balance: Double = 0.0, val lastUpdated: Instant = Instant.EPOCH)
+
+@Reducer
+class AccountBalanceReducer {
+    fun deposited(event: DepositMade, current: AccountBalance?): AccountBalance {
+        val currentBalance = current?.balance ?: 0.0
+        return AccountBalance(currentBalance + event.amount, Instant.now())
+    }
+
+    fun withdrawalMade(event: WithdrawalMade, current: AccountBalance?): AccountBalance {
+        val currentBalance = current?.balance ?: 0.0
+        return AccountBalance(currentBalance - event.amount, Instant.now())
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+import io.cratis.chronicle.events.EventType;
+import io.cratis.chronicle.observation.Reducer;
+import io.cratis.chronicle.readModels.ReadModel;
+import java.time.Instant;
+
+@EventType
+record DepositMade(double amount) {}
+
+@EventType
+record WithdrawalMade(double amount) {}
+
+@ReadModel
+record AccountBalance(double balance, Instant lastUpdated) {
+    AccountBalance() {
+        this(0.0, Instant.EPOCH);
+    }
+}
+
+@Reducer
+class AccountBalanceReducer {
+    AccountBalance deposited(DepositMade event, AccountBalance current) {
+        double currentBalance = current != null ? current.balance() : 0.0;
+        return new AccountBalance(currentBalance + event.amount(), Instant.now());
+    }
+
+    AccountBalance withdrawalMade(WithdrawalMade event, AccountBalance current) {
+        double currentBalance = current != null ? current.balance() : 0.0;
+        return new AccountBalance(currentBalance - event.amount(), Instant.now());
+    }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { eventType, reducer } from '@cratis/chronicle';
+
+@eventType()
+class DepositMade {
+    amount = 0;
+}
+
+@eventType()
+class WithdrawalMade {
+    amount = 0;
+}
+
+class AccountBalance {
+    balance = 0;
+    lastUpdated: Date = new Date(0);
+}
+
+// Handler method names must be the exact camelCase of the event's class name -
+// Chronicle discovers handlers by name, not by parameter type.
+@reducer('', undefined, AccountBalance)
+class AccountBalanceReducer {
+    depositMade(
+        event: DepositMade,
+        current: AccountBalance | undefined
+    ): AccountBalance {
+        const currentBalance = current?.balance ?? 0;
+        return { balance: currentBalance + event.amount, lastUpdated: new Date() };
+    }
+
+    withdrawalMade(
+        event: WithdrawalMade,
+        current: AccountBalance | undefined
+    ): AccountBalance {
+        const currentBalance = current?.balance ?? 0;
+        return { balance: currentBalance - event.amount, lastUpdated: new Date() };
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+```elixir
+defmodule MyApp.Events.DepositMade do
+  use Chronicle.Events.EventType, id: "deposit-made"
+
+  defstruct [:amount]
+end
+
+defmodule MyApp.Events.WithdrawalMade do
+  use Chronicle.Events.EventType, id: "withdrawal-made"
+
+  defstruct [:amount]
+end
+
+defmodule MyApp.ReadModels.AccountBalance do
+  defstruct balance: 0, last_updated: nil
+end
+
+defmodule MyApp.Reducers.AccountBalanceReducer do
+  use Chronicle.Reducers.Reducer, model: MyApp.ReadModels.AccountBalance
+
+  alias MyApp.Events.{DepositMade, WithdrawalMade}
+  alias MyApp.ReadModels.AccountBalance
+
+  @handles DepositMade
+  @handles WithdrawalMade
+
+  @impl true
+  def reduce(%DepositMade{} = event, current, context) do
+    current_balance = if current, do: current.balance, else: 0
+
+    %AccountBalance{
+      balance: current_balance + event.amount,
+      last_updated: Map.get(context, :occurred)
+    }
+  end
+
+  def reduce(%WithdrawalMade{} = event, current, context) do
+    current_balance = if current, do: current.balance, else: 0
+
+    %AccountBalance{
+      balance: current_balance - event.amount,
+      last_updated: Map.get(context, :occurred)
+    }
+  end
+end
+```
+
+</TabItem>
+</Tabs>
 
 A reducer is your code, so it runs in your application. The kernel sends it events over a stream, and whatever it returns, Chronicle stores. It rebuilds the way a projection does. Because it's plain code it's also the easiest part of a read model to test, by calling the method with an event and a state and comparing the result.
 

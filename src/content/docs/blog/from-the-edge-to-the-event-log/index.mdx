@@ -98,7 +98,7 @@ Cratis is designed to make the right pattern the path of least resistance. It's 
 
 The author feature crosses three joins, a header, a generated proxy and a namespace mapping, and you can open, read and test each of them.
 
-![A diagram titled Where the products join. AuthProxy, with Ante beside it, points to Arc through a label reading Tenant-ID header. Arc points up to Components through Generated proxy and down to Chronicle through Optional, tenant to namespace. The Chronicle box also lists its clients: .NET, TypeScript, Kotlin/Java, Elixir. Below Chronicle, Tools (Workbench, CLI and terminal workbench, Narrator) point up to it through Inspect, and Chronicle points to Storage (MongoDB, PostgreSQL, SQL Server, SQLite) through Stores. Two unconnected side boxes list Modeling (Screenplay, Stage, Scene, Prologue) and AI (AI corpus, Screenplay MCP, Chronicle MCP, Prompter).](./ecosystem-map.png)
+![A diagram titled Where the products join. AuthProxy, with Ante beside it, points to Arc through a label reading x-cratis-tenant-id. Arc points up to Components through Generated proxy and down to Chronicle through Optional, tenant to namespace. The Chronicle box also lists its clients: .NET, TypeScript, Kotlin/Java, Elixir. Below Chronicle, Tools (Workbench, CLI and terminal workbench, Narrator) point up to it through Inspect, and Chronicle points to Storage (MongoDB, PostgreSQL, SQL Server, SQLite) through Stores. Two unconnected side boxes list Modeling (Screenplay, Stage, Scene, Prologue) and AI (AI corpus, Screenplay MCP, Chronicle MCP, Prompter).](./ecosystem-map.png)
 
 *Three joins carry the author feature; the tools and storage sit around Chronicle.*
 
@@ -174,7 +174,7 @@ Arc recommends a [vertical slice](https://cratis.io/arc/vertical-slices/), with 
 
 ### At the edge: sign-in, tenant and onboarding
 
-[AuthProxy](https://cratis.io/authproxy/) sits in front of the backend and the frontend. It handles OIDC and OAuth2 sign-in, plus JWT bearer authentication, resolves a tenant for each request and forwards it downstream in a header named `Tenant-ID`. Arc reads the tenant from a header once you point it at that name, and Arc's Chronicle integration maps each tenant to its own Chronicle namespace. Selecting a tenant isn't authorizing it, and membership stays your rule. A user who has signed in but belongs to no tenant yet goes to [Ante](https://github.com/Cratis/Ante), a separate invitation and onboarding lobby that publishes the acceptance for your application to act on.
+[AuthProxy](https://cratis.io/authproxy/) sits in front of the backend and the frontend. It handles OIDC and OAuth2 sign-in, plus JWT bearer authentication, resolves a tenant for each request and forwards it downstream in a header named `x-cratis-tenant-id`, after stripping any tenant header the caller sent. That's the header Arc reads by default, so Arc picks the tenant up with no tenancy configuration, and Arc's Chronicle integration maps each tenant to its own Chronicle namespace. Selecting a tenant isn't authorizing it, and membership stays your rule. A user who has signed in but belongs to no tenant yet goes to [Ante](https://github.com/Cratis/Ante), a separate invitation and onboarding lobby that publishes the acceptance for your application to act on.
 
 ### The command
 
@@ -259,7 +259,94 @@ The validation rules are written once, on the server, and the generator carries 
 
 A uniqueness check against a read model races. Two requests in the same second both look, both see no "Jane Austen", and both write.
 
-Chronicle checks [constraints](https://cratis.io/chronicle/constraints/), such as uniqueness, in the kernel when an event is appended, and rejects the append that would break one. A constraint is scoped to its event sequence and namespace, and with a namespace per tenant, the name is unique within each tenant, which is the rule the sticky note asked for.
+Chronicle checks [constraints](https://cratis.io/chronicle/constraints/), such as uniqueness, in the kernel when an event is appended, and rejects the append that would break one. A constraint is scoped to its event sequence and namespace, and with a namespace per tenant, the name is unique within each tenant, which is the rule the sticky note asked for. The declaration is one marker on the event's `Name`. This separate published example shows the attribute on the event, with its own `AuthorName` concept:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+using Cratis.Concepts;
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.Events.Constraints;
+
+public record AuthorName(string Value) : ConceptAs<string>(Value);
+
+[EventType]
+public record AuthorRegistered([property: Unique(name: "UniqueAuthorName")] AuthorName Name);
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import io.cratis.chronicle.concepts.ConceptAs
+import io.cratis.chronicle.constraints.Unique
+import io.cratis.chronicle.events.EventType
+
+data class AuthorName(override val value: String) : ConceptAs<String>
+
+@EventType
+data class AuthorRegistered(
+    @Unique(id = "UniqueAuthorName") val name: AuthorName
+)
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+import io.cratis.chronicle.concepts.ConceptAs;
+import io.cratis.chronicle.constraints.Unique;
+import io.cratis.chronicle.events.EventType;
+
+record AuthorName(String value) implements ConceptAs<String> {
+    @Override
+    public String getValue() {
+        return value;
+    }
+}
+
+@EventType
+record AuthorRegistered(
+    @Unique(id = "UniqueAuthorName") AuthorName name) {}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { ConceptAs } from '@cratis/fundamentals';
+import { eventType, unique } from '@cratis/chronicle';
+
+class AuthorName extends ConceptAs<string> {
+    static readonly valueType = String;
+}
+
+@eventType('constraints-model-bound-author-registered')
+class AuthorRegistered {
+    @unique('UniqueAuthorName') name = new AuthorName('');
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+```elixir
+defmodule MyApp.Concepts.AuthorName do
+  use Chronicle.Concept, type: :string
+end
+
+defmodule MyApp.Events.AuthorRegistered do
+  use Chronicle.Events.EventType, id: "constraints-model-bound-unique-author-registered"
+
+  unique :name, name: "UniqueAuthorName"
+
+  defstruct name: %MyApp.Concepts.AuthorName{}
+end
+```
+
+</TabItem>
+</Tabs>
 
 ### The view
 
@@ -517,7 +604,7 @@ When a Catalog service needs to hear about new authors, [persistent subscription
 
 ## Debug it: when a view stops updating
 
-An observer that has stopped looks exactly like one with nothing to do. For the author feature, that shows up as an author who registered fine but never appears in the list. The [Cratis CLI](https://cratis.io/cli/) asks the running system instead of leaving you to compare sequence numbers by hand. Here's [`diagnose`](https://cratis.io/cli/chronicle/diagnose/), from the CLI's README, against a bookshop store:
+An observer that has stopped looks exactly like one with nothing to do. For the author feature, that shows up as an author who registered fine but never appears in the list. The [Cratis CLI](https://cratis.io/cli/) asks the running system instead of leaving you to compare sequence numbers by hand. Here's [`diagnose`](https://cratis.io/cli/chronicle/diagnose/) against a bookshop store:
 
 ```text
 ❯ cratis chronicle diagnose

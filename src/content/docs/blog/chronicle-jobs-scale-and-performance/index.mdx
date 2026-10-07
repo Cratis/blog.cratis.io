@@ -19,7 +19,7 @@ Change the projection behind the `Author` read model and deploy it, and Chronicl
 
 ## What runs as a job
 
-A job is long-running work the kernel does in the background, split into steps. These are the kinds it runs as of Chronicle 19.23.1:
+A job is long-running work the kernel does in the background, split into steps. These are the kinds it runs as of Chronicle 19.33.2:
 
 | Job | What it does |
 | --- | --- |
@@ -70,7 +70,7 @@ In `chronicle.json` it goes at the top level:
 
 As an environment variable, it's `Cratis__Chronicle__Jobs__MaxParallelSteps=4`. Don't nest the section under `Cratis` and `Chronicle` inside `chronicle.json`. Chronicle already publishes that file under the `Cratis:Chronicle:` path, so a nested copy binds to the wrong path and is silently ignored.
 
-There's a second ceiling in the kernel's own code. The effective cap is the smaller of `MaxParallelSteps` and `Observers.MaxConcurrentPartitions`, which defaults to 32 and isn't in the configuration reference. On a machine with 34 or more cores the default stops tracking the processor count, and a configured value above 32 is capped at 32 as well.
+There's a second ceiling in the kernel's own code. The effective cap is the smaller of `MaxParallelSteps` and `Observers.MaxConcurrentPartitions`, which defaults to 32. On a machine with 34 or more cores the default stops tracking the processor count, and a configured value above 32 is capped at 32 as well, unless you raise `maxConcurrentPartitions` with it.
 
 For the author feature, that cap matters for reducers and reactors, whose replays are made of many small steps. A projection's replay is one step, so the cap doesn't speed it up.
 
@@ -94,7 +94,7 @@ The classification and `definitionEvolution` policy in [*From event to read mode
 { "observers": { "maxRetryAttempts": 10, "definitionEvolution": "PartialOnly" } }
 ```
 
-As of Chronicle 19.23.1, a recommendation is always a replay candidate. It's filed for a projection or reducer definition change the policy didn't apply, for a reactor or webhook definition change when `replayOnDefinitionChange` is off, and for a retired projection that wrote to the same container as the one replacing it. Performing a recommendation replays the observer server-side and removes the recommendation when the replay succeeds. Ignoring it drops it.
+As of Chronicle 19.33.2, a recommendation is always a replay candidate. It's filed for a projection or reducer definition change the policy didn't apply, for a reactor or webhook definition change when `replayOnDefinitionChange` is off, and for a retired projection that wrote to the same container as the one replacing it. Performing a recommendation replays the observer server-side and removes the recommendation when the replay succeeds. Ignoring it drops it.
 
 We'd set `PartialOnly` or `Manual` on a store where a full replay of a large projection is expensive, so that a deploy doesn't start one on its own and a person decides when it runs.
 

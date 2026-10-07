@@ -2,7 +2,7 @@
 title: "From script to stage · Part 10: Tenancy and identity end to end"
 date: 2026-09-30T09:10:00Z
 authors: sindre
-excerpt: "AuthProxy signs the user in, picks a tenant and forwards it as Tenant-ID. Arc reads a header called x-cratis-tenant-id until you tell it otherwise, and Chronicle turns the tenant into a namespace. Every hop from the edge to storage, what a missing tenant becomes at each one, and what stays yours to check."
+excerpt: "AuthProxy signs the user in, picks a tenant and forwards it as x-cratis-tenant-id, the header Arc reads by default, and Chronicle turns the tenant into a namespace. Every hop from the edge to storage, what a missing tenant becomes at each one, and what stays yours to check."
 tags:
   - tenancy
   - identity
@@ -15,19 +15,19 @@ import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 *[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 10 of 26*
 
-AuthProxy forwards the tenant it resolved in a header named `Tenant-ID`. Arc, left on its defaults, reads the tenant from a header named `x-cratis-tenant-id`. Put the two together without configuring either, and Arc ignores the tenant AuthProxy resolved. A request with no `x-cratis-tenant-id` header gets no tenant, and Arc's Chronicle integration sends it to Chronicle's `Default` namespace. Nothing fails, and every organization ends up in one event log. A request that carries `x-cratis-tenant-id` gets whatever tenant the caller put there, because AuthProxy passes that header through.
+AuthProxy forwards the tenant it resolved in a header named `x-cratis-tenant-id`, and in the older `Tenant-ID` as well. Arc, left on its defaults, reads the tenant from `x-cratis-tenant-id`, so put the two together without configuring either, and Arc uses the tenant AuthProxy resolved. Whatever tenant headers the caller sent are gone by then. AuthProxy strips them and writes only its own.
 
-The workaround is one line, `options.UseHeaderTenancy("Tenant-ID")`. The fix on the proxy side is tracked in the public issue [Cratis/AuthProxy#157](https://github.com/Cratis/AuthProxy/issues/157).
+When there's no tenant to forward, nothing fails either. A request with no tenant header gets no tenant, and Arc's Chronicle integration sends it to Chronicle's `Default` namespace. Every organization can end up in one event log without a single error.
 
-Keeping author names unique within an organization rests on a tenant ID that travels from the edge to the database. Take a made-up week with the mismatch in place. Contoso tries to register Jane Austen and is told the name is taken, because Acme registered her on Monday and both organizations are writing to `Default`. On Friday, Acme's admin asks why their author list shows names they've never seen. Every step behind that week is a default, and each one is sensible on its own. Follow one tenant, `acme`, from sign-in to storage, and past the edge a missing tenant turns into `Default` at each hop, without an error.
+Keeping author names unique within an organization rests on a tenant ID that travels from the edge to the database. Take a made-up week where the proxy went live with no tenant resolution configured. Contoso tries to register Jane Austen and is told the name is taken, because Acme registered her on Monday and both organizations are writing to `Default`. On Friday, Acme's admin asks why their author list shows names they've never seen. Every step behind that week is a default, and each one is sensible on its own. Follow one tenant, `acme`, from sign-in to storage, and past the edge a missing tenant turns into `Default` at each hop, without an error.
 
-![A diagram titled Four hops of a tenant ID. Four boxes from top to bottom, each with an arrow to the next: AuthProxy resolves acme and forwards it as Tenant-ID; Arc's default header is x-cratis-tenant-id; Chronicle namespace acme, mapped from the tenant; MongoDB storage, with Ada+es+acme for events and Ada+acme for read models. From each of the first three boxes an arrow goes to a Default namespace box on the right, holding Ada+es+Default and Ada, labeled with what sends a request there: no strategies, no header, and NotSet or Default. From storage, an arrow points to an Ada+Default box, which does not exist and reads empty.](./four-hops.png)
+![A diagram titled Four hops of a tenant ID. Four boxes from top to bottom, each with an arrow to the next: AuthProxy resolves acme and sends x-cratis-tenant-id; Arc's default header is x-cratis-tenant-id; Chronicle namespace acme, mapped from the tenant; MongoDB storage, with Ada+es+acme for events and Ada+acme for read models. From each of the first three boxes an arrow goes to a Default namespace box on the right, holding Ada+es+Default and Ada, labeled with what sends a request there: no strategies, no header, and NotSet or Default. From storage, an arrow points to an Ada+Default box, which does not exist and reads empty.](./four-hops.png)
 
 *At every hop, find out what "no tenant" turns into.*
 
 ## At the edge: sign-in, tenant and onboarding
 
-[AuthProxy](https://cratis.io/authproxy/) sits in front of the backend and the frontend. It handles [OIDC and OAuth2 sign-in, plus JWT bearer authentication](https://cratis.io/authproxy/configuration/authentication/), resolves a tenant for each request and forwards it downstream in a header named `Tenant-ID`. [Tenant resolution](https://cratis.io/authproxy/configuration/tenancy/) is a list of strategies under `TenantResolutions`, and resolving from a token claim is one entry in it:
+[AuthProxy](https://cratis.io/authproxy/) sits in front of the backend and the frontend. It handles [OIDC and OAuth2 sign-in, plus JWT bearer authentication](https://cratis.io/authproxy/configuration/authentication/), resolves a tenant for each request and forwards it downstream in a header named `x-cratis-tenant-id`. It sends the same value as `Tenant-ID` for backends that still read the older name, a copy AuthProxy has deprecated and will drop in a future major release. [Tenant resolution](https://cratis.io/authproxy/configuration/tenancy/) is a list of strategies under `TenantResolutions`, and resolving from a token claim is one entry in it:
 
 ```json
 {
@@ -49,9 +49,30 @@ A user who has signed in but belongs to no tenant yet needs somewhere to go. [An
 
 The strategies run in order until one succeeds, so a list with `Host` first and `Claim` second tries the request host before the token. For `Host`, `Claim` and `Route`, a strategy finds a source identifier and looks it up in the `Tenants` registry, and what travels downstream is the registry key, `acme`, instead of the raw value of the `tid` claim. `SubHost` takes the subdomain as it is, with no lookup. For that strategy, AuthProxy's [tenant verification](https://cratis.io/authproxy/configuration/tenancy/) can ask your backend whether the tenant exists, and a tenant that exists still isn't proof that this caller belongs to it.
 
-Before any of that runs, AuthProxy's tenancy middleware removes inbound identity headers and any inbound `Tenant-ID`. A caller can't hand the backend a tenant of its own choosing under that name. The resolved value is then added to the proxied request.
+The registry lives under `Cratis:AuthProxy:Tenants`:
 
-A request can also leave the edge with no tenant at all. If strategies are configured and none resolves, a signed-in user gets a 403 page explaining that they belong to no organization, an anonymous caller gets a 401, and with a lobby configured for it the user is redirected there instead. If `TenantResolutions` is empty, the request goes through with no tenant and no `Tenant-ID` header. Sign-in, invitation, registration and paths declared anonymous go through without a tenant as well.
+```json
+{
+  "Cratis": {
+    "AuthProxy": {
+      "Tenants": {
+        "acme": {
+          "Domains": ["acme.example.com"],
+          "SourceIdentifiers": ["acme", "tenant-acme"]
+        },
+        "contoso": {
+          "Domains": ["contoso.example.com"],
+          "SourceIdentifiers": ["contoso", "tenant-contoso"]
+        }
+      }
+    }
+  }
+}
+```
+
+Before any of that runs, AuthProxy's tenancy middleware removes inbound identity headers and any inbound `x-cratis-tenant-id` or `Tenant-ID`, whatever their casing. The tenant decides which namespace and which read models a request touches, and Arc reads `x-cratis-tenant-id` by default, so a header the proxy let through would let a caller pick another organization's data. A caller can't hand the backend a tenant of its own choosing under either name. Only the resolved value is then added to the proxied request, under both.
+
+A request can also leave the edge with no tenant at all. If strategies are configured and none resolves, a signed-in user gets a 403 page explaining that they belong to no organization, an anonymous caller gets a 401, and with a lobby configured for it the user is redirected there instead. If `TenantResolutions` is empty, the request goes through with no tenant and neither tenant header. Sign-in, invitation, registration and paths declared anonymous go through without a tenant as well.
 
 ## Who the user is
 
@@ -65,65 +86,11 @@ Identity and tenant arrive by the same route, as headers the proxy sets. Arc tru
 
 ## The header hop into Arc
 
-Arc reads the tenant from a header too, but its default header name is `x-cratis-tenant-id`, so point it at the proxy's header. The [tenant resolver docs](https://cratis.io/arc/backend/csharp/tenancy/resolvers/) show the setting with a custom name, and in .NET the extension method lives in `Cratis.Arc.Tenancy`:
+Arc reads the tenant from a header too, and its default header name is `x-cratis-tenant-id`, the one AuthProxy writes. Behind AuthProxy, Arc needs no tenancy configuration. The header resolver is the default in the [tenant resolver docs](https://cratis.io/arc/backend/csharp/tenancy/resolvers/), and Arc for Kotlin and Java (`cratis.arc.tenancy.header-name`) and Arc for TypeScript (`tenancy.httpHeader`) default to the same name. Those settings, and `UseHeaderTenancy` in .NET, are for a gateway that writes some other header. An Arc already set to `UseHeaderTenancy("Tenant-ID")` keeps working while AuthProxy still sends that name, and can drop the line.
 
-<Tabs syncKey="language">
-<TabItem label="C#">
+What a missing header becomes depends on the implementation. In .NET, with the default resolvers, it doesn't reject the request. It selects the unset tenant and then Chronicle's default namespace, so decide deliberately whether that's allowed. In Arc for Kotlin and Java, a request without the header has no tenant (`null`) unless `cratis.arc.tenancy.required` is set, which rejects it with a 400, and the Chronicle integration uses the default event store for a null tenant. In Arc for TypeScript, it has no `tenantId` (`undefined`) unless `tenancy.required` is set, which answers 400, and the Chronicle integration then appends in the `Default` namespace.
 
-```csharp
-using Cratis.Arc;
-using Cratis.Arc.Tenancy;
-
-builder.AddCratisArc(options =>
-{
-    options.UseHeaderTenancy("Tenant-ID");
-});
-```
-
-</TabItem>
-<TabItem label="Kotlin">
-
-In Arc for Kotlin and Java this is a Spring property. A request without the header has no tenant (`null`) unless `cratis.arc.tenancy.required` is set, which rejects it with a 400, and the Chronicle integration uses the default event store for a null tenant.
-
-```properties
-cratis.arc.tenancy.header-name=Tenant-ID
-```
-
-</TabItem>
-<TabItem label="Java">
-
-In Arc for Kotlin and Java this is a Spring property. A request without the header has no tenant (`null`) unless `cratis.arc.tenancy.required` is set, which rejects it with a 400, and the Chronicle integration uses the default event store for a null tenant.
-
-```properties
-cratis.arc.tenancy.header-name=Tenant-ID
-```
-
-</TabItem>
-<TabItem label="TypeScript">
-
-In Arc for TypeScript this is the `tenancy.httpHeader` option. A request without the header has no `tenantId` (`undefined`) unless `tenancy.required` is set, which answers 400, and the Chronicle integration then appends in the `Default` namespace.
-
-```typescript
-import { ArcApplication } from '@cratis/arc.core';
-
-const builder = ArcApplication.createBuilder({
-    tenancy: { httpHeader: 'Tenant-ID' }
-});
-```
-
-</TabItem>
-<TabItem label="Elixir">
-
-Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
-
-</TabItem>
-</Tabs>
-
-In .NET, with the default resolvers, a missing header doesn't reject the request. It selects the unset tenant and then Chronicle's default namespace, so decide deliberately whether that's allowed.
-
-Nothing sets the name for you, and putting AuthProxy in front of Arc doesn't change which header Arc reads. That's the mismatch in [Cratis/AuthProxy#157](https://github.com/Cratis/AuthProxy/issues/157), and the one line above is the workaround.
-
-Setting the name closes a second gap as well. AuthProxy removes the inbound headers it owns, and `x-cratis-tenant-id` isn't one of them. An Arc left on its default reads a tenant from a header the proxy doesn't remove. Configure `Tenant-ID`, and strip `x-cratis-tenant-id` at any ingress that could pass it through, the same treatment Arc recommends for the client-supplied fallback header of its subdomain resolver.
+The proxy is also what keeps a client from choosing that header's value. Behind AuthProxy, a caller's own `x-cratis-tenant-id` never reaches Arc. A backend reachable some other way has no such guard, which is one more reason to accept traffic from the proxy only, and to strip `x-cratis-tenant-id` at any other ingress, the same treatment Arc recommends for the client-supplied fallback header of its subdomain resolver.
 
 In .NET, when the header Arc reads is missing, the resolver returns an empty string and the [tenant context](https://cratis.io/arc/backend/csharp/tenancy/tenant-context/) becomes `TenantId.NotSet`. The tenant is resolved once per async execution flow and cached, so every service in a request sees the same value. An explicit tenant scope wins over the resolver, which matters for background work further down.
 
@@ -153,7 +120,7 @@ On MongoDB the namespace also becomes part of a database name, so it has to be a
 
 This hop is where the author feature's rule becomes per organization. A [constraint](https://cratis.io/chronicle/constraints/) is scoped to its event sequence and namespace, so with a namespace per tenant, Acme and Contoso can each register Jane Austen. In the made-up week, they were sharing one namespace.
 
-![A diagram titled Three tenant boundaries, three columns from left to right. Edge, AuthProxy: selects the tenant and forwards it as Tenant-ID. App, Arc: reads a header, configured for Tenant-ID. Store, Chronicle: a namespace per tenant, mapped from Arc's tenant. Below, under Read-model storage: MongoDB, a database per tenant via Arc; EF Core, a connection you configure. A full-width card, Membership: your rule, reads: Check membership before tenant-scoped work. A header or tenant ID is not proof of membership.](./tenant-boundaries.png)
+![A diagram titled Three tenant boundaries, three columns from left to right. Edge, AuthProxy: selects the tenant and forwards it in a header. App, Arc: reads a header, the default one, with no setup. Store, Chronicle: a namespace per tenant, mapped from Arc's tenant. Below, under Read-model storage: MongoDB, a database per tenant via Arc; EF Core, a connection you configure. A full-width card, Membership: your rule, reads: Check membership before tenant-scoped work. A header or tenant ID is not proof of membership.](./tenant-boundaries.png)
 
 *Selecting a tenant isn't authorizing it.*
 
@@ -283,7 +250,7 @@ Add [`--debug`](https://cratis.io/cli/reference/global-options/) to any command 
 
 ## Why not a deployment per tenant?
 
-The strongest case against all of this is to share nothing. Give each tenant its own deployment and its own database, and no header mismatch can mix their data. For a handful of large tenants with contractual separation, that's a reasonable choice, and Arc supports it: `UseFixedTenancy` resolves every request to one tenant ID, decided once for the whole deployment.
+The strongest case against all of this is to share nothing. Give each tenant its own deployment and its own database, and no wrong tenant ID can mix their data. For a handful of large tenants with contractual separation, that's a reasonable choice, and Arc supports it: `UseFixedTenancy` resolves every request to one tenant ID, decided once for the whole deployment.
 
 The cost is that every tenant becomes another deployment to upgrade, migrate, back up and watch. Namespaces put many tenants on one Chronicle kernel and one event store, each with its own data. In exchange, the selection path has to be right at every hop, which is why it deserves tests.
 

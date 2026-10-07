@@ -23,7 +23,7 @@ Picture the author feature already running in an ASP.NET application with a SQL 
 
 A system that predates any event model has two usual sources for one. The code says what the authors wrote, and the people who remember the system say what they think it does. [Why Prologue](https://cratis.io/prologue/why-prologue/) proposes a third: watch the system run. Prologue observes three things the system already does, without a change to its code. It sees the state-changing HTTP requests that reach it, which tables and columns changed in each database transaction right after a command, and the telemetry it already emits.
 
-The output is an `ExtractionResult`, a structured tree, and a generated `.play` file. That file is the way into everything else in the modeling layer. `cratis screenplay validate` checks it, `cratis run` starts it in a Stage sandbox, and a person edits it. Prologue itself is self-contained. It needs no Cratis Studio, no Orleans and no Chronicle, and runs as three ordinary containers, the Extractor, the Interpreter and an optional Receiver, with shared contract packages on NuGet.
+The output is an `ExtractionResult`, a structured tree, and a generated `.play` file. That file is the way into everything else in the modeling layer. `cratis screenplay validate` checks it, `cratis run` starts it in a Stage sandbox, and a person edits it. Prologue itself is self-contained. It needs no Cratis Studio and no Chronicle, the Extractor, Receiver and batch Interpreter run without Orleans, and it runs as three ordinary containers, the Extractor, the Interpreter and an optional Receiver, with shared contract packages on NuGet.
 
 ## What the Extractor watches
 
@@ -33,7 +33,7 @@ For SQL Server it uses change data capture, and it enables CDC itself unless you
 
 For PostgreSQL it uses logical replication. The Extractor creates its own publication and replication slot. The server has to run with `wal_level = logical`, and that's a setting you make, because the Extractor can't.
 
-For HTTP it runs a YARP reverse proxy in front of the system, on port 8080 by default. Every request passes through unchanged. For `POST`, `PUT` and `DELETE` it records the method, the path, the response status, and the trace ID from a W3C `traceparent` header when there is one. `GET` requests pass through and leave nothing in the captures, since reads don't change state. Traffic that goes around the proxy produces nothing.
+For HTTP it runs a YARP reverse proxy in front of the system, on port 8080 by default. Every request passes through unchanged. For `POST`, `PUT` and `DELETE` it records the method, the path including its query string, the response status, and the trace ID from a W3C `traceparent` header when there is one. `GET` requests pass through and leave nothing in the captures, since reads don't change state. Traffic that goes around the proxy produces nothing.
 
 For OpenTelemetry it runs an OTLP proxy over HTTP and gRPC. It records the metadata of spans, metrics and logs: the service name, filtered by `serviceNames` or all services when that's empty, and the values of the attribute keys you allowlist in `attributeKeys`. Telemetry is forwarded unchanged to your collector, and with no upstream configured the Extractor is the last stop.
 
@@ -45,7 +45,7 @@ For OpenTelemetry it runs an OTLP proxy over HTTP and gRPC. It records the metad
 
 None of the four sources records the content of what passes through. There are no row values from the database, and no request or response bodies from HTTP. That boundary is deliberate.
 
-Metadata is still information about the system and sometimes about people. An HTTP path can carry an identifier, such as a customer number in `/customers/{id}`. Table and column names describe the data model. The values of allowlisted telemetry attributes are recorded exactly as sent, so an attribute that holds an email address ends up in a capture file. And captures are written to disk as files, or posted to a Receiver that stores them in MongoDB. Choose the allowlists and the place captures go the way you'd choose them for a log that contains personal data, because it might.
+Metadata is still information about the system and sometimes about people. An HTTP path or query string can carry an identifier, such as a customer number in `/customers/{id}`. Table and column names describe the data model. The values of allowlisted telemetry attributes are recorded exactly as sent, so an attribute that holds an email address ends up in a capture file. And captures are written to disk as files, or posted to a Receiver that stores them in MongoDB. Choose the allowlists and the place captures go the way you'd choose them for a log that contains personal data, because it might.
 
 ## One capture is a command and what it caused
 
@@ -86,9 +86,9 @@ The second step is optional. With a language model configured in the `llm` secti
 The refinement prompt is in the public repository. These three lines set its contract.
 
 ```text
-The structure of the model is fixed - you never add, remove, or move anything.
-Commands are imperative and express business intent (for example RegisterAuthor, PlaceOrder, ReserveBook) - name the intent, not the HTTP verb (not CreateAuthor).
-Events are past-tense facts naming what happened in the domain (for example AuthorRegistered, OrderPlaced, BookReserved) - name the fact, not the database operation (not AuthorCreated).
+The structure of the model is fixed — you never add, remove, or move anything.
+Commands are imperative and express business intent (for example RegisterAuthor, PlaceOrder, ReserveBook) — name the intent, not the HTTP verb (not CreateAuthor).
+Events are past-tense facts naming what happened in the domain (for example AuthorRegistered, OrderPlaced, BookReserved) — name the fact, not the database operation (not AuthorCreated).
 ```
 
 The language model gets to return renames, keyed on the provisional names it was given, a description for each module, feature, slice and command, a system name in PascalCase, and questions. It infers intent from request paths, the tables and columns that changed, span names and the observed schema. The structure it was handed is the structure that comes back. For the author feature, that's the difference between a placeholder named after the insert and `RegisterAuthor`.

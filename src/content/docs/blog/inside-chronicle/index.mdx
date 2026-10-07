@@ -67,6 +67,45 @@ Step 5 has a retry of its own. Storage can report that a sequence number is alre
 
 In step 4, the first append into a concurrency scope isn't checked by default. When the scope has no events yet, there's nothing to compare against and the check is skipped. A client that needs the first append checked opts in, in .NET with `ExpectingNoMatchingEvent()`. The default concurrency check is also a .NET client behavior, and the other clients request none unless asked. [*Rules that hold when you write*](/rules-that-hold-when-you-write/) covers scopes and decision reads.
 
+In .NET the per-append opt-in looks like this, next to the application-wide switch:
+
+```csharp
+using Cratis.Chronicle;
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.EventSequences;
+using Cratis.Chronicle.EventSequences.Concurrency;
+
+public static class ConcurrencyFirstAppendCheckSetup
+{
+    // Application-wide: every first append into a scope the optimistic strategy resolves is checked.
+    public static void ConfigureChronicle(ChronicleOptions options) =>
+        options.ConcurrencyOptions.CheckFirstAppendIntoAScope = true;
+}
+
+[EventType]
+public record ConcurrencyFirstAppendPartitionOpened(string Name);
+
+public class ConcurrencyFirstAppendPartitionService(IEventLog eventLog)
+{
+    // Per append: ask for the same check on one behavior, without turning it on everywhere.
+    public async Task<bool> TryOpenPartition(EventSourceId accountId, string name)
+    {
+        var concurrencyScope = new ConcurrencyScopeBuilder()
+            .ExpectingNoMatchingEvent()
+            .WithEventSourceId(accountId)
+            .WithEventType<ConcurrencyFirstAppendPartitionOpened>()
+            .Build();
+
+        var result = await eventLog.Append(
+            accountId,
+            new ConcurrencyFirstAppendPartitionOpened(name),
+            concurrencyScope: concurrencyScope);
+
+        return result.IsSuccess;
+    }
+}
+```
+
 For the author feature, step 3 is where the name rule lives. Two requests registering the same name arrive in the same second, both reach the same grain, and the second one is rejected by the `[Unique]` constraint before it gets a number. No read model was consulted, which is why the rule doesn't race.
 
 What comes back tells you what happened, up to a point. A reported schema, constraint or concurrency violation means the event wasn't appended. A reported error, a timeout or a dropped connection means the outcome is unknown, and appending again blindly can store the event twice. An expected sequence number or a constraint turns that retry into a safe one.
@@ -92,6 +131,26 @@ An observer that has stopped looks exactly like one with nothing to do. For the 
 When handling a partition fails, the kernel records the partition as a failed partition and schedules a retry through an Orleans reminder, with exponential backoff. The other partitions keep flowing. One broken author doesn't hold up everyone else's, and the failure is addressable by your own key, the author's id, which is the key you'll be looking for when someone reports a missing author.
 
 The retry policy is configuration with documented defaults. A failed partition is retried up to 10 times, with a 1-second base delay that doubles with each attempt, capped at 600 seconds. After that the partition is quarantined, automatic retries stop, and it waits for someone to look. Separately, a whole observer can be quarantined once a set number or share of its partitions have failed. Both thresholds are off by default, and a partition whose last attempt timed out doesn't count toward them. The kernel waits 30 seconds for a subscriber by default, and when it gives up, the subscriber may still be working, so a handler has to cope with seeing the same event again. A watchdog runs every 60 seconds. In the [observer configuration](https://cratis.io/chronicle/hosting/configuration/observers/), `maxRetryAttempts: 0` retries forever and `subscriberTimeout: 0` waits indefinitely.
+
+The defaults, as the observer configuration spells them:
+
+```json
+{
+  "observers": {
+    "subscriberTimeout": 30,
+    "maxRetryAttempts": 10,
+    "backoffDelay": 1,
+    "exponentialBackoffDelayFactor": 2,
+    "maximumBackoffDelay": 600,
+    "quarantineOnFailedPartitionCount": 0,
+    "quarantineOnFailedPartitionPercentage": 0.0,
+    "definitionEvolution": "Automatic",
+    "watchdogInterval": 60,
+    "maxConcurrentPartitions": 32,
+    "fanOutStrategy": "round-robin"
+  }
+}
+```
 
 Each recorded attempt has a kind: `Handling` when the handler threw, `Timeout` when the subscriber didn't answer in time, `Disconnected` when the subscriber was gone by the time the events reached it, or `Unknown` when nothing classified the failure. Attempts recorded before failures carried a kind read back as `Unknown`. A timeout records congestion rather than rejected events: the wait ended, not necessarily the handler's work.
 

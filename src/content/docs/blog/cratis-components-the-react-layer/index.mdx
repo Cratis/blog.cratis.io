@@ -46,16 +46,16 @@ export const App = () => (
 );
 ```
 
-`<Arc>` is what the generated proxies run against, and [`CratisComponentsProvider`](https://cratis.io/components/getting-started/) doesn't replace it. The Components provider holds the locale, the labels Components renders itself, an optional renderer and, with `toaster`, the region where notifications appear. `DialogComponents` is Arc's, and it registers Components' `ConfirmationDialog` and `BusyIndicatorDialog` as the renderers behind Arc's `useConfirmationDialog` and `useBusyIndicator`, because Arc [draws no dialog itself](https://cratis.io/arc/frontend/react/dialogs/). The template splits this between `.frontend/main.tsx` and `App.tsx`, and its `main.tsx` puts `CratisComponentsProvider` outside `<Arc>`, which works as well, since both still wrap the whole app. That provider has no `toaster`, so the toasts further down never show in a template app. They go into a queue that no region displays, and nothing reports it. Adding the prop in `main.tsx` is the one change they need:
+`<Arc>` is what the generated proxies run against, and [`CratisComponentsProvider`](https://cratis.io/components/getting-started/) doesn't replace it. The Components provider holds the locale, the labels Components renders itself, an optional renderer and, with `toaster`, the region where notifications appear. `DialogComponents` is Arc's, and it registers Components' `ConfirmationDialog` and `BusyIndicatorDialog` as the renderers behind Arc's `useConfirmationDialog` and `useBusyIndicator`, because Arc [draws no dialog itself](https://cratis.io/arc/frontend/react/dialogs/). The template splits this between `.frontend/main.tsx` and `App.tsx`. Its `main.tsx` mounts `CratisComponentsProvider` with `toaster` inside `<Arc>`, so the toasts further down show in a template app without further setup:
 
 ```tsx
 ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
-        <CratisComponentsProvider toaster>
-            <Arc>
+        <Arc>
+            <CratisComponentsProvider toaster>
                 <App />
-            </Arc>
-        </CratisComponentsProvider>
+            </CratisComponentsProvider>
+        </Arc>
     </React.StrictMode>
 );
 ```
@@ -98,7 +98,7 @@ export const RegisterAuthorDialog = () => {
 };
 ```
 
-`RegisterNewAuthor` isn't written by hand. After each build, Arc's [proxy generator](https://cratis.io/arc/backend/csharp/proxy-generation/) writes a class for the C# `[Command]` record, and the template ships the one for its `Register` command. Trimmed, and with the names changed, it looks like this:
+`RegisterNewAuthor` isn't written by hand. After each build, Arc's [proxy generator](https://cratis.io/arc/backend/csharp/proxy-generation/) writes a class for the C# `[Command]` record, and the template ships the one for its `Register` command. It looks like this:
 
 ```typescript
 export class RegisterNewAuthor extends Command<IRegisterNewAuthor, Guid> implements IRegisterNewAuthor {
@@ -130,9 +130,17 @@ The confirm button is focused when the dialog opens. With a required field the b
 
 ## When the name is taken
 
-A registration that reuses a taken name passes every client rule, so the rejection comes from the server, after **Register** is clicked. The template has no uniqueness rule. The author feature needs one, and in the template it's a Chronicle [constraint](https://cratis.io/chronicle/constraints/) on the event, `[property: Unique(message: "That name is already registered.")]` on the `Name` of the `Registered` record. [*Rules that hold when you write*](/rules-that-hold-when-you-write/) explains why the check has to live at the append. A rule that spans more than one event type goes in a class that implements `IConstraint`, the [declarative form](https://cratis.io/chronicle/constraints/declarative/), where the constraint takes the class name unless `WithName` gives it another.
+A registration that reuses a taken name passes every client rule, so the rejection comes from the server, after **Register** is clicked. The template has no uniqueness rule. The author feature needs one, and in the template it's a Chronicle [constraint](https://cratis.io/chronicle/constraints/) on the event, `[property: Unique(message: "That name is already registered.")]` on the `Name` of the `Registered` record. [*Rules that hold when you write*](/rules-that-hold-when-you-write/) explains why the check has to live at the append. A rule that spans more than one event type goes in a class that implements `IConstraint`, the [declarative form](https://cratis.io/chronicle/constraints/declarative/), where the constraint takes the class name unless `WithName` gives it another. The attribute form looks like this, in a published example with its own message:
 
-With that attribute added, registering "Anselm Brackenridge" a second time through the template's dialog goes like this in .NET:
+```csharp
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.Events.Constraints;
+
+[EventType]
+public record ConstraintsModelBoundUniqueMessageProjectCreated([property: Unique(message: "A project with this name already exists.")] string Name, string Description);
+```
+
+With the same attribute on the template's `Registered` record, carrying the message "That name is already registered.", registering "Anselm Brackenridge" a second time through the template's dialog goes like this in .NET:
 
 1. Chronicle refuses the append. The violation carries the constraint's name, a message, and details that name the property and the value that clashed.
 2. The .NET client replaces the kernel's message with the one the constraint declared. Without a declared message, the text reads like "Event '…' on member 'name' violated a unique constraint on sequence number …", which is written for a developer. A declared message can use `{PropertyName}` and `{PropertyValue}` placeholders.

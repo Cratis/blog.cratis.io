@@ -270,7 +270,25 @@ With command-name skipping on, the generator restores command names when more th
 
 ### Which stream a command appends to
 
-A command that appends through Arc's [Chronicle integration](https://cratis.io/arc/backend/csharp/chronicle/commands/events/) needs an event source ID. `ICanProvideEventSourceId` wins if the command implements it. Otherwise Arc takes the first property that is an `EventSourceId`, derives from `EventSourceId<T>` or carries `[Key]`, with no preference for the typed one, so a command should have exactly one candidate. If no property matches, a new `EventSourceId` is created so the append still succeeds. A command meant to add to an existing author's stream then starts a new stream, and nothing reports an error.
+A command that appends through Arc's [Chronicle integration](https://cratis.io/arc/backend/csharp/chronicle/commands/events/) needs an event source ID. `ICanProvideEventSourceId` wins if the command implements it. Otherwise Arc takes the first property that is an `EventSourceId`, derives from `EventSourceId<T>` or carries `[Key]`, with no preference for the typed one, so a command should have exactly one candidate. If no property matches, a new `EventSourceId` is created so the append still succeeds. A command meant to add to an existing author's stream then starts a new stream, and nothing reports an error. Each of these commands names its identity:
+
+```csharp
+using Cratis.Arc.Commands.ModelBound;
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.Keys;
+
+[Command]
+public record OpenAccount(Guid AccountId, string OwnerName) : ICanProvideEventSourceId
+{
+    public EventSourceId GetEventSourceId() => AccountId.ToString();
+}
+
+[Command]
+public record RenameAccount(EventSourceId AccountId, string NewName);
+
+[Command]
+public record CloseAccount([Key] Guid AccountId);
+```
 
 Returning the identity with the event, as the `cratis` template's `Register` command does with `(SomeId, Registered)`, works only for a type that derives from `EventSourceId`. A raw `Guid` in the same tuple is just a response value, and the event goes to the fallback stream. The [ARCCHR0010](https://cratis.io/arc/backend/csharp/chronicle/code-analysis/arcchr0010/) analyzer flags that shape, and ARCCHR0002 flags a command with more than one candidate property.
 
@@ -377,7 +395,7 @@ Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
 </TabItem>
 </Tabs>
 
-AuthProxy forwards the tenant it resolved as `Tenant-ID`, so Arc has to be told that name, with `options.UseHeaderTenancy(...)` in .NET, or the tenant never arrives. A [resolver](https://cratis.io/arc/backend/csharp/tenancy/resolvers/) selects a tenant and doesn't check that the user belongs to it. [*Tenancy and identity end to end*](/tenancy-and-identity-end-to-end/) follows the header from AuthProxy to a Chronicle namespace.
+AuthProxy strips any tenant header the caller sent and forwards the tenant it resolved as `x-cratis-tenant-id`, so an Arc behind it picks the tenant up on its defaults. A gateway that writes some other header has to be named, with `options.UseHeaderTenancy(...)` in .NET, or the tenant never arrives. A [resolver](https://cratis.io/arc/backend/csharp/tenancy/resolvers/) selects a tenant and doesn't check that the user belongs to it. [*Tenancy and identity end to end*](/tenancy-and-identity-end-to-end/) follows the header from AuthProxy to a Chronicle namespace.
 
 ## Spotting them early
 
@@ -390,9 +408,9 @@ AuthProxy forwards the tenant it resolved as `Tenant-ID`, so Arc has to be told 
 | A route moved after a new command | Command-name fallback in a shared namespace | Pin important routes with `[Path]` |
 | Events land in a new stream | No property matched the event source ID convention | One unambiguous `EventSourceId` or `[Key]` property, or return an `EventSourceId`-derived identity |
 | New events carry a different type after a class rename | Event type identity came from the type name | An explicit `[EventType]` ID on events that last |
-| Every request gets an empty tenant | The header name isn't the one the proxy sends | `UseHeaderTenancy` with the proxy's header |
+| Every request gets an empty tenant | The header name isn't the one the gateway sends | `UseHeaderTenancy` with the gateway's header |
 
-This part was checked against Arc v22.42.0 and Chronicle v19.25.1; other parts retain the versions they were checked against. The pages linked in each section have the complete rule lists. Before you rely on the browser to reject anything, read the validation page, and [*Validation all the way down*](/validation-all-the-way-down/) for what each layer behind the browser holds.
+The pages linked in each section have the complete rule lists. Before you rely on the browser to reject anything, read the validation page, and [*Validation all the way down*](/validation-all-the-way-down/) for what each layer behind the browser holds.
 
 ---
 

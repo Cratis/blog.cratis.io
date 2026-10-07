@@ -277,7 +277,7 @@ For collection subscriptions on the hub, each item needs a stable, unique `Id` f
 
 ## One hook and its states
 
-The board's React component is short. Adapted from the sample, without its header and styling, it reads:
+The board's React component is short. Without its header and styling, it reads:
 
 ```tsx
 export const Board = withViewModel(BoardViewModel, ({ viewModel }) => {
@@ -306,13 +306,52 @@ The result carries `data`, `isSuccess`, `isReady`, `isAuthorized`, `isValid`, `h
 
 Each `<Arc>` mount keeps a [query instance cache](https://cratis.io/arc/frontend/react/queries/query-instance-caching/), keyed by the query name and its arguments. Components that use the same query with the same arguments share one subscription. When the last of them unmounts, the subscription stays open for `queryCacheRetentionMs`, 30,000 ms by default, so going back to a screen doesn't start from empty. It isn't an isolation boundary between users.
 
-[`useChangeStream(getKey)`](https://cratis.io/arc/frontend/react/queries/change-stream/) gives you what was added, replaced and removed since the last result. Arc computes it by comparing snapshots, on the server or in the client, so a write that happened between two emissions and was overwritten before the second one can be missing from the delta. It's a view of the difference between results. When every operation matters, read the event log. A reconnect creates a new subscription, and it doesn't resume from where the old one stopped.
+[`useChangeStream(getKey)`](https://cratis.io/arc/frontend/react/queries/change-stream/) gives you what was added, replaced and removed since the last result.
+
+On the generated proxy of the author list, the key accessor turns each item's id into a stable string:
+
+```tsx
+// Parameterless query: first argument is the key accessor.
+const allChanges = AllAuthors.useChangeStream(author => String(author.id));
+```
+
+Arc computes that change set by comparing snapshots, on the server or in the client, so a write that happened between two emissions and was overwritten before the second one can be missing from the delta. It's a view of the difference between results. When every operation matters, read the event log. A reconnect creates a new subscription, and it doesn't resume from where the old one stopped.
 
 ## A subscription that stays open
 
 Authorization for an observable query runs once, when the subscription is established. The attributes from [*Arc: commands and queries without the plumbing*](/arc-commands-and-queries/) are checked then, and the verdict doesn't expire on its own when a token does or when a role is revoked. Keep-alive pings stop proxies from dropping the connection, and the client reconnects by itself, so a subscription can outlive the session that opened it.
 
 For re-checking during a long subscription, Arc has [emission guards](https://cratis.io/arc/backend/csharp/queries/observable-query-emission-guards/). A class implementing `IGuardObservableQueryEmission` is discovered by convention, and Arc asks it about every emission on every transport, the hub, direct WebSocket and direct SSE alike. It answers `Allow`, `Suppress` for a single emission, or `DenyAndTerminate`. Guards cover streaming emissions only, not the HTTP snapshot. On a WebSocket the principal is the one from the handshake. A guard that throws counts as `DenyAndTerminate`. A filter can capture a serializable `QueryContext.SubscriptionScope` after the filters succeed and before the query runs, and the guard gets a fresh copy of it for each emission. An application without a guard pays nothing per emission. Controller-based queries always get a null subscription scope.
+
+A guard that ends the stream once the caller's session is gone looks like this, where `ISessions` is your application's own session store and not an Arc API:
+
+```csharp
+using System.Threading.Tasks;
+using Cratis.Arc.Queries;
+
+namespace Application.Security;
+
+public interface ISessions
+{
+    Task<bool> IsActive(string sessionId);
+}
+
+public class SessionMustStillBeActive(ISessions sessions) : IGuardObservableQueryEmission
+{
+    public async Task<ObservableQueryEmissionVerdict> Guard(ObservableQueryEmissionContext context)
+    {
+        var sessionId = context.Principal?.FindFirst("sid")?.Value;
+        if (sessionId is null)
+        {
+            return ObservableQueryEmissionVerdict.DenyAndTerminate;
+        }
+
+        return await sessions.IsActive(sessionId)
+            ? ObservableQueryEmissionVerdict.Allow
+            : ObservableQueryEmissionVerdict.DenyAndTerminate;
+    }
+}
+```
 
 ## The form
 

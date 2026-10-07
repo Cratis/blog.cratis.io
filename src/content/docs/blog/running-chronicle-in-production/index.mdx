@@ -144,7 +144,22 @@ We'd pick MongoDB, since both a second node and declared indexes need it, unless
 
 [Authentication](https://cratis.io/chronicle/hosting/configuration/authentication/) is on by default, served by Chronicle's built-in OAuth authority unless you configure an external one. The production image creates the administrator without a password and lets the first person to open the Workbench set it. Keep port 35000 unreachable until that's done, or supply the password from your secret store through the `Cratis__Chronicle__Authentication__AdminUser__*` settings.
 
-Services connect as applications, which are OAuth clients with a client ID and secret. You can create them in the Workbench, with `cratis chronicle applications add`, or declare them in the [`clients` section](https://cratis.io/chronicle/hosting/configuration/client-bootstrap/) of the configuration, where the secret is hashed when it loads. A declared application whose client ID already exists is skipped, so changing its secret in the configuration doesn't change the one Chronicle holds. Removing it in the Workbench or with the CLI lasts until the next restart, when the kernel creates it again from the configuration, so to revoke a declared application, take it out of the configuration as well.
+Services connect as applications, which are OAuth clients with a client ID and secret. You can create them in the Workbench, with `cratis chronicle applications add`, or declare them in the [`clients` section](https://cratis.io/chronicle/hosting/configuration/client-bootstrap/) of the configuration, where the secret is hashed when it loads. A declared application whose client ID already exists is skipped, so changing its secret in the configuration doesn't change the one Chronicle holds. Removing it in the Workbench or with the CLI lasts until the next restart, when the kernel creates it again from the configuration, so to revoke a declared application, take it out of the configuration as well. In `chronicle.json`, declared applications look like this:
+
+```json
+{
+  "clients": [
+    {
+      "clientId": "my-service",
+      "clientSecret": "a-strong-secret-value"
+    },
+    {
+      "clientId": "another-service",
+      "clientSecret": "another-secret-value"
+    }
+  ]
+}
+```
 
 The application puts its own credentials in the connection string, `chronicle://author-service:<secret>@chronicle.internal:35000`. Leave them out and the .NET, Java, Kotlin and TypeScript clients fill in the well-known development credentials, `chronicle-dev-client` and `chronicle-dev-secret`. The development images create an application with those credentials in storage at startup and the production image doesn't, so a production kernel refuses them, unless its storage was used by a development image before and still holds that application. If it does, remove `chronicle-dev-client` from the production store. In the Workbench it's on the Applications page under System, and from a terminal you pass its ID from `cratis chronicle applications list` to `cratis chronicle applications remove`. If the `clients` section of the configuration declares it, take it out there too, or the kernel creates it again at the next restart. The Elixir client fills nothing in and connects without authentication, and a kernel with authentication on accepts that connection but never lets the client finish registering.
 
@@ -293,13 +308,13 @@ Arc's pipelines in .NET emit spans and no counters, so command and query rates c
 
 ### Where a trace stops
 
-Follow a `RegisterAuthor` command through a trace in .NET and it stops at the append. The HTTP request, Arc's `cratis.arc.command.execute` span and the client's `client.event_sequence.append` span nest in one trace, and the kernel receives the append through ASP.NET Core, which reads the trace context the call carries. From there the event is stored, and nothing that carries it on to observers carries the trace with it. The kernel's `cratis.chronicle.observer.handle` span runs in a separate trace, and `client.reactor.handle` and `client.reducer.handle` start with no parent and no link back to the command. The correlation ID travels with the event, but it's an ID, and a tracing backend can't join spans on it. The JVM client's tracing guide says the same of its own spans. The gap is [Cratis/Chronicle#4416](https://github.com/Cratis/Chronicle/issues/4416).
+Follow a `RegisterAuthor` command through a trace in .NET and it stops at the append. The HTTP request, Arc's `cratis.arc.command.execute` span and the client's `client.event_sequence.append` span nest in one trace, and the kernel receives the append through ASP.NET Core, which reads the trace context the call carries. From there the event is stored, and nothing that carries it on to observers carries the trace with it. The kernel's `cratis.chronicle.observer.handle` span runs in a separate trace, and `client.reactor.handle` and `client.reducer.handle` start with no parent and no link back to the command. The correlation ID travels with the event, but it's an ID, and a tracing backend can't join spans on it. The JVM client's tracing guide says the same of its own spans. The gap is [Cratis/Chronicle#4417](https://github.com/Cratis/Chronicle/issues/4417).
 
 ![A diagram titled Where a trace stops today, with a small tag that reads .NET. On the left, a box labeled One trace holds four rows, each indented further than the one above: HTTP request, Arc command, Client append and Kernel append. A dashed vertical line follows, labeled no trace context past the append. On the right, a box labeled New traces holds three rows: Observer, Reactor and Reducer. Two bands run along the bottom. The first reads: new traces have no parent and no link. The second reads: the correlation ID travels with the event, but a tracing backend can't join on it.](./where-the-trace-stops.png)
 
 *In .NET, the command, the client append and the kernel append share a trace; observers start new ones.*
 
-For the author feature, that means a slow registration shows up in a trace up to the append, and the projection that updates the `Author` list shows up on its own. The design discussion about carrying the trace past the append, and about a one-line setup and domain-named spans, is open in [Cratis/Chronicle#4417](https://github.com/Cratis/Chronicle/issues/4417), [Cratis/Arc#2914](https://github.com/Cratis/Arc/issues/2914) and [Cratis/Arc#2915](https://github.com/Cratis/Arc/issues/2915). None of it has shipped.
+For the author feature, that means a slow registration shows up in a trace up to the append, and the projection that updates the `Author` list shows up on its own. The design discussion about carrying the trace past the append, and about a one-line setup and domain-named spans, is open in that issue, [Cratis/Arc#2914](https://github.com/Cratis/Arc/issues/2914) and [Cratis/Arc#2915](https://github.com/Cratis/Arc/issues/2915). None of it has shipped.
 
 ## Backups that can be restored
 

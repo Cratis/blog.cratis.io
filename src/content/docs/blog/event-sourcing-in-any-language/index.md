@@ -2,7 +2,7 @@
 title: "Event sourcing in any language: how Chronicle's gRPC contract works"
 date: 2026-08-28T12:00:00Z
 authors: cratis-team
-excerpt: Chronicle's kernel sits behind a language-agnostic gRPC/protobuf boundary — 26 canonical .proto contracts that any language can implement. Here's how the contract is layered, how the existing clients are built on it, and what a new client implements.
+excerpt: Chronicle's kernel sits behind a language-agnostic gRPC/protobuf boundary — 29 canonical .proto contracts that any language can implement. Here's how the contract is layered, how the existing clients are built on it, and what a new client implements.
 tags:
   - chronicle
   - clients
@@ -16,11 +16,35 @@ This post walks through how that contract works: what the server exposes, how th
 
 Chronicle uses a .NET/Orleans actor-based kernel behind gRPC/HTTP surfaces and supports multiple event stores, namespaces, and persistent event-store subscriptions with outbox/inbox sequences. The kernel is where the event-sourcing behavior lives; clients talk to it over the network.
 
-The contract itself is a set of **26 canonical `.proto` files** in the Chronicle repository, under [`Source/Kernel/Protobuf`](https://github.com/Cratis/Chronicle/tree/v18.1.5/Source/Kernel/Protobuf). Together they describe the full client-facing surface: event types and event sequences, event stores and namespaces, observation (reactors, reducers, and event-store subscriptions), projections and read models, jobs, constraints, compliance, identities, recommendations, and the host and client handshake itself.
+The contract itself is a set of **29 canonical `.proto` files** in the Chronicle repository, under [`Source/Kernel/Protobuf`](https://github.com/Cratis/Chronicle/tree/v19.33.2/Source/Kernel/Protobuf). Together they describe the full client-facing surface: event types and event sequences, event stores and namespaces, observation (reactors, reducers, and event-store subscriptions), projections and read models, jobs, constraints, compliance, identities, recommendations, and the host and client handshake itself.
 
 Because the boundary is protobuf over gRPC, any language with a gRPC implementation can talk to it. Chronicle's client SDK for .NET uses the same contract as everyone else. A client still has to honor its value encodings: for example, the append envelope uses protobuf-net's `.bcl.Guid` for `CorrelationId`, while `EventSourceId` is a string.
 
-Take an append: the client sends the event-store and event-source identifiers, event-type metadata, and serialized content in an `AppendRequest`. The server returns a command result containing the append outcome, including success or violation details. A successful append does not mean that every projection or reactor has finished processing it. The [append documentation](https://cratis.io/chronicle/events/appending/) and [`sequences.proto`](https://github.com/Cratis/Chronicle/blob/v18.1.5/Source/Kernel/Protobuf/sequences.proto) describe the two sides of that exchange.
+Take an append: the client sends the event-store and event-source identifiers, event-type metadata, and serialized content in an `AppendRequest`. The server returns a command result containing the append outcome, including success or violation details. A successful append does not mean that every projection or reactor has finished processing it. The [append documentation](https://cratis.io/chronicle/events/appending/) and [`sequences.proto`](https://github.com/Cratis/Chronicle/blob/v19.33.2/Source/Kernel/Protobuf/sequences.proto) describe the two sides of that exchange.
+
+The request, from `sequences.proto`:
+
+```protobuf
+message AppendRequest {
+   string EventStore = 1;
+   string Namespace = 2;
+   string EventSequenceId = 3;
+   string EventSourceId = 4;
+   string EventSourceType = 5;
+   string EventStreamType = 6;
+   string EventStreamId = 7;
+   EventType EventType = 8;
+   string Content = 9;
+   .bcl.Guid CorrelationId = 10;
+   repeated string Tags = 11;
+   SerializableDateTimeOffset Occurred = 12;
+   string Subject = 13;
+   repeated Causation Causation = 14;
+   Identity CausedBy = 15;
+   ConcurrencyScope ConcurrencyScope = 16;
+   string EventSource = 17;
+}
+```
 
 ## How every client is layered
 
@@ -42,7 +66,7 @@ Hand-rolling a client means solving the same handful of plumbing problems every 
 - **Typed bindings** generated from the wire contract, kept in a separate contracts package rather than hand-edited.
 - **Authentication** — parsing the connection string's authentication modes and exchanging credentials for a token, keeping it fresh.
 - **Connection lifecycle** — discovering servers, reconnecting when a connection drops.
-- **Contract compatibility** — checking whether the server can serve the client's expected contract. Chronicle's [structural check](https://github.com/Cratis/Chronicle/blob/v18.1.5/Source/Kernel/Compatibility/WireCompatibilityChecker.cs) accepts additive changes and reports incompatible ones; it is not simply a version-equality test.
+- **Contract compatibility** — checking whether the server can serve the client's expected contract. Chronicle's [structural check](https://github.com/Cratis/Chronicle/blob/v19.33.2/Source/Kernel/Compatibility/WireCompatibilityChecker.cs) accepts additive changes and reports incompatible ones; it is not simply a version-equality test.
 
 None of that is domain logic, and all of it is written down: the [Building a Chronicle Client](https://cratis.io/chronicle/building-a-client/) section of the documentation is the experience of building the TypeScript, Kotlin, and Elixir clients distilled into a checklist, with a page explaining the *why* behind each item.
 
@@ -56,7 +80,7 @@ Each shipped client has its own landing page with installation and a first taste
 - [Elixir](https://cratis.io/event-sourcing/elixir/) — `cratis_chronicle` on Hex.
 - [Python](https://cratis.io/event-sourcing/python/) — in development: the idiomatic client is pre-alpha and not yet published.
 
-All of them are built on the same wire contract: the same 26 canonical `.proto` files, with an idiomatic client layered on top. What each client exposes on top of that contract can differ — check its own documentation for the features you need.
+All of them are built on the same wire contract: the same 29 canonical `.proto` files, with an idiomatic client layered on top. What each client exposes on top of that contract can differ — check its own documentation for the features you need.
 
 ## Free and open source
 

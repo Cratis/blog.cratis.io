@@ -2,7 +2,7 @@
 title: "Event sourcing in .NET with Chronicle: from zero to first projection"
 date: 2026-08-28T18:00:00Z
 authors: cratis-team
-excerpt: Scaffold a full-stack Cratis application from the official .NET templates, model a small library with Arc commands and a Chronicle read model, and see it live in a React UI — every command in this post was executed against the exact versions it names.
+excerpt: Scaffold a full-stack Cratis application from the official .NET templates, model a small library with Arc commands and a Chronicle read model, and see it live in a React UI.
 tags:
   - chronicle
   - arc
@@ -11,7 +11,7 @@ tags:
 
 Event sourcing has a reputation for heavy setup: a store, a bus, projections infrastructure, and a day of wiring before the first event lands. This post takes the shortest honest path instead: one Docker container, one scaffolded project, and enough C# and React to append events, project them into a read model, and see the result in a browser — backend and frontend, from one template.
 
-Everything below was executed as written. The versions are pinned so you can reproduce the run exactly:
+The versions are pinned so you can reproduce the run exactly:
 
 | Piece | Version |
 | --- | --- |
@@ -30,7 +30,7 @@ A small library application: a book arrives, gets borrowed, and comes back. Each
 The templates are an ordinary NuGet package — the [Cratis.Templates repository](https://github.com/Cratis/Templates) documents every template it ships; this post uses the full-stack `cratis` one:
 
 ```shell
-dotnet new install Cratis.Templates
+dotnet new install Cratis.Templates@1.2.2
 ```
 
 ## 2. Scaffold the application

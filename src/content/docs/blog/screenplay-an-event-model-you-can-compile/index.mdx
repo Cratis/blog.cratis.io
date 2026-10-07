@@ -15,7 +15,7 @@ tags:
 
 `cratis screenplay validate` compiles an event model on a machine where the application has never started. It reads a folder of `.play` files, merges them into one application, and reports each problem with a code that stays the same from one release to the next. [Screenplay](https://cratis.io/screenplay/) is the language those files are written in.
 
-In a model, the author feature is a `RegisterAuthor` command, the `AuthorRegistered` event it produces, and a list of authors built from those events. The code below uses the library example from the Screenplay docs, where a member borrows a book. It has the same shape, with one command, one event and one list.
+In a model, the author feature is a `RegisterAuthor` command, the `AuthorRegistered` event it produces, and a list of authors built from those events. The code below uses a library example, where a member borrows a book. It has the same shape, with one command, one event and one list.
 
 ## Write the intent down first
 
@@ -40,7 +40,7 @@ The slice is the smallest thing a model is made of, and its four types follow ev
 | `Automation` | a reaction or a reducer that runs when something happens |
 | `Translate` | external data captured as events |
 
-The author feature is one `StateChange` slice and one `StateView` slice. In a lending version adapted from [Getting started](https://cratis.io/screenplay/getting-started/), a member borrows a book:
+The author feature is one `StateChange` slice and one `StateView` slice. In a lending version, a member borrows a book:
 
 ```screenplay
     slice StateChange BorrowBook
@@ -74,7 +74,7 @@ An event can also declare a `generation`. Generations have to be in range and co
 
 ## The read side in the same file
 
-The same page adds the read side of lending to the file:
+The read side of lending goes in the same file:
 
 ```screenplay
     slice StateView OnLoan
@@ -141,7 +141,22 @@ nested/broken.play(3,5): error PLAY0028: Unknown slice type 'Wat' - expected Sta
 2 file(s) compiled - 1 error(s), 0 warning(s)
 ```
 
-`cratis screenplay validate` reports the same code and message, as JSON when piped. Match on the code. A message can be reworded between releases, and a code is never reused or renumbered. New codes are appended at the end whatever area they belong to, so a number tells you when a code was added, and says nothing about where it belongs. Two constructs that hit the same condition share a code. The library declares every code as a named constant in `DiagnosticCodes`, so a misspelled code in your own tool is a compile error. At Screenplay 4.44.1 the catalogue has 391 codes.
+`cratis screenplay validate` reports the same code and message, as JSON when piped. Match on the code. A message can be reworded between releases, and a code is never reused or renumbered. New codes are appended at the end whatever area they belong to, so a number tells you when a code was added, and says nothing about where it belongs. Two constructs that hit the same condition share a code. The library declares every code as a named constant in `DiagnosticCodes`, so a misspelled code in your own tool is a compile error:
+
+```csharp
+using Cratis.Screenplay;
+using Cratis.Screenplay.Diagnostics;
+
+var result = new ScreenplayCompiler().Compile(source);
+
+// A document assembled a piece at a time refers to events the pieces have not introduced yet,
+// so that one warning is expected here and everything else is not.
+var unexpected = result.Diagnostics
+    .Where(diagnostic => diagnostic.Code != DiagnosticCodes.UnknownEvent)
+    .ToList();
+```
+
+At Screenplay 4.73.0 the catalogue has 456 codes.
 
 The prefix is `PLAY`. Arc has a generator that writes a `.play` file from C# source, and its codes use `SP`. The two can run one after the other and land in the same build log, so the prefixes share nothing on purpose. An `SP` code describes what the generator couldn't express, and a `PLAY` code what the compiler couldn't read.
 
@@ -159,29 +174,47 @@ New node kinds can be added, and an unknown form never throws. Enum members keep
 
 `ScreenplayPrinter` turns a tree back into `.play` text, with two spaces per level, escaped strings and numbers that print the same in every culture. [Printing](https://cratis.io/screenplay/printing/) a compiled document gives an equivalent tree, and printing that again gives identical text. Comments survive and surrounding whitespace is normalized. That round trip keeps a generated `.play` file readable as a diff, whichever tool wrote it.
 
+```csharp
+using Cratis.Screenplay;
+using Cratis.Screenplay.Printing;
+
+var compiler = new ScreenplayCompiler();
+var printer = new ScreenplayPrinter();
+
+var tree = compiler.Compile(source).Value!;
+var printed = printer.Print(tree);
+
+// printed compiles without diagnostics, and printing it again is identical
+var reprinted = printer.Print(compiler.Compile(printed).Value!);
+```
+
 ## Valid and runnable are two verdicts
 
 A document that compiles is valid Screenplay. Whether it can execute is decided separately. An executable semantic model is bound from the checked model and versioned on its own, and handler code blocks executable admission (`PLAY0268`). The reference executor can't run inline or file-backed code, so anything that depends on it comes back as unsupported. The standalone tool and `PlayFileCompiler` compile syntax only and don't read attached files. `cratis screenplay validate` gives the first verdict. The Stage renderer, its sandbox and its specification runners each give part of the second, for the constructs they support.
 
 ## An assistant on the model
 
-The [Screenplay MCP server](https://cratis.io/screenplay/mcp/) lets an assistant work on the same files a person does. It ships in the .NET tool and in the native CLI as [`cratis screenplay mcp`](https://cratis.io/cli/reference/screenplay-mcp/), which needs no separate .NET install. The CLI embeds its own copy of the server, so it can trail the newest Screenplay release. cli 3.21.0 embeds server 4.43.0, while the newest Screenplay release is 4.44.1. For VS Code, the [install guide](https://cratis.io/screenplay/install-mcp/) points the tool at a folder:
+The [Screenplay MCP server](https://cratis.io/screenplay/mcp/) lets an assistant work on the same files a person does. It ships in the .NET tool and in the native CLI as [`cratis screenplay mcp`](https://cratis.io/cli/reference/screenplay-mcp/), which needs no separate .NET install. The CLI embeds its own copy of the server, so it can trail the newest Screenplay release. cli 3.29.0 embeds server 4.66.1, while the newest Screenplay release is 4.73.0. For VS Code, the [install guide](https://cratis.io/screenplay/mcp/install/) mounts a folder:
 
 ```json
 {
   "servers": {
     "screenplay": {
       "type": "stdio",
-      "command": "screenplay",
-      "args": ["mcp", "${workspaceFolder}/specifications"]
+      "command": "docker",
+      "args": [
+        "run", "-i", "--rm",
+        "-v", "${workspaceFolder}/specifications:/model",
+        "cratis/screenplay", "mcp", "/model"
+      ]
     }
   }
 }
 ```
 
-With the CLI, it's `cratis screenplay mcp .cratis/screenplay`. `cratis ai install` registers that form, with `.cratis/screenplay` as the default root, when the profile you pick includes Screenplay. Installing creates the root folder if it's missing and never creates a `.play` file. Starting the server creates nothing, and a missing root is an error.
+With the CLI, it's `cratis screenplay mcp .cratis/screenplay`. `cratis ai install` registers the server for the harnesses you select, with `.cratis/screenplay` as the default root, when the profile you pick includes Screenplay. Installing creates the root folder if it's missing and never creates a `.play` file. Starting the server creates nothing, and a missing root is an error.
 
-At cli 3.21.0 the server lists 27 tools, and most of them read. `describe-application`, `find-references`, `dependencies` and `find-assertion-gaps` navigate the model, and `diagnostics` returns the compiler's findings. On a small library model with two slices, `describe-application` reports one file, 13 declarations, one module, one feature, two slices and no diagnostics, with a hash of the source revision. `find-assertion-gaps` lists both slices as having no specifications, and notes that a gap isn't proof of missing runtime test coverage.
+At cli 3.29.0 the server lists 29 tools, and most of them read. `describe-application`, `find-references`, `dependencies` and `find-assertion-gaps` navigate the model, and `diagnostics` returns the compiler's findings. On a small library model with two slices, `describe-application` reports one file, 13 declarations, one module, one feature, two slices and no diagnostics, with a hash of the source revision. `find-assertion-gaps` lists both slices as having no specifications, and notes that a gap isn't proof of missing runtime test coverage.
 
 Changes go through proposals. `propose-ast` takes a typed edit whose shape comes from `syntax-schema`, `propose-rename` renames with the whole model in view, and `read-proposal` shows the exact bytes that would be written. A proposal is tied to the revision it was made against, so one made before somebody else's edit is rejected when it's applied. Only two tools write files, `apply` and `recover-workspace`, which is where your client's approval prompt belongs. Keep approval on for both.
 
@@ -195,7 +228,7 @@ The server checks what reaches the files. It doesn't make an assistant's model c
 
 ## What reads a .play file
 
-A `.play` file is an input for several tools. `cratis render` and `cratis run` hand it to Stage (at cli 3.21.0, Stage 4.20.0), which renders a narrow backend vertical into C# on Arc and Chronicle, starts a disposable sandbox and checks the model's specifications. A `.play` file is a good home for a model once someone has written it down. Getting there is usually a conversation between several people. A Cratis Studio event model can be exported as Screenplay text, Mermaid or JSON and imported back from Screenplay with a preview. That round trip isn't lossless, and Studio is live and in beta. `cratis screenplay generate` goes from Arc, Marten or Critter Stack source in C# to a `.play` file, and Prologue drafts one from a running system. [*Stage and Scene*](/stage-and-scene-after-a-model-compiles/), [*Prologue*](/prologue-a-first-model-of-an-existing-system/) and [*Cratis Studio*](/cratis-studio-event-modeling-together/) each take one of those. Everything above works without any of them, because `validate` only reads files. And outside what Stage renders, nothing checks hand-written code against the model.
+A `.play` file is an input for several tools. `cratis render` and `cratis run` hand it to Stage (at cli 3.29.0, Stage 4.24.2), which renders a narrow backend vertical into C# on Arc and Chronicle, starts a disposable sandbox and checks the model's specifications. A `.play` file is a good home for a model once someone has written it down. Getting there is usually a conversation between several people. A Cratis Studio event model can be exported as Screenplay text, Mermaid or JSON and imported back from Screenplay with a preview. That round trip isn't lossless, and Studio is live and in beta. `cratis screenplay generate` goes from Arc, Marten or Critter Stack source in C# to a `.play` file, and Prologue drafts one from a running system. [*Stage and Scene*](/stage-and-scene-after-a-model-compiles/), [*Prologue*](/prologue-a-first-model-of-an-existing-system/) and [*Cratis Studio*](/cratis-studio-event-modeling-together/) each take one of those. Everything above works without any of them, because `validate` only reads files. And outside what Stage renders, nothing checks hand-written code against the model.
 
 There's one rule in this layer we care about more than any single feature. Producers and consumers of a model have to declare what they can handle and expose what they can't represent, instead of dropping it silently. A tool that quietly loses part of your model is worse than one that refuses it, so Stage publishes nothing when a model reaches past what it supports, and Studio's import warns about anything it can't bring in.
 

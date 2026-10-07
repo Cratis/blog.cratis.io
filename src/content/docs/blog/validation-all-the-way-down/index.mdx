@@ -164,7 +164,21 @@ Validators can take constructor dependencies from the command's scope. In .NET, 
 
 Data annotations have a catch for forms. Arc reports their member as the C# property name, `Name`, and the form matches members exactly against the field's name, `name`. A data-annotation failure from the server therefore doesn't appear under the field, and in the `cratis` template's dialog it doesn't appear at all: the request returns 400 and the dialog stays open without a message. The same goes for a validation result you build yourself with `nameof(Name)`, because Arc sends members you name as written ([Cratis/Arc#2945](https://github.com/Cratis/Arc/issues/2945)). Concept and command validators report `name`.
 
-Each result has a [severity](https://cratis.io/arc/backend/csharp/commands/validation-severity-filtering/). Errors block by default, and warnings and information don't. In .NET, a caller can move that line with the `X-Allowed-Severity` header, and it moves both ways: a header value of `3` removes error results too, so a command whose only problems are errors runs, unless the command carries `[BlockOnValidationSeverity]`, which sets a floor the header can't lower. Arc for TypeScript accepts the header too but caps it at warning, so errors always block there. A validator therefore holds for callers that send the request the way the form does. A rule that has to hold for every caller belongs where the change is stored. For the author name, that's Chronicle.
+Each result has a [severity](https://cratis.io/arc/backend/csharp/commands/validation-severity-filtering/). Errors block by default, and warnings and information don't. In .NET, a caller can move that line with the `X-Allowed-Severity` header, and it moves both ways: a header value of `3` removes error results too, so a command whose only problems are errors runs, unless the command carries `[BlockOnValidationSeverity]`, which sets a floor the header can't lower:
+
+```csharp
+using Cratis.Arc.Commands.ModelBound;
+using Cratis.Arc.Validation;
+
+[Command]
+[BlockOnValidationSeverity(ValidationResultSeverity.Information)]
+public record SubmitApplication(string Name)
+{
+    public void Handle() { }
+}
+```
+
+Arc for TypeScript accepts the header too but caps it at warning, so errors always block there. A validator therefore holds for callers that send the request the way the form does. A rule that has to hold for every caller belongs where the change is stored. For the author name, that's Chronicle.
 
 Every command also gets a [`/validate` route](https://cratis.io/arc/backend/csharp/commands/command-validation/), which a form can call before the user confirms. It runs authorization and validation and stops. `Provide()` and `Handle()` don't run, nothing is appended, and so no constraint is checked. Posting a taken name to the `cratis` template's `/validate` route returns 200 with `isValid: true`. A passing check reserves nothing, and the real call can still fail.
 
@@ -261,7 +275,24 @@ The member is the string `applicant` in every tab, because that's the field name
 
 A rule about current state reads a read model, and Arc can [hand one](https://cratis.io/arc/backend/csharp/chronicle/read-models/injecting-into-commands/) to a validator, `Provide()` or `Handle()`, found by the command's key. What arrives is a snapshot. Another request can append between the read and the write, so two registrations of the same name can both read "not taken" and both pass. The uniqueness rule isn't a validator for that reason.
 
-In .NET, `[ProtectedDecision]` on a command changes what a `DecisionRead<T>` parameter in `Provide()` or `Handle()` means. The read is enrolled in the command's Chronicle unit of work, and if an event that would change it is appended for the same key before the command commits, the command fails with a `concurrencyViolation` result and appends nothing. Arc doesn't retry it. A protected command refuses validators that take constructor dependencies, because their reads aren't part of the guard, and only the projection shapes Chronicle admits for decision reads can be protected. [*Rules that hold when you write*](/rules-that-hold-when-you-write/) covers decision reads and their limits. Arc for Kotlin and Java and Arc for TypeScript have no protected decisions, so a read model there is always a snapshot.
+In .NET, `[ProtectedDecision]` on a command changes what a `DecisionRead<T>` parameter in `Provide()` or `Handle()` means. The read is enrolled in the command's Chronicle unit of work, and if an event that would change it is appended for the same key before the command commits, the command fails with a `concurrencyViolation` result and appends nothing. Arc doesn't retry it. A command opts in with the attribute and reads through `DecisionRead<T>`, and its validator stays parameterless:
+
+```csharp
+[Command]
+[ProtectedDecision]
+public record RenameAuthor(EventSourceId AuthorId, string Name)
+{
+    public AuthorRenamed Handle(DecisionRead<Author> author) => new(Name);
+}
+
+public class RenameAuthorValidator : CommandValidator<RenameAuthor>
+{
+    public RenameAuthorValidator() =>
+        RuleFor(command => command.Name).NotEmpty().WithMessage("A ledger needs a name.");
+}
+```
+
+A protected command refuses validators that take constructor dependencies, because their reads aren't part of the guard, and only the projection shapes Chronicle admits for decision reads can be protected. [*Rules that hold when you write*](/rules-that-hold-when-you-write/) covers decision reads and their limits. Arc for Kotlin and Java and Arc for TypeScript have no protected decisions, so a read model there is always a snapshot.
 
 ## At the append
 
@@ -409,8 +440,6 @@ Most layers have a test that reaches them, and [*Testing with Arc and Chronicle*
 | A name isn't empty and has at most 200 characters | `AuthorNameValidator` on the concept, copied to the browser by the .NET and TypeScript generators | It's true of the value wherever it appears |
 | Only a signed-in user registers an author | Authorization on `RegisterAuthor`, which the snippets above leave out | It's decided before anything reads the values |
 | A name is unique within the organization | `[Unique]` on `AuthorRegistered`, checked in the tenant's namespace | Only the append sees every writer |
-
-This part was checked against Arc v22.41.1 and Chronicle v19.25.1; other parts retain the versions they were checked against.
 
 To test the name rule, put the first registration in the event log and try the duplicate through the command. A seeded read model won't exercise the constraint.
 

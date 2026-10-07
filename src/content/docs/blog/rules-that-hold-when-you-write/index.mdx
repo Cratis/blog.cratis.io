@@ -196,7 +196,172 @@ end
 </TabItem>
 </Tabs>
 
-Giving several events the same constraint name makes one rule follow the value across them, so a registered email and a changed email share one index. When a lifecycle can end in more than one way, each of those ending events gets its own `[RemoveConstraint]`. For rules that outgrow attributes there's the declarative `IConstraint` class. Its builder names the constraint, covers event types whose property names differ, can ignore casing, supplies messages and declares removal. Both forms compile to the same constraint in the kernel.
+Giving several events the same constraint name makes one rule follow the value across them, so a registered email and a changed email share one index. When a lifecycle can end in more than one way, each of those ending events gets its own `[RemoveConstraint]`. For rules that outgrow attributes there's the declarative `IConstraint` class. Its builder covers event types whose property names differ, can ignore casing and supplies messages. In C# and TypeScript it also names the constraint and declares removal, while the JVM clients name it with `@Constraint(id = ...)`. Both forms compile to the same constraint in the kernel.
+
+For a registered email and a changed email, the declarative form of the shared `UniqueEmail` rule looks like this, as a self-contained example with its own event types:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.Events.Constraints;
+
+[EventType]
+public record UserRegistered(string Email);
+
+[EventType]
+public record UserEmailChanged(string NewEmail);
+
+[EventType]
+public record UserRemoved;
+
+public class UniqueEmailAcrossEvents : IConstraint
+{
+    public void Define(IConstraintBuilder builder) =>
+        builder.Unique(unique =>
+            unique
+                .WithName("UniqueEmail")
+                .On<UserRegistered>(e => e.Email)
+                .On<UserEmailChanged>(e => e.NewEmail)
+                .RemovedWith<UserRemoved>());
+}
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import io.cratis.chronicle.constraints.Constraint
+import io.cratis.chronicle.constraints.IConstraint
+import io.cratis.chronicle.constraints.IConstraintBuilder
+import io.cratis.chronicle.events.EventType
+
+@EventType
+data class UserRegistered(val email: String)
+
+@EventType
+data class UserEmailChanged(val newEmail: String)
+
+// The constraint is named through @Constraint(id = ...); the fluent unique builder has no
+// withName() or removedWith() on the JVM.
+@Constraint(id = "UniqueEmail")
+class UniqueEmailAcrossEvents : IConstraint {
+    override fun define(builder: IConstraintBuilder) {
+        builder.unique { unique ->
+            unique
+                .on(UserRegistered::class, UserRegistered::email)
+                .on(UserEmailChanged::class, UserEmailChanged::newEmail)
+        }
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+import io.cratis.chronicle.constraints.Constraint;
+import io.cratis.chronicle.constraints.IConstraint;
+import io.cratis.chronicle.constraints.IConstraintBuilder;
+import io.cratis.chronicle.events.EventType;
+import io.cratis.chronicle.java.UniqueConstraintBuilderJavaBridge;
+
+@EventType
+record UserRegistered(String email) {}
+
+@EventType
+record UserEmailChanged(String newEmail) {}
+
+// The constraint is named through @Constraint(id = ...); the fluent unique builder has no
+// withName() or removedWith() on the JVM.
+@Constraint(id = "UniqueEmail")
+class UniqueEmailAcrossEvents implements IConstraint {
+    @Override
+    public void define(IConstraintBuilder builder) {
+        builder.unique(unique -> {
+            UniqueConstraintBuilderJavaBridge.on(unique, UserRegistered.class, "email");
+            UniqueConstraintBuilderJavaBridge.on(unique, UserEmailChanged.class, "newEmail");
+        });
+    }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { constraint, eventType, IConstraint, IConstraintBuilder } from '@cratis/chronicle';
+import { field } from '@cratis/fundamentals';
+
+@eventType()
+class UserRegistered {
+    @field(String) readonly email: string;
+
+    constructor(email: string) {
+        this.email = email;
+    }
+}
+
+@eventType()
+class UserEmailChanged {
+    @field(String) readonly newEmail: string;
+
+    constructor(newEmail: string) {
+        this.newEmail = newEmail;
+    }
+}
+
+@eventType()
+class UserRemoved {
+}
+
+@constraint()
+class UniqueEmailAcrossEvents implements IConstraint {
+    define(builder: IConstraintBuilder): void {
+        builder.unique(unique =>
+            unique
+                .withName('UniqueEmail')
+                .on(UserRegistered, e => e.email)
+                .on(UserEmailChanged, e => e.newEmail)
+                .removedWith(UserRemoved));
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+The Elixir client declares the rule on the events, as in the model-bound example above, with the same name on each event:
+
+```elixir
+defmodule MyApp.Events.UserRegistered do
+  use Chronicle.Events.EventType, id: "constraints-unique-user-registered"
+
+  unique :email, name: "UniqueEmail"
+
+  defstruct email: ""
+end
+
+defmodule MyApp.Events.UserEmailChanged do
+  use Chronicle.Events.EventType, id: "constraints-unique-user-email-changed"
+
+  unique :new_email, name: "UniqueEmail"
+
+  defstruct new_email: ""
+end
+
+defmodule MyApp.Events.UserRemoved do
+  use Chronicle.Events.EventType, id: "constraints-unique-user-removed"
+
+  remove_constraint "UniqueEmail"
+
+  defstruct []
+end
+```
+
+</TabItem>
+</Tabs>
 
 The kernel doesn't keep the values themselves. It hashes each constraint value with SHA-256, after joining multi-property values and lowercasing when casing is ignored, and stores only the hash in its index. The hash isn't salted, so anyone who can read the index can confirm a guessed value, and erasing a subject's key leaves the entry in place ([*Personal data in an event log*](/personal-data-in-an-event-log/)).
 

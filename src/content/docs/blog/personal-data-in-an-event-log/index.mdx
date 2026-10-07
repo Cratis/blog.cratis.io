@@ -311,6 +311,11 @@ The cryptographic contract for one value fits in two methods of the kernel's `PI
 ```csharp
 public async Task<JsonNode> Apply(EventStoreName eventStore, EventStoreNamespaceName eventStoreNamespace, string identifier, JsonNode value)
 {
+    if (EncryptedValueKeyIdentifiers.IsEncryptedValueIdentifier(identifier))
+    {
+        throw new PIIIdentifierIsReserved(identifier);
+    }
+
     var key = await provisioner.EnsureKeyFor(eventStore, eventStoreNamespace, identifier);
     return ProtectedValueCodec.Encrypt(encryption, key, value);
 }
@@ -329,7 +334,7 @@ public async Task<JsonNode> Release(EventStoreName eventStore, EventStoreNamespa
 }
 ```
 
-`Apply` makes sure the subject has a key, minting one on first use, and replaces the value with ciphertext. `Release` decodes only values in the shape of ciphertext it produced. A value that was never encrypted passes through, and an encrypted value whose key is gone comes back as an empty string. Nothing throws, so a query over an erased person keeps working. The asymmetry is deliberate. If protecting a value fails on the way in, the operation fails. A value that can't be read on the way out is blanked per property and never fails the whole read.
+`Apply` refuses an identifier reserved for `[Encrypted]` values, makes sure the subject has a key, minting one on first use, and replaces the value with ciphertext. `Release` decodes only values in the shape of ciphertext it produced. A value that was never encrypted passes through, and an encrypted value whose key is gone comes back as an empty string. Nothing throws, so a query over an erased person keeps working. The asymmetry is deliberate. If protecting a value fails on the way in, the operation fails. A value that can't be read on the way out is blanked per property and never fails the whole read.
 
 Reactors, webhooks, reducers and projections all receive decrypted events, from a single decryption point in the observer.
 
@@ -412,6 +417,15 @@ Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
 The decision fails closed, so a property whose exclusion can't be decided is left out. Exclusion isn't recursive, and a marked member inside a nested object still ends up in that JSON. Arc's analyzer ARCCHR0009 warns when a command property's name reads like a secret and carries no marker.
 
 Causation values aren't encrypted under the subject's key, so deleting the key doesn't erase them. Setting [`events.causationPropertyRetention`](https://cratis.io/chronicle/hosting/configuration/events/) to `Omit` stops new appends, revisions and redactions from storing causation property values, while keeping their types and times. Chains already stored stay as they are.
+
+```json
+{
+  "events": {
+    "queues": 8,
+    "causationPropertyRetention": "Omit"
+  }
+}
+```
 
 `[PII]` on an Arc command keeps a value out of causation and encrypts nothing. The event you build from the command needs its own marker, on the property or on the concept.
 
@@ -518,6 +532,76 @@ The fence is a record kept beside the keys, with three fields. `ErasedThrough` i
 
 Erasure doesn't touch the constraint index. A `[Unique]` constraint over a `[PII]` value keeps a SHA-256 hash of the plaintext, and `DeleteEncryptionKeyFor` removes keys and caches, not that entry. The erased author's name therefore stays taken in that namespace, and because the hash isn't salted, anyone who can read the index can still confirm a guessed name. The entry goes when an event marked `[RemoveConstraint]` with the constraint's name is appended for the same event source, so give the author feature a removal event that carries no personal data, such as `AuthorForgotten(AuthorId)`, and append it as part of the erasure. A constraint reindex, which runs when a constraint's definition changes, also drops entries whose value now reads as empty. A fix is tracked in [Chronicle issue #4389](https://github.com/Cratis/Chronicle/issues/4389).
 
+The removal event carries the constraint's name and nothing personal:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+using Cratis.Concepts;
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.Events.Constraints;
+
+public record AuthorId(Guid Value) : ConceptAs<Guid>(Value);
+
+[EventType]
+[RemoveConstraint("UniqueAuthorName")]
+public record AuthorForgotten(AuthorId AuthorId);
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import io.cratis.chronicle.constraints.RemoveConstraint
+import io.cratis.chronicle.events.EventType
+
+@EventType
+@RemoveConstraint("UniqueAuthorName")
+data class AuthorForgotten(val authorId: String)
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+import io.cratis.chronicle.constraints.RemoveConstraint;
+import io.cratis.chronicle.events.EventType;
+
+@EventType
+@RemoveConstraint("UniqueAuthorName")
+record AuthorForgotten(String authorId) {}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { eventType, removeConstraint } from '@cratis/chronicle';
+
+@eventType('author-forgotten')
+@removeConstraint('UniqueAuthorName')
+class AuthorForgotten {
+    authorId = '';
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+```elixir
+defmodule MyApp.Events.AuthorForgotten do
+  use Chronicle.Events.EventType, id: "author-forgotten"
+
+  defstruct [:author_id]
+
+  remove_constraint("UniqueAuthorName")
+end
+```
+
+</TabItem>
+</Tabs>
+
 The completion is logged, as in "Erased the encryption key for the subject bound to 'a3f1…' in namespace 'Default', across all 3 event stores". The binding is a SHA-256 hex of the identifier, a pseudonym that can be brute-forced when the space of identifiers is small. The log records that an erasure completed and where. Who asked, and on what legal basis, isn't recorded. An incomplete run logs at error level.
 
 ![A diagram titled The fence. A frame labeled Namespace Acme holds three event stores, Sales, Support and Billing, and three numbered steps across all of them: 1, record the fence in every store; 2, destroy the key in every store; 3, evict every cache. A row reads: Fence: ErasedThrough, key fingerprints, NewKeyAllowed = false. A red row reads: a forwarded PII append fails: EncryptionKeyErased. Below the frame, a separate row reads: Namespace Globex: untouched, needs its own erasure.](./the-fence.png)
@@ -531,6 +615,20 @@ Erasures performed before the fence shipped aren't fenced and can be resurrected
 By default keys sit in the general storage backend. `compliance.encryption.storage` selects a [dedicated store](https://cratis.io/chronicle/hosting/configuration/compliance-storage/), either HashiCorp Vault (KV v2, with the token from `VAULT_TOKEN`) or Azure Key Vault, and both keep every key revision as its own secret. What those services do with a deleted secret follows their own retention and recovery policies.
 
 Switching to a dedicated store on a running system with keys already stored makes those keys unreachable, and their values read as empty strings with no error. `migrateFromDefaultStorage: true` composes both stores, moves each key on its first read, mirrors new keys back and erases from both. A key nobody has read since the switch still lives only in the default store, so turn the flag off only after confirming that the dedicated store holds every key.
+
+```json
+{
+  "compliance": {
+    "encryption": {
+      "storage": {
+        "type": "vault",
+        "connectionDetails": "http://vault:8200"
+      },
+      "migrateFromDefaultStorage": true
+    }
+  }
+}
+```
 
 A backup has three parts: the encryption-certificate ring, the storage backend and the key store. The key store has to be restored to the same point in time as the storage. Restore it from earlier, and newer subjects' values read as empty, indistinguishable from an erasure. The same backup, if it's from before an erasure, brings the key back and removes the fence, so an erasure you've already reported as complete is silently undone, and nothing inside Chronicle can see that it happened. A lost key store can't be rebuilt, because there's no escrow and no recovery key.
 

@@ -2,7 +2,7 @@
 title: "From zero to first projection with an AI assistant"
 date: 2026-09-10
 authors: einar
-excerpt: The zero-to-first-projection walkthrough again — same store, same domain, same destination — but this time Claude Code does the typing, using the official .NET templates and the Cratis AI `cratis/application` profile installed with `cratis ai install`, with Arc commands carrying the full loop. Every step was executed against the versions it names.
+excerpt: The zero-to-first-projection walkthrough again — same store, same domain, same destination — but this time Claude Code does the typing, using the official .NET templates and the Cratis AI `cratis/application` profile installed with `cratis ai install`, with Arc commands carrying the full loop.
 tags:
   - chronicle
   - ai
@@ -10,7 +10,7 @@ tags:
 
 A few weeks ago we published [a walkthrough](/event-sourcing-in-dotnet-with-chronicle/) that scaffolded a full-stack Cratis application from the official .NET templates and built a small library feature by hand: three events, a read model, a React page. This post runs the same journey again with one difference — a human writes one short prompt, and [Claude Code](https://claude.com/claude-code) does the typing.
 
-Like that walkthrough, this is .NET development: the slices here are C# on ASP.NET Core, with [Arc](https://cratis.io/arc/) carrying commands and queries and Chronicle carrying the event log. And this time we start from the official .NET templates rather than an empty folder, because the interesting question is not whether an assistant can write C# — it is whether it can write *your* conventions. [Cratis AI](https://cratis.io/ai/) closes that gap from two sides: skills that teach the assistant how to build, and operating tools that let it inspect a live store. This post uses both, and everything below was executed as written:
+Like that walkthrough, this is .NET development: the slices here are C# on ASP.NET Core, with [Arc](https://cratis.io/arc/) carrying commands and queries and Chronicle carrying the event log. And this time we start from the official .NET templates rather than an empty folder, because the interesting question is not whether an assistant can write C# — it is whether it can write *your* conventions. [Cratis AI](https://cratis.io/ai/) closes that gap from two sides: skills that teach the assistant how to build, and operating tools that let it inspect a live store. This post uses both:
 
 | Piece | Version |
 | --- | --- |
@@ -36,7 +36,7 @@ That writes the resolved rules and skills into `.cratis/ai`, wires Claude Code's
 The templates are an ordinary NuGet package — the [Cratis.Templates repository](https://github.com/Cratis/Templates) documents every template it ships, this post uses the full-stack `cratis` one:
 
 ```shell
-dotnet new install Cratis.Templates
+dotnet new install Cratis.Templates@1.2.0
 ```
 
 ## 2. Scaffold the application
@@ -246,7 +246,7 @@ The dev-server proxy forwards `/api` and `/.cratis` to the backend on port 5000,
 
 ## Status, plainly
 
-Every piece in this post is installable and runnable today, and everything above was executed against the pinned versions. Build with it, push on it, and tell us what breaks — that openness to feedback is deliberate, and it is how the workflow gets better.
+Every piece in this post is installable and runnable today. Build with it, push on it, and tell us what breaks — that openness to feedback is deliberate, and it is how the workflow gets better.
 
 ## Clean up and where to go next
 

@@ -139,6 +139,8 @@ import { ConceptAs } from '@cratis/fundamentals';
 
 @pii()
 class PiiAttrConceptPersonName extends ConceptAs<string> {
+    static readonly valueType = String;
+
     constructor(value: string) {
         super(value);
     }
@@ -157,7 +159,74 @@ end
 
 and every property of that type, in every event and every read model, is protected from then on. The classification travels with the type into value objects, nested structures, collections — the marker lands on the individual leaf values wherever they end up, and the document keeps its shape. That is what makes this cross-cutting in practice rather than in theory: protection stops being a thing each developer must remember per event, because using the type and protecting the data are the same decision. A new event written months later cannot forget the attribute, because there is no attribute to forget.
 
-The marker also accepts a `details` note — a legal basis, a retention rule — stored with the event schema so that classification decisions remain visible to compliance tooling and audits rather than living in someone's head.
+The marker also accepts a note, `details` in C#, TypeScript and Elixir and `description` on Kotlin and Java — a legal basis, a retention rule — stored with the event schema so that classification decisions remain visible to compliance tooling and audits rather than living in someone's head.
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+using Cratis.Chronicle.Compliance.GDPR;
+
+[PII("Collected under GDPR Art. 6(1)(b) — necessary for contract performance")]
+public record PiiAttrPersonName(string Value) : ConceptAs<string>(Value);
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import io.cratis.chronicle.compliance.Pii
+import io.cratis.chronicle.concepts.ConceptAs
+
+@Pii(description = "Collected under GDPR Art. 6(1)(b) — necessary for contract performance")
+data class PiiAttrPersonName(override val value: String) : ConceptAs<String>
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+import io.cratis.chronicle.compliance.Pii;
+import io.cratis.chronicle.concepts.ConceptAs;
+
+@Pii(description = "Collected under GDPR Art. 6(1)(b) — necessary for contract performance")
+record PiiAttrPersonName(String value) implements ConceptAs<String> {
+    @Override
+    public String getValue() {
+        return value;
+    }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { pii } from '@cratis/chronicle';
+import { ConceptAs } from '@cratis/fundamentals';
+
+@pii('Collected under GDPR Art. 6(1)(b) — necessary for contract performance')
+class PiiAttrPersonName extends ConceptAs<string> {
+    static readonly valueType = String;
+
+    constructor(value: string) {
+        super(value);
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+```elixir
+defmodule MyApp.Compliance.Pii.PersonNameWithDetails do
+  use Chronicle.Concept, type: :string
+  pii("Collected under GDPR Art. 6(1)(b) — necessary for contract performance")
+end
+```
+
+</TabItem>
+</Tabs>
 
 ## Erasure as a key lifecycle, not a deletion
 
@@ -165,9 +234,75 @@ The second half of the mechanism is how data disappears. Every `[PII]` value is 
 
 That gives erasure a precise, surgical shape. The right-to-erasure request becomes one call — deleting the subject's key:
 
+<Tabs syncKey="language">
+<TabItem label="C#">
+
 ```csharp
-await eventStore.PII.DeleteEncryptionKeyFor(subjectId);
+public static class ComplianceErasureDeleteKey
+{
+    public static async Task Delete(ChronicleClient chronicleClient)
+    {
+        var eventStore = await chronicleClient.GetEventStore("Sales");
+        await eventStore.PII.DeleteEncryptionKeyFor("person-42");
+    }
+}
 ```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import io.cratis.chronicle.ChronicleClient
+
+object ComplianceErasureDeleteKey {
+    suspend fun delete(chronicleClient: ChronicleClient) {
+        val eventStore = chronicleClient.getEventStore("Sales")
+        eventStore.compliance.deleteEncryptionKey("person-42")
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+import io.cratis.chronicle.java.BlockingChronicleClient;
+import io.cratis.chronicle.java.BlockingEventStore;
+import io.cratis.chronicle.java.ComplianceServiceJavaBridge;
+
+class ComplianceErasureDeleteKey {
+    static void delete(BlockingChronicleClient chronicleClient) {
+        BlockingEventStore eventStore = chronicleClient.getEventStore("Sales");
+        ComplianceServiceJavaBridge.deleteEncryptionKey(eventStore.unwrap().getCompliance(), "person-42");
+    }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { ChronicleClient } from '@cratis/chronicle';
+
+async function deletePersonEncryptionKey(chronicleClient: ChronicleClient): Promise<void> {
+    const eventStore = await chronicleClient.getEventStore('Sales');
+    await eventStore.pii.deleteEncryptionKey('person-42');
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+```elixir
+defmodule MyApp.Compliance.Erasure.DeleteKey do
+  def delete do
+    Chronicle.Compliance.delete_encryption_key("person-42")
+  end
+end
+```
+
+</TabItem>
+</Tabs>
 
 After that, the events for that person are all still there: same sequence numbers, same positions, every non-personal field intact. Only the `[PII]` properties now release as empty, because the key that could decrypt them no longer exists. This is crypto-shredding — the data is not deleted so much as it becomes permanently unreadable, mathematically, while the structure of the log survives untouched. Projections keep their positions. Audits keep the fact that events occurred. The person's data is gone.
 

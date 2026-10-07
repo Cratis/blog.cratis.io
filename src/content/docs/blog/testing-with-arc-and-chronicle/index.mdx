@@ -589,7 +589,7 @@ The Java client has no in-memory scenario that checks constraints.
 </TabItem>
 <TabItem label="TypeScript">
 
-This spec uses Vitest and the same `TestAuthorName` and `TestAuthorRegistered` fixtures. Since `@cratis/chronicle` 6.31.4, `EventScenario` accepts string and boolean concepts, comparing their serialized scalar values. Its content still has to fit the supported flat, unprotected string/boolean schema; numeric, `Guid`, date and nested object fields remain unsupported. It also refuses the series' `@pii()`-marked `AuthorName`, so testing the real `AuthorRegistered` still needs a kernel. This fixture tests uniqueness without personal-data handling.
+This spec uses Vitest and the same `TestAuthorName` and `TestAuthorRegistered` fixtures. `EventScenario` accepts concept-typed fields, comparing their serialized scalar values. Unique keys have to be string, boolean, `Guid` or numeric values, so date and object keys remain unsupported. It also refuses the series' `@pii()`-marked `AuthorName`, so testing the real `AuthorRegistered` still needs a kernel. This fixture tests uniqueness without personal-data handling.
 
 ```typescript
 class TestAuthorName extends ConceptAs<string> {
@@ -651,7 +651,7 @@ Two more are worth knowing. `Validate(command)` runs the command filters, and au
 
 ## Examples in the model
 
-A `.play` slice in [Screenplay](https://cratis.io/screenplay/specifications/) can carry given/when/then examples of its own, written against the model. Adapted from the Screenplay docs' example, with `for` naming the event source instead of a property on the event:
+A `.play` slice in [Screenplay](https://cratis.io/screenplay/specifications/) can carry given/when/then examples of its own, written against the model, with `for` naming the event source:
 
 ```screenplay
 specification RegisteringADraftInvoice
