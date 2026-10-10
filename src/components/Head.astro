@@ -59,6 +59,7 @@ for (const entry of head) {
             thing.publisher = publisher;
             thing.image ??= String(socialImage);
             thing.dateModified ??= thing.datePublished;
+            if (thing.isPartOf?.['@type'] === 'Blog' && thing.isPartOf.name === 'Blog') thing.isPartOf.name = 'Cratis Blog';
         } else if (thing['@type'] === 'Blog') {
             thing.publisher = { '@id': publisher['@id'] };
             if (thing.name === 'Blog') thing.name = 'Cratis Blog';
