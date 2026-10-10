@@ -9,7 +9,17 @@ const previewHeight = 750;
 
 // The site-wide head entries in astro.config.mjs default every page to the
 // favicon as its social image; these are the tags a post cover replaces.
-const socialImageTags = new Set(['og:image', 'twitter:card', 'twitter:image']);
+const socialImageTags = new Set([
+    'og:image',
+    'og:image:width',
+    'og:image:height',
+    'og:image:alt',
+    'twitter:card',
+    'twitter:image',
+    'twitter:image:alt',
+]);
+
+const landingTitle = 'Event sourcing and CQRS with Chronicle and Arc';
 
 // The whole site is the blog, so no page gets docs chrome: no left sidebar
 // (and therefore no mobile menu button), no right-hand table of contents, and
@@ -22,7 +32,16 @@ export const onRequest = defineRouteMiddleware(async (context) => {
     starlightRoute.pagination = { prev: undefined, next: undefined };
 
     await useCoverAsSocialPreview(context, starlightRoute);
+    if (starlightRoute.id === 'blog') retitleLanding(starlightRoute);
 });
+
+// The generated landing is titled just "Blog"; give it a searchable title.
+function retitleLanding(starlightRoute: App.Locals['starlightRoute']) {
+    for (const entry of starlightRoute.head) {
+        if (entry.tag === 'title') entry.content = `${landingTitle} | Cratis Blog`;
+        else if (entry.tag === 'meta' && entry.attrs?.property === 'og:title') entry.attrs.content = landingTitle;
+    }
+}
 
 // starlight-blog ignores a post's `cover:` frontmatter for social metadata, so
 // for posts that have one, swap the favicon defaults for the cover. Pages

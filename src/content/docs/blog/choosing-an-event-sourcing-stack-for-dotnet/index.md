@@ -1,5 +1,6 @@
 ---
 title: "Choosing an event sourcing stack for .NET: an honest comparison"
+description: "Choosing an event sourcing stack for .NET: a version-pinned, source-cited comparison of KurrentDB, Marten and Cratis Chronicle you can reproduce."
 date: 2026-08-28
 authors: cratis-team
 excerpt: "Most event sourcing comparisons reduce to popularity. We compiled a version-pinned, source-cited comparison of KurrentDB, Marten, and Cratis Chronicle instead — every row reproducible from public documentation, with the same rules applied to our own product. Here's how to use it."

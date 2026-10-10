@@ -33,6 +33,39 @@ const fontCss = [
     face('JetBrains Mono Variable', '100 800', jbMonoLatin, LATIN),
     face('JetBrains Mono Variable', '100 800', jbMonoLatinExt, LATIN_EXT),
 ].join('');
+
+// starlight-blog emits BlogPosting/Blog JSON-LD without a publisher and only
+// knows post covers as images. This runs here, after every route middleware
+// and plugin has contributed to the head, to add the Cratis publisher, fall
+// back to the shared social image, and describe the Organization on the landing.
+const SITE = 'https://blog.cratis.io';
+const publisher = {
+    '@type': 'Organization',
+    '@id': 'https://cratis.no/#organization',
+    name: 'Cratis',
+    url: 'https://cratis.no',
+    logo: { '@type': 'ImageObject', url: `${SITE}/favicon-512.png`, width: 328, height: 328 },
+};
+const { head } = Astro.locals.starlightRoute;
+const socialImage =
+    head.find(({ tag, attrs }) => tag === 'meta' && attrs?.property === 'og:image')?.attrs?.content ??
+    `${SITE}/og-image.jpg`;
+for (const entry of head) {
+    if (entry.tag !== 'script' || entry.attrs?.type !== 'application/ld+json' || !entry.content) continue;
+    const data = JSON.parse(entry.content);
+    const graph: any[] = data['@graph'] ?? [data];
+    for (const thing of graph) {
+        if (thing['@type'] === 'BlogPosting') {
+            thing.publisher = publisher;
+            thing.image ??= String(socialImage);
+            thing.dateModified ??= thing.datePublished;
+        } else if (thing['@type'] === 'Blog') {
+            thing.publisher = { '@id': publisher['@id'] };
+        }
+    }
+    if (graph.some((thing) => thing['@type'] === 'CollectionPage')) graph.push(publisher);
+    entry.content = JSON.stringify(data['@graph'] ? { ...data, '@graph': graph } : data);
+}
 ---
 
 <Default />

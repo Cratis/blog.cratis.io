@@ -1,5 +1,6 @@
 ---
-title: "From script to stage · Part 10: Tenancy and identity end to end"
+title: "Multi-tenancy and identity with AuthProxy, Arc and Chronicle · Script to stage, Part 10"
+description: "Multi-tenancy in a Cratis app: AuthProxy picks the tenant, Arc reads x-cratis-tenant-id and Chronicle maps it to a namespace, hop by hop."
 date: 2026-09-30T09:10:00Z
 authors: sindre
 excerpt: "AuthProxy signs the user in, picks a tenant and forwards it as x-cratis-tenant-id, the header Arc reads by default, and Chronicle turns the tenant into a namespace. Every hop from the edge to storage, what a missing tenant becomes at each one, and what stays yours to check."
