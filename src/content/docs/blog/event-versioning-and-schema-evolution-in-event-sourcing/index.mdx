@@ -104,9 +104,10 @@ record AuthorRegistered(String firstName, String lastName) {
 record AuthorRegisteredV1(String name) {
 }
 
-class AuthorRegisteredMigration
+// In its own file: the migration is a public class with a public no-argument constructor
+public class AuthorRegisteredMigration
         extends EventTypeMigration<AuthorRegistered, AuthorRegisteredV1> {
-    AuthorRegisteredMigration() {
+    public AuthorRegisteredMigration() {
         super(AuthorRegistered.class, AuthorRegisteredV1.class);
     }
 
@@ -209,7 +210,7 @@ class AuthorRegisteredMigration implements IEventTypeMigration<AuthorRegistered,
 
 In the .NET client the older record carries `[EventTypeGenerationFor<AuthorRegistered>(1)]` instead of an `[EventType]` of its own, so its id is read from the current generation and the two can't drift apart. The other clients repeat the same explicit id on every generation. The older style, with a matching explicit id on every generation, still works in .NET.
 
-Leaving the id off a previous generation in that older style is the classic mistake. The record then falls back to its CLR name, Chronicle treats it as an unrelated event type, the migration never applies, and registration fails when the kernel starts with an `EventTypeSchemaChanged` error. The newer attribute removes that failure by construction.
+Leaving the id off a previous generation in that older style is the classic mistake. The record then falls back to its CLR name, which is a different event type id from the current generation's. The `EventTypeMigration` base class catches that when the migrator is constructed, in the application and before anything is registered, and throws `MigrationGenerationsMustShareEventTypeId`. The newer attribute removes the mistake by construction.
 
 Migrators are discovered when the application starts, so there is no registration call. Exactly one migrator may own a given generation pair. Two classes that claim the same pair make `EventTypeMigrators.GetMigratorsFor` throw `MultipleMigratorsForSameEventTypeGeneration`.
 
@@ -225,7 +226,9 @@ When an event arrives, the kernel doesn't convert it and throw the original away
 
 The consequence is that two versions of your software can share one store. A service on the new code reads generation 2, a service still on the old release reads generation 1, and both read the same physical event. Neither coordinates its upgrade with the other. In the stored record, the event content is keyed by generation, which [*how Chronicle lays out its storage*](/event-sourcing-with-mongodb-postgresql-and-sql-server/) shows.
 
-When you register a new generation, Chronicle starts a background job that produces it for the events already stored. You don't start it and the application doesn't wait for it.
+When you register a new generation, Chronicle starts a background job that produces it for events already stored. You don't start it and the application doesn't wait for it. The job covers the default namespace's event log only. Other namespaces and other event sequences keep the generations their events were stored with, and migrations otherwise run when an event is appended. If you use a namespace per tenant, plan for that.
+
+Register a new generation only after every kernel silo runs the release that supports it. Workers still on an older release can overwrite content during the rollout.
 
 A generated generation holds only what the migration produces. The generation an event was appended as is stored as written, and the others are derived from it. Take the split above, which divides a name on spaces: for "Mary Ann Smith" the upcast keeps "Mary" and "Ann" and drops "Smith". The original is still stored, but a consumer reading the derived generation sees the lossy version. Write migrations that keep every part a consumer needs.
 
@@ -360,13 +363,13 @@ public class PersonRegisteredV2ToV3 : EventTypeMigration<PersonRegistered, Perso
 
 ## What the kernel refuses
 
-Chronicle validates the chain when you register an event type at generation 2 or higher. A type must start at generation 1, generations must be sequential with no gaps, and every consecutive pair from 1 up to the current generation needs a migrator. Breaking those rules throws `MissingFirstGenerationForEventType`, `MissingMigrationForEventTypeGeneration` or `MissingEventTypeMigrators`. In the .NET client, `EventTypeMigration` also throws `MigrationGenerationsMustShareEventTypeId` if its two generations resolve to different ids, and `InvalidMigrationGenerationGap` if the numbers aren't consecutive. The [code analysis rules](https://www.cratis.io/chronicle/code-analysis/) CHR0037 and CHR0049 catch an id mismatch between generations at compile time.
+The production kernel image always validates the chain when you register an event type at generation 2 or higher. The development image honours the client's `EnableEventTypeGenerationValidation` option, which defaults to `false`, so turn it on once your schemas are stable. A type must start at generation 1, generations must be sequential with no gaps, and every consecutive pair from 1 up to the current generation needs a migrator. Breaking those rules throws `MissingFirstGenerationForEventType`, `MissingMigrationForEventTypeGeneration` or `MissingEventTypeMigrators`. In the .NET client, `EventTypeMigration` also throws `MigrationGenerationsMustShareEventTypeId` if its two generations resolve to different ids, and `InvalidMigrationGenerationGap` if the numbers aren't consecutive. The [code analysis rules](https://www.cratis.io/chronicle/code-analysis/) CHR0037 and CHR0049 catch an id mismatch between generations at compile time.
 
 The refusal happens at startup, so a broken chain never reaches an event that is already stored.
 
 ## After you deploy
 
-New events are written in the new shape, old events are available in it, and projections that replay see the migrated form. Read models built before the change reflect the old shape until you [rebuild them](https://www.cratis.io/chronicle/scenarios/rebuild-a-read-model/). The [evolve an event](https://www.cratis.io/chronicle/scenarios/evolve-an-event/) scenario walks through the steps.
+New events are written in the new shape, and the other generations are produced as they are appended. Events already stored in the default namespace's event log get the new generation from the background job once it finishes. Events in other namespaces and sequences don't, and rebuilding a read model doesn't create a generation that was never stored. Read models built before the change reflect the old shape until you [rebuild them](https://www.cratis.io/chronicle/scenarios/rebuild-a-read-model/). The [evolve an event](https://www.cratis.io/chronicle/scenarios/evolve-an-event/) scenario walks through the steps.
 
 ## When a new generation is the wrong tool
 

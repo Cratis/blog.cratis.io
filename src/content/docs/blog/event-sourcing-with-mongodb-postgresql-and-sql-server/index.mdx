@@ -62,7 +62,7 @@ PostgreSQL and SQL Server follow the same layout. The database named in your con
 
 The kernel creates a database the first time it needs it, and on PostgreSQL and SQL Server that means the account in the connection string needs permission to create databases. SQLite does the same with files, adding the suffix to the file name.
 
-Because of this layout, a namespace per tenant means a database per tenant. That keeps tenants apart, including their backups, and it also means the number of databases grows with the number of tenants.
+Because of this layout, a namespace per tenant means a database per tenant. That keeps tenants apart, including their backups, and it also means the number of databases grows with the number of tenants. Namespaces differ in other ways too: when you add a generation to an event type, Chronicle's automatic backfill covers the default namespace's event log only, as [*event versioning*](/event-versioning-and-schema-evolution-in-event-sourcing/) explains.
 
 ## What an event looks like in storage
 
@@ -72,7 +72,7 @@ Each stored event is one document or row, with these fields:
 
 | Field | What it is |
 | --- | --- |
-| `sequenceNumber` | The position in the sequence, and the key on SQL |
+| `_id` on MongoDB, `SequenceNumber` on SQL | The position in the sequence, and the key of the document or row |
 | `type` and `appendedGeneration` | The event type id, and the generation the event was appended as |
 | `eventSourceId`, `eventSourceType` | Which stream of facts the event belongs to |
 | `eventStreamType`, `eventStreamId` | A concrete process within that source, if you use one |
@@ -83,7 +83,7 @@ Each stored event is one document or row, with these fields:
 | `contentHashes` | A hash of the content for each generation |
 | `subject` | The subject for personal data, when one is set |
 
-On MongoDB the field names are camelCase, as above. On the SQL databases the columns are PascalCase, so `SequenceNumber` and `EventSourceId`. The sequence number is a `ulong` in Chronicle, and SQL stores it as a signed 64-bit integer, because SQLite has no unsigned 64-bit type.
+On MongoDB the field names are camelCase, as above, except the sequence number, which is stored as the document's `_id`. On the SQL databases the columns are PascalCase, so `SequenceNumber` and `EventSourceId`. The sequence number is a `ulong` in Chronicle, and SQL stores it as a signed 64-bit integer, because SQLite has no unsigned 64-bit type.
 
 The `content` field is the one that matters most for the rest of the system. It is a map from generation to payload, so an event that has been migrated carries its content once per generation, as [*event versioning and schema evolution*](/event-versioning-and-schema-evolution-in-event-sourcing/) describes. On MongoDB it is a document with one nested document per generation. On the SQL databases it is a string column holding that same JSON, and no database column is created for individual payload properties. The event stays one record, and the payload is not spread over tables.
 
@@ -95,7 +95,7 @@ Every event log has the indexes the kernel's own reads need, and Chronicle creat
 
 On MongoDB, an event sequence collection gets a set of named indexes when the sequence is first used, created in the background. They include `type_sequenceNumber`, `occurred`, `eventSourceType`, `eventStreamId`, and combinations such as `eventSourceId_eventTypeId` and `eventSourceId_eventStreamType_eventStreamId`. Chronicle also drops a few older indexes it no longer uses.
 
-On the SQL databases the table has a primary key on `SequenceNumber` and indexes on `SequenceNumber`, `EventSourceId` and `Type`. A unique index on `PublicationIdentityHash` applies to the events that have one.
+On the SQL databases the table has a primary key on `SequenceNumber` and indexes that include `SequenceNumber`, `EventSourceId` and `Type`. A unique index on `PublicationIdentityHash` applies to the events that have one.
 
 These are the lookups the kernel makes: events of one type in order, events of one source, and a range of the sequence. They are not the lookups your application should make. Application queries go against read models, not against the log.
 
