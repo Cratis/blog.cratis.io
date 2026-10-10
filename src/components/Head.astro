@@ -61,6 +61,9 @@ for (const entry of head) {
             thing.dateModified ??= thing.datePublished;
         } else if (thing['@type'] === 'Blog') {
             thing.publisher = { '@id': publisher['@id'] };
+            if (thing.name === 'Blog') thing.name = 'Cratis Blog';
+        } else if (thing['@type'] === 'CollectionPage' && thing.name === 'Blog') {
+            thing.name = 'Cratis Blog';
         }
     }
     if (graph.some((thing) => thing['@type'] === 'CollectionPage')) graph.push(publisher);
