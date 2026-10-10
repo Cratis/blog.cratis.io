@@ -1,0 +1,376 @@
+---
+title: "Reducers: full control of the read model, persistence for free"
+description: "How a Chronicle reducer builds a read model with plain code, sitting between a declarative projection and a reactor, and where its limits are."
+date: 2026-10-10T09:00:00Z
+authors: einar
+excerpt: "A projection describes a read model. A reactor does something about the outside world. A reducer is the one in between: you write the code that decides what the read model looks like, and Chronicle keeps the storage consistent."
+tags:
+  - chronicle
+  - event-sourcing
+  - read-models
+  - projections
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+## TL;DR
+
+A [reducer](https://cratis.io/chronicle/reducers/) is a method per event. Chronicle hands it the event and the current state of the read model, you return the next state, and Chronicle stores whatever you return. You decide the shape and the content of the read model, and storage is not your problem. It sits between a projection and a reactor, and it's what I reach for when a read model reads better as code than as a mapping.
+
+## Plenty of ways to get a read model
+
+Let's face it, Chronicle gives you more than one way to turn events into a read model, and that can be a bit much when you're new to it. There are [projections](https://cratis.io/chronicle/projections/), written as attributes on the read model, as a fluent builder or as text. And there are reducers. The projections are the declarative side: you describe how events map onto the model, and the engine does the rest.
+
+The reducer is the imperative side. I think of it as the odd one out, and, to be honest, as the one that makes the other two easier to understand, because it shows you what the declarative ones are doing on your behalf.
+
+## Between a projection and a reactor
+
+The easiest way to place a reducer is to put it next to its two neighbors. A projection and a reducer both build state you can query. A reactor builds nothing. It reacts to events by doing something, like notifying someone or triggering a command. Chronicle has [a page that puts all three side by side](https://cratis.io/chronicle/concepts/observer-patterns/), and this is the short version:
+
+![A diagram titled Who writes what. Three cards side by side. Projection, declarative: you describe the mapping, Chronicle stores it. Reducer, imperative: you write the fold, Chronicle stores it. Reactor, effects: you write the effect, nothing is stored. A line underneath reads: A reducer sits between the two.](./three-observers-one-choice.png)
+
+*Who writes what. The reducer takes the code from the reactor and the storage from the projection.*
+
+What I like about this is where the line falls. With a reactor you get all the freedom, and with that freedom comes the job of making it safe to run more than once, because Chronicle will run it more than once. With a projection you get the least code, but you're limited to what the attributes and the builder can say. The reducer gives you code for the part where you want control, which is the shape and the content of the read model, and takes the persistence off your hands. It's a nice cross between the two, really.
+
+## One method per event
+
+The model is a fold, the thing functional programmers have been doing to lists forever. Chronicle calls your reducer once per event, in order, for one event source at a time, and passes in the state the previous event produced. What you return becomes the current state for the next event, and it's also what gets stored.
+
+![A diagram titled Events in, state out. A row of four state cards: before, null; after Deposit 100, 100; after Withdraw 30, 70; after Deposit 5, 75. Arrows lead from each card to the next, and an arrow from each event points down into the state it produces. A line underneath reads: Each result becomes current for the next event.](./the-fold.png)
+
+*Three events folded into one state. The first event sees no state at all.*
+
+An account balance shows the shape, one method per event:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.Reducers;
+
+[EventType]
+public record DepositMade(decimal Amount);
+
+[EventType]
+public record WithdrawalMade(decimal Amount);
+
+public record AccountBalance(decimal Balance, DateTimeOffset LastUpdated);
+
+public class AccountBalanceReducer : IReducerFor<AccountBalance>
+{
+    public AccountBalance Deposited(DepositMade @event, AccountBalance? current, EventContext context)
+    {
+        var currentBalance = current?.Balance ?? 0m;
+        return new AccountBalance(currentBalance + @event.Amount, context.Occurred);
+    }
+
+    public AccountBalance WithdrawalMade(WithdrawalMade @event, AccountBalance? current, EventContext context)
+    {
+        var currentBalance = current?.Balance ?? 0m;
+        return new AccountBalance(currentBalance - @event.Amount, context.Occurred);
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import io.cratis.chronicle.events.EventType
+import io.cratis.chronicle.observation.Reducer
+import io.cratis.chronicle.readModels.ReadModel
+import java.time.Instant
+
+@EventType
+data class DepositMade(val amount: Double)
+
+@EventType
+data class WithdrawalMade(val amount: Double)
+
+@ReadModel
+data class AccountBalance(val balance: Double = 0.0, val lastUpdated: Instant = Instant.EPOCH)
+
+@Reducer
+class AccountBalanceReducer {
+    fun deposited(event: DepositMade, current: AccountBalance?): AccountBalance {
+        val currentBalance = current?.balance ?: 0.0
+        return AccountBalance(currentBalance + event.amount, Instant.now())
+    }
+
+    fun withdrawalMade(event: WithdrawalMade, current: AccountBalance?): AccountBalance {
+        val currentBalance = current?.balance ?: 0.0
+        return AccountBalance(currentBalance - event.amount, Instant.now())
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+import io.cratis.chronicle.events.EventType;
+import io.cratis.chronicle.observation.Reducer;
+import io.cratis.chronicle.readModels.ReadModel;
+import java.time.Instant;
+
+@EventType
+record DepositMade(double amount) {}
+
+@EventType
+record WithdrawalMade(double amount) {}
+
+@ReadModel
+record AccountBalance(double balance, Instant lastUpdated) {
+    AccountBalance() {
+        this(0.0, Instant.EPOCH);
+    }
+}
+
+@Reducer
+class AccountBalanceReducer {
+    AccountBalance deposited(DepositMade event, AccountBalance current) {
+        double currentBalance = current != null ? current.balance() : 0.0;
+        return new AccountBalance(currentBalance + event.amount(), Instant.now());
+    }
+
+    AccountBalance withdrawalMade(WithdrawalMade event, AccountBalance current) {
+        double currentBalance = current != null ? current.balance() : 0.0;
+        return new AccountBalance(currentBalance - event.amount(), Instant.now());
+    }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { eventType, reducer } from '@cratis/chronicle';
+
+@eventType()
+class DepositMade {
+    amount = 0;
+}
+
+@eventType()
+class WithdrawalMade {
+    amount = 0;
+}
+
+class AccountBalance {
+    balance = 0;
+    lastUpdated: Date = new Date(0);
+}
+
+// Handler method names must be the exact camelCase of the event's class name -
+// Chronicle discovers handlers by name, not by parameter type.
+@reducer('', undefined, AccountBalance)
+class AccountBalanceReducer {
+    depositMade(
+        event: DepositMade,
+        current: AccountBalance | undefined
+    ): AccountBalance {
+        const currentBalance = current?.balance ?? 0;
+        return { balance: currentBalance + event.amount, lastUpdated: new Date() };
+    }
+
+    withdrawalMade(
+        event: WithdrawalMade,
+        current: AccountBalance | undefined
+    ): AccountBalance {
+        const currentBalance = current?.balance ?? 0;
+        return { balance: currentBalance - event.amount, lastUpdated: new Date() };
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+```elixir
+defmodule MyApp.Events.DepositMade do
+  use Chronicle.Events.EventType, id: "deposit-made"
+
+  defstruct [:amount]
+end
+
+defmodule MyApp.Events.WithdrawalMade do
+  use Chronicle.Events.EventType, id: "withdrawal-made"
+
+  defstruct [:amount]
+end
+
+defmodule MyApp.ReadModels.AccountBalance do
+  defstruct balance: 0, last_updated: nil
+end
+
+defmodule MyApp.Reducers.AccountBalanceReducer do
+  use Chronicle.Reducers.Reducer, model: MyApp.ReadModels.AccountBalance
+
+  alias MyApp.Events.{DepositMade, WithdrawalMade}
+  alias MyApp.ReadModels.AccountBalance
+
+  @handles DepositMade
+  @handles WithdrawalMade
+
+  @impl true
+  def reduce(%DepositMade{} = event, current, context) do
+    current_balance = if current, do: current.balance, else: 0
+
+    %AccountBalance{
+      balance: current_balance + event.amount,
+      last_updated: Map.get(context, :occurred)
+    }
+  end
+
+  def reduce(%WithdrawalMade{} = event, current, context) do
+    current_balance = if current, do: current.balance, else: 0
+
+    %AccountBalance{
+      balance: current_balance - event.amount,
+      last_updated: Map.get(context, :occurred)
+    }
+  end
+end
+```
+
+</TabItem>
+</Tabs>
+
+A few things in that signature are worth knowing. The method gets the event, the current state, and optionally the [`EventContext`](https://cratis.io/chronicle/reducers/event-processing/) with things like when the event occurred. The name of the method is yours to choose, because Chronicle finds the handler by the type of the first parameter. And `current` is nullable, because for the first event of an event source there is no state yet. Handle that, and you've handled the hardest part.
+
+Two return values are special. Return `current` unchanged and the event is ignored. Return `null` and the read model is cleared, so don't use it to mean "nothing to see here". That's a mistake I'd make at least once.
+
+I should be honest about this example too. A running balance is something the projection attributes can add and subtract on their own, so it's the docs' hello world and not a reason to pick a reducer. For that, [start with a projection](https://cratis.io/chronicle/projections/).
+
+## Where the attributes run out
+
+The reducer earns its place when the next state depends on the previous one in a way you'd rather write as an `if`. Say customers earn a loyalty tier based on what they've spent, and a refund lowers the total but never takes a tier away:
+
+```csharp
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.Reducers;
+
+[EventType]
+public record OrderPlaced(decimal Amount);
+
+[EventType]
+public record OrderRefunded(decimal Amount);
+
+public enum Tier { Standard, Silver, Gold }
+
+public record CustomerSpend(decimal Total, Tier Tier, DateTimeOffset LastChanged);
+
+public interface ILoyaltyPolicy
+{
+    Task<Tier> TierFor(decimal totalSpent);
+}
+
+public class CustomerSpendReducer(ILoyaltyPolicy policy) : IReducerFor<CustomerSpend>
+{
+    public Task<CustomerSpend> Placed(OrderPlaced @event, CustomerSpend? current, EventContext context) =>
+        Next(current, @event.Amount, context);
+
+    public Task<CustomerSpend> Refunded(OrderRefunded @event, CustomerSpend? current, EventContext context) =>
+        Next(current, -@event.Amount, context);
+
+    async Task<CustomerSpend> Next(CustomerSpend? current, decimal change, EventContext context)
+    {
+        var total = (current?.Total ?? 0m) + change;
+        var earned = await policy.TierFor(total);
+
+        // A refund lowers the total, but never takes a tier away.
+        var tier = current is null || earned > current.Tier ? earned : current.Tier;
+
+        return new CustomerSpend(total, tier, context.Occurred);
+    }
+}
+```
+
+Nothing here is exotic. The decision about the tier is ordinary C#, it looks at the state we had before, and the shape of `CustomerSpend` is whatever we say it is. There's no attribute for "keep the highest tier so far", and I wouldn't want one. The reducer is an ordinary class, so the policy arrives through the constructor like any other dependency, and [the testing docs](https://cratis.io/chronicle/testing/read-models/scenario/) show how to supply one when you test a reducer. The method can be asynchronous too, and the [event processing docs](https://cratis.io/chronicle/reducers/event-processing/) cover how the other clients shape theirs.
+
+What Chronicle does for you here is everything around it. It calls the right method for each event, in order, per event source. It stores the state you return. And for a read model keyed by its event source, it handles redelivery, so an event delivered a second time after a crash doesn't change the stored state. [The docs](https://cratis.io/chronicle/concepts/observer-patterns/) spell out what "handled" means. You focus on what the read model should look like.
+
+## Reading is fine, doing is not
+
+Here's the part where I have to temper my own enthusiasm. A reducer can ask a collaborator a question, like the policy above. What it must not do is something to the outside world. The docs are plain about it: [projections and reducers build state, with no emails and no API calls](https://cratis.io/chronicle/concepts/observer-patterns/). That's the reactor's job, and a reactor has to be written to be safe to run more than once.
+
+My rule of thumb is to keep what a reducer depends on in-process and boring. A policy, a lookup, a calculator. And there's a reason beyond tidiness, which is replay. A read model can always be rebuilt from the events, and a rebuild starts from a clean read model and runs your reducer again for every event. So whatever you ask a dependency gets asked again.
+
+![A diagram titled Same events, new answer. Two rows. First run: the same orders, 120 and 400, go through policy A, which makes Gold at 500, and the customer ends up Gold. Replay after the policy changed: the same orders go through policy B, which makes Gold at 5,000, and the customer ends up Standard. A line underneath reads: Replay asks the dependency again.](./replay-asks-again.png)
+
+*Same events, a different policy, a different answer.*
+
+Sometimes that is exactly what you want. Change the tier policy, replay, and every customer is recomputed under the new rules from their first order, for free. Notice that the "never takes a tier away" rule only holds within one run of the fold, so a replay under a stricter policy can demote someone. If it isn't what you want, if an answer has to be the one that was true back then, such as an exchange rate on the day of the purchase, then it belongs in the event and not in something you look up later. The event is the fact. The reducer shouldn't have to go and find it again.
+
+## Try it without a server
+
+You don't need Chronicle running to see this behave. `ReadModelScenario` from the testing package runs a reducer in-process: you give it events, you read the instance. Start a test project and add the packages:
+
+```shell
+dotnet new xunit -n Reducers -f net10.0
+cd Reducers
+dotnet add package Cratis.Chronicle --version 19.39.2
+dotnet add package Cratis.Chronicle.Testing --version 19.39.2
+```
+
+Put the reducer above in the project, and add a spec that supplies the policy and folds some events:
+
+```csharp
+using Cratis.Chronicle.Testing.ReadModels;
+using Microsoft.Extensions.DependencyInjection;
+
+public class FixedPolicy : ILoyaltyPolicy
+{
+    public decimal SilverAt = 100m, GoldAt = 500m;
+
+    public Task<Tier> TierFor(decimal totalSpent) =>
+        Task.FromResult(totalSpent >= GoldAt ? Tier.Gold : totalSpent >= SilverAt ? Tier.Silver : Tier.Standard);
+}
+
+public class Specs
+{
+    static (ReadModelScenario<CustomerSpend> Scenario, FixedPolicy Policy) Create()
+    {
+        var policy = new FixedPolicy();
+        var services = new ServiceCollection().AddSingleton<ILoyaltyPolicy>(policy).BuildServiceProvider();
+        return (new ReadModelScenario<CustomerSpend>(initialState: null, serviceProvider: services), policy);
+    }
+
+    [Fact]
+    public async Task a_refund_lowers_the_total_but_keeps_the_tier()
+    {
+        var (scenario, _) = Create();
+
+        await scenario.Given.ForEventSource("customer-1").Events(new OrderPlaced(520m), new OrderRefunded(450m));
+
+        Assert.Equal(70m, scenario.Instance!.Total);
+        Assert.Equal(Tier.Gold, scenario.Instance!.Tier);
+    }
+
+    [Fact]
+    public async Task a_changed_policy_changes_the_tier_when_the_events_are_folded_again()
+    {
+        var (scenario, policy) = Create();
+        await scenario.Given.ForEventSource("customer-1").Events(new OrderPlaced(120m), new OrderPlaced(400m));
+        Assert.Equal(Tier.Gold, scenario.Instance!.Tier);
+
+        policy.GoldAt = 5000m;
+        policy.SilverAt = 5000m;
+        await scenario.Given.ForEventSource("customer-1").Events(new OrderPlaced(1m));
+
+        Assert.Equal(Tier.Standard, scenario.Instance!.Tier);
+    }
+}
+```
+
+Run `dotnet test`. The first spec is the reducer doing its job. The second is the replay point from above, shown as a test: nothing about the events changed, only the answer from the dependency.
+
+## Which one, then
+
+If I had to put it in one line, I'd say: use the simplest style that keeps the intent obvious. Start with a projection when the read model is shaped like the data in the events, because it's the least code and the mapping sits right next to the model. Reach for a reducer when the logic is easier to read as a state transition, with branching, derived values or a rule that depends on what came before. And when you need to do something about the world rather than describe it, that's a reactor.
+
+The thing I like about the reducer is how little it asks of you, and how much it leaves to you. Chronicle keeps the persistence consistent, and you get to spend your time on the shape and the content of the read model, which is the part that's actually yours.
+
+If you have a read model today that's a pile of awkward attributes, try rewriting it as a reducer and see how it reads. The [getting started guide](https://cratis.io/chronicle/reducers/getting-started/) is the place to begin, and [choosing a read model style](https://cratis.io/chronicle/projections/choosing-a-read-model-style/) compares the options with the same example in each.
