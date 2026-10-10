@@ -1,0 +1,123 @@
+---
+title: "Event sourcing with MongoDB, PostgreSQL or SQL Server"
+description: "How Chronicle stores an event log in MongoDB, PostgreSQL or SQL Server: a database per store and namespace, the event record, indexes and read models."
+date: 2026-10-10T09:10:00Z
+authors: cratis-team
+excerpt: "An event store doesn't have to be a special database. Chronicle keeps events in the database you already run, and this is where they land: databases per event store and namespace, the shape of the event record, the indexes and the read models."
+tags:
+  - chronicle
+  - event-sourcing
+  - mongodb
+  - postgresql
+  - sql-server
+---
+
+If you want to do event sourcing on MongoDB, PostgreSQL or SQL Server, Chronicle gives you a choice: you pick the database, and Chronicle's [event store](https://www.cratis.io/concepts/event-store/) runs on top of it. Your application never talks to that database about events. It talks to Chronicle over gRPC, and the Chronicle kernel reads and writes the storage.
+
+This post covers what the kernel puts in the database you choose: which databases and tables or collections exist, what an event looks like once stored, and which indexes come with it. The names come from the kernel's storage code. Chronicle documents no stable contract for this layout, so use the clients, the REST API or the [Workbench](/chronicle-workbench/) for anything your application depends on, and treat the layout as something to understand, not something to build on.
+
+## Choose the storage
+
+Storage is configured on the server, and the type is one of `MongoDB`, `PostgreSql`, `MsSql`, `Sqlite` or `InMemory`. MongoDB is the default.
+
+```json
+{
+  "storage": {
+    "type": "PostgreSql",
+    "connectionDetails": "Host=localhost;Port=5432;Database=chronicle;Username=chronicle;Password=secret"
+  }
+}
+```
+
+[Running Chronicle in production](/running-chronicle-in-production/) covers what the choice changes in practice: MongoDB has to run as a replica set because appends use transactions, and only MongoDB storage supports a cluster of more than one node. The [storage configuration](https://www.cratis.io/chronicle/hosting/configuration/storage/) page has the connection details for each type. On the SQL databases the kernel creates and migrates its own tables, so there is no schema for you to run.
+
+## One database per event store and per namespace
+
+Chronicle separates data by [event store](https://www.cratis.io/concepts/event-store/) and, inside a store, by [namespace](https://www.cratis.io/chronicle/concepts/namespaces/). The storage mirrors that: each store and each store-and-namespace pair gets its own database. The names are built from the store and namespace names.
+
+On MongoDB, for a store named `Orders` with the `Default` namespace and a second namespace named `Acme`:
+
+| Database | Holds |
+| --- | --- |
+| `chronicle+main` | Cluster-wide state, such as the list of event stores |
+| `Orders+es` | What belongs to the store across namespaces: event types, projection and observer definitions, constraints |
+| `Orders+es+Default` | The event log and other event sequences, observer state and failed partitions for that namespace |
+| `Orders+es+Acme` | The same, for `Acme` |
+| `Orders` | Read models of the `Default` namespace |
+| `Orders+Acme` | Read models of the `Acme` namespace |
+
+Two details are easy to trip on. Read models for the `Default` namespace live in the bare store name, with no suffix, while every other namespace gets one. And you can isolate Chronicle on a shared MongoDB server with `storage.databaseNamePrefix`, which is prepended verbatim to every name, so `Orders+es+Default` becomes `staging_Orders+es+Default`. All nodes in a cluster have to use the same prefix.
+
+The names have to be legal MongoDB database names, so the store name, namespace name and prefix together can't contain a space, `/`, `\`, `.`, `"`, `$`, `*`, `<`, `>`, `:`, `|`, `?` or a null character, and the full name can be at most 63 bytes. A name that breaks a rule is refused with `InvalidDatabaseName`, so choose store and namespace names with that in mind before there is data.
+
+PostgreSQL and SQL Server follow the same layout. The database named in your connection string is the cluster database, and the others are derived from its name by adding a suffix, so with `Database=chronicle`:
+
+| Database | Holds |
+| --- | --- |
+| `chronicle` | Cluster state, including the event stores, Orleans reminders, users and data protection keys |
+| `chronicle+es+Orders` | Event types, namespaces, observer, projection, reactor, reducer and read model definitions, constraints |
+| `chronicle+es+Orders+Default` | The event log, observer state, failed partitions, identities and other namespace state |
+| `chronicle+Orders` | Read models for the `Default` namespace |
+| `chronicle+Orders+Acme` | Read models for `Acme` |
+
+The kernel creates a database the first time it needs it, and on PostgreSQL and SQL Server that means the account in the connection string needs permission to create databases. SQLite does the same with files, adding the suffix to the file name.
+
+Because of this layout, a namespace per tenant means a database per tenant. That keeps tenants apart, including their backups, and it also means the number of databases grows with the number of tenants.
+
+## What an event looks like in storage
+
+The event log is an event sequence, and a sequence is one collection on MongoDB or one table on the SQL databases, named after the sequence id. The log is `event-log`. The same applies to other sequences such as `system` and `outbox`.
+
+Each stored event is one document or row, with these fields:
+
+| Field | What it is |
+| --- | --- |
+| `sequenceNumber` | The position in the sequence, and the key on SQL |
+| `type` and `appendedGeneration` | The event type id, and the generation the event was appended as |
+| `eventSourceId`, `eventSourceType` | Which stream of facts the event belongs to |
+| `eventStreamType`, `eventStreamId` | A concrete process within that source, if you use one |
+| `occurred` | When the event happened |
+| `correlationId`, `causation`, `causedBy` | The operation, why it happened and who caused it |
+| `tags` | The tags set on append |
+| `content` | The event payload, keyed by generation |
+| `contentHashes` | A hash of the content for each generation |
+| `subject` | The subject for personal data, when one is set |
+
+On MongoDB the field names are camelCase, as above. On the SQL databases the columns are PascalCase, so `SequenceNumber` and `EventSourceId`. The sequence number is a `ulong` in Chronicle, and SQL stores it as a signed 64-bit integer, because SQLite has no unsigned 64-bit type.
+
+The `content` field is the one that matters most for the rest of the system. It is a map from generation to payload, so an event that has been migrated carries its content once per generation, as [*event versioning and schema evolution*](/event-versioning-and-schema-evolution-in-event-sourcing/) describes. On MongoDB it is a document with one nested document per generation. On the SQL databases it is a string column holding that same JSON, and no database column is created for individual payload properties. The event stays one record, and the payload is not spread over tables.
+
+The two providers don't store every field in exactly the same way. MongoDB keeps a `revisions` array with the event, for example, and the SQL table has its own columns for things such as `DerivedGenerations` and `Compensations`. A query written against one layout doesn't carry over to the other.
+
+## The indexes
+
+Every event log has the indexes the kernel's own reads need, and Chronicle creates them for you.
+
+On MongoDB, an event sequence collection gets a set of named indexes when the sequence is first used, created in the background. They include `type_sequenceNumber`, `occurred`, `eventSourceType`, `eventStreamId`, and combinations such as `eventSourceId_eventTypeId` and `eventSourceId_eventStreamType_eventStreamId`. Chronicle also drops a few older indexes it no longer uses.
+
+On the SQL databases the table has a primary key on `SequenceNumber` and indexes on `SequenceNumber`, `EventSourceId` and `Type`. A unique index on `PublicationIdentityHash` applies to the events that have one.
+
+These are the lookups the kernel makes: events of one type in order, events of one source, and a range of the sequence. They are not the lookups your application should make. Application queries go against read models, not against the log.
+
+## Read models go elsewhere
+
+Events are only half of what the database holds. Read models are written by the kernel's [sink](https://www.cratis.io/chronicle/sinks/), and which sink is used is a separate choice, made in the client.
+
+- The MongoDB sink writes one document per read model instance into a collection named after the read model in camelCase.
+- The SQL sink gives each read model type its own table. Scalar properties become typed columns and the key becomes the primary key. Each collection or nested object becomes a single JSON column: `jsonb` on PostgreSQL, `nvarchar(max)` on SQL Server and `TEXT` on SQLite.
+
+With the kernel on a SQL database, set the application's default sink to SQL as well. [Running Chronicle in production](/running-chronicle-in-production/) shows the option for each client. Two limits to know about: the SQL sink doesn't create indexes you declare with `[Index]`, which only the MongoDB sink does today, and a MongoDB convention pack configures your own driver, not how Chronicle reads and writes read models.
+
+Read models are derived data. The event log is the source of truth, and a read model can be [rebuilt](https://www.cratis.io/chronicle/scenarios/rebuild-a-read-model/) from it, which is why the read model databases are separate from the event databases.
+
+## Which one to pick
+
+Pick the database your team already runs and knows how to back up, unless one of Chronicle's constraints decides it. If you need more than one Chronicle node, or declared read model indexes, that is MongoDB. If your organization runs PostgreSQL or SQL Server and not MongoDB, those work with one node. SQLite fits one kernel on one machine, and `InMemory` is for tests, since it loses everything when the process exits.
+
+Back up the whole set of databases together: the cluster database, the store and namespace databases, and the read model databases if you don't want to rebuild them. If you use compliance keys, their store has to be restored to the same point in time as the rest, which [*Personal data in an event log*](/personal-data-in-an-event-log/) and the production post explain.
+
+## Where to go next
+
+Start with the [concept of an event store](https://www.cratis.io/concepts/event-store/) and the [event sourcing concept](https://www.cratis.io/concepts/event-sourcing/). [Projections and read models](https://www.cratis.io/concepts/projections-and-read-models/) explain what the sinks hold, and [CQRS](https://www.cratis.io/concepts/cqrs/) shows where commands and queries sit around the store.
+
+Chronicle is open source under the MIT license. [Start with the get started guide](https://www.cratis.io/chronicle/get-started/), browse the code on [GitHub](https://github.com/Cratis/Chronicle), and ask questions on [Discord](https://discord.gg/kt4AMpV8WV).
