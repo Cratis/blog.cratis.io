@@ -605,3 +605,16 @@
     color: var(--sl-color-gray-2);
     font-style: italic;
 }
+
+/* --- Discord call-to-action (blog posts) ---
+   Rendered by src/components/Footer.astro below the author signature, on
+   individual posts only. */
+.cratis-discord-cta {
+    margin-top: 0.75rem;
+    font-size: var(--sl-text-sm);
+    color: var(--sl-color-gray-2);
+}
+
+.cratis-discord-cta p {
+    margin: 0;
+}
