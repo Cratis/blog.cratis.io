@@ -1,5 +1,6 @@
 ---
-title: The Cratis ecosystem at a glance
+title: "The Cratis ecosystem at a glance: event sourcing for .NET and beyond"
+description: "The Cratis ecosystem at a glance: what Chronicle covers and how Arc, Components, the CLI, Workbench and the model-first layer fit together. MIT licensed."
 date: 2026-08-28
 authors: cratis-team
 excerpt: What Cratis is, what Chronicle covers, and how Arc, Components, the CLI, Workbench, and the model-first layer fit together — all open source and MIT licensed.

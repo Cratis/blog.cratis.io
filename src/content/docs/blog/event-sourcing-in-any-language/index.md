@@ -1,5 +1,6 @@
 ---
 title: "Event sourcing in any language: how Chronicle's gRPC contract works"
+description: "How Chronicle's language-agnostic gRPC contract works: 29 protobuf contracts, how existing clients are built on them and what a new client must implement."
 date: 2026-08-28T12:00:00Z
 authors: cratis-team
 excerpt: Chronicle's kernel sits behind a language-agnostic gRPC/protobuf boundary — 29 canonical .proto contracts that any language can implement. Here's how the contract is layered, how the existing clients are built on it, and what a new client implements.

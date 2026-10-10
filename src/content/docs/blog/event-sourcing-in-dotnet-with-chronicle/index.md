@@ -1,5 +1,6 @@
 ---
 title: "Event sourcing in .NET with Chronicle: from zero to first projection"
+description: "Event sourcing in .NET with Chronicle: scaffold a full-stack app from the official templates, model a library with Arc and see it live in React."
 date: 2026-08-28T18:00:00Z
 authors: cratis-team
 excerpt: Scaffold a full-stack Cratis application from the official .NET templates, model a small library with Arc commands and a Chronicle read model, and see it live in a React UI.

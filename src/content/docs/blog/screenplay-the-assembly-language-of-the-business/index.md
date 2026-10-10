@@ -1,5 +1,6 @@
 ---
-title: "The assembly language of the business"
+title: "Event modeling with Screenplay: the assembly language of the business"
+description: "Screenplay is an event modeling language: one .play model that people, AI assistants, Studio and C# write, drawn as one board in VS Code, MCP and the CLI."
 date: 2026-10-05
 authors: einar
 excerpt: "The JVM has bytecode and .NET has IL. Over the last couple of weeks Screenplay became that for the business: one .play model that people, AI assistants, Studio and your C# code all write, and that VS Code, your MCP host, your running Arc application and the Cratis CLI all draw as the same event model board."
