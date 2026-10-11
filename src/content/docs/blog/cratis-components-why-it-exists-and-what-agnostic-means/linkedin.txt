@@ -1,0 +1,11 @@
+"Agnostic" promises more than it should. Here's exactly what it means for Cratis Components.
+
+Three things. React Aria stays private inside. Your look comes from tokens and stable parts. And optional adapters can swap nine primitives, like button, input and switch, for MUI or PrimeReact.
+
+Dialogs, tables and the rest stay Components. It's React in a browser, not a promise that every control can be swapped.
+
+Same Button, two renderers, same stable parts and the same validation message under the field. That's agnostic without the hand waving.
+
+https://blog.cratis.io/cratis-components-why-it-exists-and-what-agnostic-means/
+
+#React #TypeScript #MUI #PrimeReact #Cratis
