@@ -1,9 +1,9 @@
 ---
 title: "AuthProxy: the edge your services shouldn't have to build"
-description: "What Cratis AuthProxy is and why it exists: one gateway for sign-in, tenant and identity, how it connects to Arc's identity endpoint, and how Ante's invitation flows fit in."
+description: "What Cratis AuthProxy is and why it exists: a container you configure in front of any services, for sign-in, tenant and identity, with real security benefits, a link to Arc, and Ante for invitations."
 date: 2026-10-11T12:00:00Z
 authors: einar
-excerpt: "Sign-in, tenant, identity and invitations are the same chores in every service. AuthProxy owns them at the edge, so the services behind it can assume the request is already authenticated, scoped to a tenant and enriched. Here's what it does, how it talks to Arc, and where Ante fits."
+excerpt: "Sign-in, tenant, identity and invitations are the same chores in every service. AuthProxy is a container you configure at the ingress, in front of services written in anything, so they can assume the request is already authenticated, tenant-scoped and enriched. Here's how it works, what it buys you in security, and where Arc and Ante fit."
 tags:
   - authproxy
   - arc
@@ -13,17 +13,68 @@ tags:
 
 ## TL;DR
 
-[AuthProxy](https://cratis.io/authproxy/) is a small .NET gateway that sits in front of your backend and frontend. It authenticates the request, resolves the tenant, enriches the identity and forwards it all as headers, so each service can assume it's looking at an authenticated, tenant-scoped request. It works with Arc through Arc's `/.cratis/me` endpoint, and it works with [Ante](https://github.com/Cratis/Ante), the invitation and onboarding lobby, when a user is signed in but doesn't belong anywhere yet. The price of the design is a trust boundary: your services believe the proxy, so only the proxy may reach them.
+[AuthProxy](https://cratis.io/authproxy/) is a container you configure and put in front of your services, at the ingress. It authenticates the request, resolves the tenant, enriches the identity and forwards it all as headers, so each service can assume it's looking at an authenticated, tenant-scoped request. It isn't a .NET library and it doesn't care what your services are written in. It happens to be written in .NET, and there's a nice .NET Aspire integration for those who run that, but at its core it's a container with configuration. Doing this at the edge is also a security win: one place for sign-in, claims checked before anything is forwarded, spoofed headers removed, and a default that fails closed. The price is a trust boundary, because your services believe the proxy. It works with Arc through Arc's `/.cratis/me` endpoint, and with [Ante](https://github.com/Cratis/Ante), the invitation and onboarding lobby, when someone is signed in but doesn't belong anywhere yet.
 
 ## The same chores in every service
 
 Let's face it, nobody wants to write the sign-in handshake twice. Every application grows the same crop of edge concerns: who is this user, which tenant are they in, where does this request go, and how do you bring in somebody who's been invited but has no account yet. Without a gateway, every service re-implements them, and the copies drift. An OpenID Connect flow here, a tenant lookup there, an invite-acceptance flow in the third one.
 
-AuthProxy is the gateway that owns those edges. It's a reverse proxy built on YARP, and there's no code to write. You configure it in the `Cratis:AuthProxy` section of `appsettings.json` and run it as a container in front of your services. It's also standalone: it pairs naturally with Arc, but it will sit in front of any backend and frontend you point it at.
+AuthProxy is the gateway that owns those edges. It's a reverse proxy built on YARP, and there's no code to write. You configure it in the `Cratis:AuthProxy` section of `appsettings.json`, or with `Cratis__AuthProxy__` environment variables, and run it as a container in front of your services. It's standalone: it pairs naturally with Arc, but it will sit in front of any backend and frontend you point it at.
 
 ![A diagram titled The edge in front of your services. A browser, or any client, sends requests to AuthProxy, which authenticates, resolves the tenant and enriches the identity, and then forwards to your services, backend and frontend. A line underneath reads: Services trust the proxy, so only the proxy may reach them.](./the-edge-in-front-of-your-services.png)
 
 *Everything about who the caller is gets settled at the edge.*
+
+## A container, not a C# thing
+
+I want to get one thing across before anything else. AuthProxy is not a .NET library, and you don't have to be a .NET shop to use it. It's the [`cratis/authproxy`](https://hub.docker.com/r/cratis/authproxy) container. You configure it, and you put it in front of your services at the ingress level, which is the same place you'd put any other reverse proxy.
+
+Everything it knows about your system is configuration. A service is a base URL for a backend, a frontend or both, and the proxy sends `/api/**` to the backend and everything else to the frontend. This is the quickstart from the repository, with Microsoft Entra ID sign-in and the tenant taken from the host:
+
+```json
+{
+  "Cratis": {
+    "AuthProxy": {
+      "Authentication": {
+        "OidcProviders": [
+          {
+            "Name": "Microsoft",
+            "Type": "Microsoft",
+            "Authority": "https://login.microsoftonline.com/<tenant-id>/v2.0",
+            "ClientId": "<client-id>",
+            "ClientSecret": "<client-secret>"
+          }
+        ]
+      },
+      "TenantResolutions": [
+        {
+          "Strategy": "Host"
+        }
+      ],
+      "Services": {
+        "main": {
+          "Backend": {
+            "BaseUrl": "http://backend:8080/"
+          },
+          "Frontend": {
+            "BaseUrl": "http://frontend:3000/"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+That's all of it. Nothing in there says what the backend is written in, because it doesn't matter.
+
+![A diagram titled One container, in front of anything. On the left, cratis/authproxy, a container you configure with settings or environment variables and no code. On the right three rows: backend, any HTTP API; frontend, any SPA or static site; identity details, optional.](./a-container-in-front-of-anything.png)
+
+*A configured container at the front. Behind it, whatever you already run.*
+
+A backend only has to speak HTTP. If it answers `GET /.cratis/me`, the proxy uses that to enrich the identity and to decide who may enter, and Arc answers it for .NET, for the JVM and for TypeScript. If your service doesn't, you set `ResolveIdentityDetails` to `false` for that service and the proxy never calls it. A frontend is any single-page app or static site.
+
+So where does .NET come in? AuthProxy itself is written in it, which you never have to care about. And if you do run .NET Aspire, there's a `Cratis.AuthProxy.Aspire` package that wires the container into your AppHost with a fluent API, so you don't set the environment variables by hand. That's a convenience for that world. It's not a requirement, and it's not how the product works. The docs also have guides for running it on [Azure](https://cratis.io/authproxy/azure/) and for [Aspire](https://cratis.io/authproxy/aspire/).
 
 Here's what it handles, in the order a request meets it:
 
@@ -33,6 +84,24 @@ Here's what it handles, in the order a request meets it:
 - **Identity enrichment.** The proxy calls an endpoint on your service and attaches the answer to the forwarded request.
 - **Invitations and the lobby.** Invite-based onboarding with signed tokens, and a lobby for users who aren't assigned to a tenant yet.
 
+## What putting it at the edge buys you
+
+Sign-in and authorization are the part of an application where one copy beats ten. Doing them in a proxy at the ingress gives you things that are hard to get by convention:
+
+![A diagram titled What the edge gives you. Six cards: sign-in done once, claims checked first, spoofed headers removed, fails closed on doubt, trusted peers only, and sessions encrypted.](./what-the-edge-gives-you.png)
+
+*Six things you get from one well-placed container.*
+
+- **Sign-in is done once.** One OpenID Connect handshake in one place, with Microsoft Entra ID, Google, GitHub, Apple or any other OIDC provider, instead of a copy in every service that slowly drifts.
+- **Claims are checked before anything is forwarded.** Require a role, a group, or a GitHub organization or team, and a request without it never reaches your code.
+- **Spoofed headers don't get through.** The proxy removes inbound identity and tenant headers before it sets its own, so a caller can't hand your service an identity of their own.
+- **It fails closed.** Identity verification is required by default, which means only an explicit yes admits a user. More on that below.
+- **It only believes the peers you name.** The client address and scheme come from forwarded headers, and the proxy trusts them only from [the proxies you declare](https://cratis.io/authproxy/configuration/trusted-proxies/). That's what the sign-in notifications and the `Secure` flag on cookies depend on.
+- **Sessions and tokens are encrypted.** The authentication cookie, the sign-in cookies and the tokens it issues are encrypted with [ASP.NET Core Data Protection](https://cratis.io/authproxy/configuration/data-protection/). If you run more than one replica, they need a shared key store (the file system, Azure Blob or Redis), or users get signed out at random.
+- **It can stay quiet.** The sign-in surface is public by default, because people have to reach it to sign in. A deployment that shouldn't be discoverable can use [capability-only admission](https://cratis.io/authproxy/configuration/admission/), where nothing answers anyone without a valid capability, and everyone else gets a plain 404.
+
+None of that makes it a firewall, and it doesn't replace your own authorization. It does move the hardest-to-get-right code to one place, and it means your services start from a request that has already been vetted.
+
 ## Services trust the proxy
 
 I want to be upfront about the trade-off, because it's the thing that makes the rest work. The identity and tenant reach your services as ordinary HTTP headers. Nothing in them is signed. A service believes them because of where they came from, not because of what they contain.
@@ -41,7 +110,7 @@ That puts the guarantee in your topology. AuthProxy removes any inbound copies o
 
 The same thinking applies to the proxy's own surroundings. It almost never sees a browser. It sees an ingress controller, a load balancer or a CDN edge, and everything it knows about the client address and scheme comes from the forwarded headers those write. [You tell it which peers are allowed to speak for someone else](https://cratis.io/authproxy/configuration/trusted-proxies/), because nobody else can.
 
-This is the backend side in Arc, for a service behind the proxy:
+Here's the backend side for an Arc service in .NET. Nothing about the proxy requires .NET, this is just the Arc flavor of a service behind it:
 
 ```csharp
 using Cratis.Arc;
@@ -114,7 +183,7 @@ I should be honest about where Ante is. Its own documentation says there is no v
 
 ## Where it stops
 
-- AuthProxy isn't an identity provider. It signs users in with the providers you configure.
+- AuthProxy isn't an identity provider. It signs users in with the providers you configure. It's also not a firewall or a replacement for network controls.
 - It doesn't replace authorization in your services. It decides who gets in and with what identity, and your commands and queries still decide what they may do.
 - The guarantee is a network one. If a service can be reached without going through the proxy, its trust in the headers is misplaced.
 - It's configuration, not code, which is the point, but it also means the details live in the [configuration reference](https://cratis.io/authproxy/configuration/), and it's worth reading before you run it for real.
@@ -123,4 +192,4 @@ I should be honest about where Ante is. Its own documentation says there is no v
 
 The Arc half is easy to try on its own. Create a web project, add the `Cratis.Arc` package, and use the registration above. Then send a request to `/.cratis/me` with the three headers the proxy would send: `x-ms-client-principal` with a base64-encoded client principal, plus `x-ms-client-principal-id` and `x-ms-client-principal-name`. The docs show how to [build a principal for local development](https://cratis.io/arc/backend/csharp/development/generating-principal/). Only do that on a loopback host, never on something reachable from the internet.
 
-For the proxy itself, start from the [AuthProxy docs](https://cratis.io/authproxy/). There are guides for [hosting it with .NET Aspire](https://cratis.io/authproxy/aspire/) and for [running it on Azure](https://cratis.io/authproxy/azure/) with Microsoft Entra ID sign-in.
+For the proxy itself, run the `cratis/authproxy` container with the quickstart configuration above, pointing `Backend` and `Frontend` at your own services, and start from the [AuthProxy docs](https://cratis.io/authproxy/). There are guides for [hosting it with .NET Aspire](https://cratis.io/authproxy/aspire/) and for [running it on Azure](https://cratis.io/authproxy/azure/) with Microsoft Entra ID sign-in.
