@@ -4,13 +4,13 @@ description: >
   Specialist for TypeScript/React frontend code within a vertical slice.
   Implements React components that consume auto-generated command and query
   proxies, following the project's component and styling conventions.
-model: claude-sonnet-4-5
 tools:
-  - githubRepo
-  - codeSearch
-  - usages
-  - rename
-  - terminalLastCommand
+  - Read
+  - Grep
+  - Glob
+  - Bash
+  - Edit
+  - Write
 ---
 <!-- cratis-ai-managed: agents/frontend-developer.md -->
 
@@ -40,6 +40,7 @@ Select from these canonical rules in `.cratis/ai/rules/` only after applying the
 - Slice type (`State Change`, `State View`, `Automation`, `Translation`)
 - The auto-generated proxy file(s) produced by `dotnet build` (TypeScript commands/queries)
 - Whether this slice introduces a new page (requires routing update)
+- The slice's `screen`, `form` and interaction (`on` / `uses`) declarations, when an accepted model under the model root covers the slice, or the repository is opted in. These are the spec for the page.
 
 ---
 
@@ -50,13 +51,28 @@ Confirm that the TypeScript proxies exist in the slice folder before writing any
 
 ---
 
+## Model-first check
+
+Before writing slice UI, decide the level. The model is the source of truth when an accepted `.play` model covers the slice, or when the repository has opted in: the model root (default `.cratis/screenplay/`) holds a committed `.play` file (`git ls-tree -r --name-only HEAD -- <root>` lists it) or the project explicitly set `mcpServers.screenplay.root` in `.cratis/ai.json`. An empty directory, install output, an installed skill, a `.play` file outside the root or an untracked or uncommitted draft is not opt-in (master: `cratis-screenplay-modeling-lifecycle`). The page is then the model's implementation:
+
+- Read the slice's `screen` and `form` declarations first, and follow `cratis-arc-react-page` `references/from-screenplay.md` for the declaration-to-component mapping. Use `cratis-screenplay-modeling-lifecycle` for the model-first decision rule.
+- Where the model and the request disagree, fix the model first (through the modeler, or ask) and report it. Never change the model to match existing code, and never add data or actions in the page that the model lacks.
+- Opted in but no model covers the slice: route to modeling (the Screenplay Modeler) before implementing the UI. Do not fall back to code-first.
+- Screens are design-only in the compiler. Where Stage renders the screen, prefer the render to hand-writing it, and never edit Stage-managed output.
+- If the Screenplay skills are not installed, report that, do not author model content from memory, and do not treat it as withdrawing opt-in; ask how to proceed.
+- Not opted in and no accepted model: continue code-first and do not propose a model (only the entry-point agent or session does, at most once per session). Framework repositories stay code-first.
+
+---
+
 ## Process
 
+0. **Model-first:** if the slice has a `.play` model, read its `screen` and `form` declarations before anything else (see Model-first check).
 1. **Read the existing feature composition page** (`<Feature>/<Feature>.tsx`) to understand the current layout and imports.
 2. **Create component file(s)** in the slice folder (`<Feature>/<Slice>/`).
 3. **Update the composition page** to import and use the new component.
 4. **Update routing** if the slice introduces a new page.
 5. **Validate** with `yarn lint` and `npx tsc -b`.
+6. **Reconcile with the model** (when one exists): list each `data`, `action`, `field`, `column` and `summary field` in the slice's screen or form and point to its counterpart in the page; list anything the page has that the model lacks. Fix the page or the model, and report gaps.
 
 ---
 
@@ -65,7 +81,7 @@ Confirm that the TypeScript proxies exist in the slice folder before writing any
 - Place `.tsx` files in the **same folder** as the corresponding `.cs` file.
 - Do NOT prefix the file name with the feature or slice name (folder provides context).
 - Each component has its own `.css` file for static styles.
-- Use PrimeReact CSS variables for all colors, backgrounds, and borders — never hard-code hex values. The default stack is Cratis Components on PrimeReact theming — not Tailwind.
+- Use the `--cratis-*` design tokens for all colors, backgrounds, and borders — never hard-code hex values. The default stack is Cratis Components 4 (Components-owned markup and tokens; no PrimeReact) — not Tailwind.
 - Use `const` over `let`.
 - Use full descriptive names (never abbreviations like `e`, `idx`, `prev`).
 - **Move non-trivial state out of the render function** into a `withViewModel` view model (or a tested state module) — see `react.md`. Extract as soon as a component has 3+ `useState`, a state-syncing `useEffect`, or derived values. A view model is a plain class with no React hooks, constructible in a spec.
@@ -91,27 +107,21 @@ const handleSubmit = async () => {
 ## Query usage pattern (with paging)
 
 ```tsx
-const pageSize = 10;
+import { DataTableForQuery, Column } from '@cratis/components/DataTables';
+import { AllProjects } from './AllProjects';
 
-export const Listing = () => {
-    const [allProjectsResult, , setPage] = AllProjects.useWithPaging(pageSize);
-
-    return (
-        <DataTable
-            lazy paginator
-            value={allProjectsResult.data}
-            rows={pageSize}
-            totalRecords={allProjectsResult.paging.totalItems}
-            alwaysShowPaginator={false}
-            first={allProjectsResult.paging.page * pageSize}
-            onPage={event => setPage(event.page ?? 0)}
-            scrollable scrollHeight="flex"
-            emptyMessage="No items found.">
-            <Column field="name" header="Name" />
-        </DataTable>
-    );
-};
+// The table subscribes to the query itself and pages server-side (20 rows a page);
+// do not fetch rows and pass an items array.
+export const Listing = () => (
+    <DataTableForQuery query={AllProjects} emptyMessage="No items found.">
+        <Column field="name" header="Name" />
+    </DataTableForQuery>
+);
 ```
+
+For caller-controlled paging outside a table, use the proxy hook directly —
+`const [result, , , setPage] = AllProjects.useWithPaging(pageSize)`; `result.data` and
+`result.paging` (`page`, `size`, `totalItems`, `totalPages`) drive your own layout.
 
 ---
 
@@ -134,7 +144,7 @@ export const AddProject = ({ closeDialog }: DialogProps) => {
             title="Add Project"
             okLabel="Add"
             cancelLabel="Cancel"
-            onConfirm={() => closeDialog(DialogResult.Ok)}
+            onSuccess={() => closeDialog(DialogResult.Ok)}
             onCancel={() => closeDialog(DialogResult.Cancelled)}
         >
             <InputTextField<RegisterProject>
@@ -158,7 +168,7 @@ Use this for dialogs that collect data and return it without executing a command
 import { useState } from 'react';
 import { DialogProps, DialogResult } from '@cratis/arc.react/dialogs';
 import { Dialog } from '@cratis/components/Dialogs';
-import { InputText } from 'primereact/inputtext';
+import { TextInput } from '@cratis/components/Common';
 
 export const AddProject = ({ closeDialog }: DialogProps<{ name: string }>) => {
     const [name, setName] = useState('');
@@ -174,18 +184,18 @@ export const AddProject = ({ closeDialog }: DialogProps<{ name: string }>) => {
             onConfirm={() => closeDialog(DialogResult.Ok, { name })}
             onCancel={() => closeDialog(DialogResult.Cancelled)}
         >
-            <InputText
+            <TextInput
                 value={name}
-                onChange={event => setName(event.target.value)}
+                onChange={value => setName(value)}
                 placeholder="Enter a name"
-                autoFocus
+                aria-label="Project name"
             />
         </Dialog>
     );
 };
 ```
 
-> **Never** import `Dialog` from `primereact/dialog` directly.
+> **Never** use a vendor or hand-rolled modal — dialogs are Components-owned.
 
 ---
 
@@ -196,20 +206,19 @@ import { Page } from '@cratis/components/Common';
 import { AddProject } from './Registration/AddProject';
 import { Listing } from './Listing/Listing';
 import { DialogResult, useDialog } from '@cratis/arc.react/dialogs';
-import { Button } from 'primereact/button';
-import * as mdIcons from 'react-icons/md';
+import { Button } from '@cratis/components/Common';
+import { MdAdd } from 'react-icons/md';
 
 export const Projects = () => {
     const [AddProjectDialog, showAddProjectDialog] = useDialog(AddProject);
 
     // For a query-backed list page, prefer `DataPage` with `<DataPage.MenuItems>`
-    // (it owns the action bar). PrimeReact 11 removed the standalone `Menubar`;
-    // for a custom toolbar, compose `Button`s (content is children in v11).
+    // (it owns the action bar). For a custom action row, compose Components `Button`s
+    // (`variant`: solid | outline | ghost | link; `tone`: neutral | accent | positive | caution | critical).
     return (
         <Page title="Projects">
-            <Button variant="text" onClick={() => showAddProjectDialog()}>
-                <mdIcons.MdAdd />
-                <span>Add Project</span>
+            <Button variant="ghost" icon={<MdAdd aria-hidden="true" />} onClick={() => showAddProjectDialog()}>
+                Add Project
             </Button>
             <Listing />
             <AddProjectDialog />
@@ -238,8 +247,9 @@ Before handing back:
 - [ ] `yarn lint` passes with zero errors
 - [ ] `npx tsc -b` passes with zero errors
 - [ ] Components are in the correct slice folder
+- [ ] If a `.play` model covers the slice: every `data`, `action`, `field`, `column` and `summary field` in its screen has a counterpart in the page, and the page adds no data or action the model lacks
 - [ ] If the app has a localization convention, user-visible text is routed through it (product policy — not a Cratis rule)
-- [ ] No hard-coded hex/rgb color values — PrimeReact CSS variables used throughout
+- [ ] No hard-coded hex/rgb color values — `--cratis-*` tokens used throughout
 - [ ] All variable/parameter names are fully descriptive (no abbreviations)
 - [ ] No `any` types — `unknown` with type guards where needed
 - [ ] Composition page updated to include the new component

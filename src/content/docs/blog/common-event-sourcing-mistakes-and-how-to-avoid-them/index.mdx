@@ -1,0 +1,182 @@
+---
+title: "Common event sourcing mistakes and how to avoid them"
+description: "Seven event sourcing mistakes, from CRUD-style event names to racing uniqueness checks and unsafe retries, and how Chronicle prevents each one."
+date: 2026-10-10T09:20:00Z
+authors: cratis-team
+excerpt: "Most event sourcing mistakes are about treating the log like a table: updating it, reading it right after writing it, or checking a rule before writing instead of letting the write decide. Seven of them, and what to do instead."
+tags:
+  - chronicle
+  - event-sourcing
+  - best-practices
+  - concurrency
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+Event sourcing stores every change as an immutable event and builds the current state from those events. Most of the mistakes people make with it come from carrying habits over from tables, where you update a row, read it straight back and check a rule with a query. Each of the seven below has a fix, and where Chronicle has a tool for it, the fix is in that tool. The [concept of event sourcing](https://www.cratis.io/concepts/event-sourcing/) is the background if you want it first.
+
+## 1. Events that describe an update
+
+`AuthorUpdated` with a changed field list records that a row changed, and it throws away why. The reader of that event, a year later, can't tell a corrected typo from a change of surname.
+
+Name the event after the business fact in the past tense: `AuthorRegistered`, `AuthorRenamed`, `AuthorRetired`. An event is a fact about the business, and a fact is something that happened and is never taken out of the log afterwards. [*Events are facts*](/events-are-facts/) covers naming and shaping events, and what Chronicle stores with each one: its sequence number, its source, the operation it belonged to and who caused it.
+
+## 2. Checking a rule against a read model
+
+The natural way to keep project names unique is to query for the name and append only if nothing comes back. Read models are [eventually consistent](https://www.cratis.io/chronicle/concepts/consistency/), so two requests arriving together can both pass the check, and both append.
+
+Declare the rule on the event instead. The kernel evaluates a [constraint](https://www.cratis.io/chronicle/constraints/) at append time against authoritative state, so the race is closed where it happens:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.Events.Constraints;
+
+[EventType]
+public record ProjectCreated([property: Unique] string Name, string Description);
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import io.cratis.chronicle.constraints.Unique
+import io.cratis.chronicle.events.EventType
+
+@EventType
+data class ProjectCreated(@Unique val name: String, val description: String)
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+import io.cratis.chronicle.constraints.Unique;
+import io.cratis.chronicle.events.EventType;
+
+@EventType
+record ProjectCreated(@Unique String name, String description) {}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+```elixir
+defmodule MyApp.Events.ProjectCreated do
+  use Chronicle.Events.EventType, id: "project-created"
+
+  defstruct [:name, :description]
+
+  unique(:name)
+end
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { eventType, unique } from '@cratis/chronicle';
+
+@eventType('project-created')
+class ProjectCreated {
+    @unique() name = '';
+    description = '';
+}
+```
+
+</TabItem>
+</Tabs>
+
+When an append would break the rule, the kernel rejects it and the caller gets a failure result, not a committed event. Uniqueness is scoped to the [namespace](https://www.cratis.io/chronicle/concepts/namespaces/), so in a multi-tenant system "unique" means unique within one tenant's namespace. See [enforce a unique value](https://www.cratis.io/chronicle/scenarios/enforce-a-unique-value/) for the steps.
+
+## 3. Expecting a read to see the write
+
+Append returns when the event is checked, numbered and stored. It doesn't wait for projections, so a query right afterwards can miss the event. The write side is consistent and the read side is eventual, usually within milliseconds, and that is what lets projections run independently of each other and of the write path.
+
+Design for it. Let the UI follow [observable queries](https://www.cratis.io/chronicle/scenarios/real-time-query/), which update when the projection catches up. If one caller really needs read-after-write, use a passive read model that is computed from the events when you read it, or wait for the append's observers before reading, as [read model consistency](https://www.cratis.io/chronicle/read-models/consistency/) describes. [*Inside Chronicle*](/inside-chronicle/) walks through the gap between the append and the projection.
+
+## 4. Two writers and no concurrency check
+
+Two requests that both read an account, decide, and append will both succeed, and the second decision was based on a state that was already out of date. A [concurrency scope](https://www.cratis.io/chronicle/events/concurrency/) tells Chronicle what the append expects: here, that no event exists yet for this account.
+
+```csharp
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.EventSequences;
+using Cratis.Chronicle.EventSequences.Concurrency;
+
+[EventType]
+public record AccountOpened(string AccountName);
+
+public class AccountService(IEventLog eventLog)
+{
+    public async Task<bool> TryOpenAccount(EventSourceId accountId, string accountName)
+    {
+        var concurrencyScope = new ConcurrencyScope(
+            SequenceNumber: EventSequenceNumber.BeforeFirst, // Expect no event for this account yet
+            EventSourceId: accountId);
+
+        var result = await eventLog.Append(
+            accountId,
+            new AccountOpened(accountName),
+            concurrencyScope: concurrencyScope);
+
+        if (result.HasConcurrencyViolations)
+        {
+            // result.ConcurrencyViolation describes the expected vs actual sequence number
+            return false;
+        }
+
+        // False would mean nothing was compared against the event store
+        return result.IsSuccess && result.ConcurrencyCheckPerformed;
+    }
+}
+```
+
+If another writer got there first, the append is rejected and you decide what to do: reload and retry, or tell the user. The scope can also be narrowed by event stream or event types, and the Kotlin, Java, TypeScript and Elixir clients take a scope on append too. A rule that spans more than one event source needs a different tool, the [Dynamic Consistency Boundary](https://www.cratis.io/chronicle/dynamic-consistency-boundary/), which scopes a decision to exactly the events it depends on.
+
+## 5. Ignoring what the append returned
+
+Append returns an `AppendResult`, and the failures in it are not exceptions. A schema violation comes back as a constraint violation of type `Schema`, with the failing path in its details, and the result's `Errors` stay empty. Code that only looks at `Errors` believes the event was stored.
+
+Check `IsSuccess`, and read the violations when it is false:
+
+```csharp
+using Cratis.Chronicle.Events.Constraints;
+
+var result = await eventLog.Append(eventSourceId, new OrderPlaced(customerId, total));
+
+foreach (var violation in result.ConstraintViolations.Where(v => v.ConstraintType == ConstraintType.Schema))
+{
+    Console.WriteLine($"Schema violation at {violation.Details["path"]}: {violation.Message}");
+}
+```
+
+The second half of this mistake is retrying. A result that reports a schema, constraint or concurrency violation means the event was rejected, so correcting the problem and appending again can't duplicate it. A result that reports errors is different, because an infrastructure failure can happen after the event was stored. So is a call that fails without a result, such as a timeout or a dropped connection. The outcome is unknown, and appending again blindly can store the event twice. Make the retry safe with an expected sequence number, as in mistake 4, or with a constraint. [Appending](https://www.cratis.io/chronicle/events/appending/) describes the result in full.
+
+## 6. Changing an event type in place
+
+A year in, `AuthorRegistered` needs `FirstName` and `LastName` where it had `Name`. Editing the type and the stored events would falsify the record, and leaving every consumer to guess the shape pushes the problem into all of them.
+
+Add a new generation of the event type and describe how to convert between the two. Chronicle keeps both, so services on the old and the new code read the same events. The traps are in the details: a previous generation without its id is treated as an unrelated event type and registration fails, and a split that drops a part of the name loses it in the derived generation. [*Event versioning and schema evolution*](/event-versioning-and-schema-evolution-in-event-sourcing/) covers the operations, the validation rules and the lossy cases. For a fact that was wrong when it was written, a correction is a different operation from a new generation, and [*Event sourcing in year two*](/four-changes-in-year-two/) separates the two.
+
+## 7. Personal data in an immutable log
+
+An event log is permanent by design, and a person's right to be forgotten isn't. If a name or an email address goes into an event as plain text, you have nothing to delete but the log itself.
+
+Decide before the first event. Chronicle can mark a value as personal data so it is encrypted with a key for its subject, and erasing the person means deleting that key: the events stay, and the marked values read as empty. The marker has to be on the event before the data is written, because values stored earlier stay readable. [*Personal data in an event log*](/personal-data-in-an-event-log/) and [*The log remembers*](/the-log-remembers-pii-crypto-shredding-in-chronicle/) cover the markers, the erasure and its limits.
+
+## A short checklist
+
+- Name events after what happened, not after the table operation.
+- Enforce invariants at append time with a constraint or a concurrency scope, never with a read.
+- Treat read models as eventually consistent, and say where you need otherwise.
+- Check the append result, and retry only when you know the event wasn't stored.
+- Evolve event types with generations, and mark personal data before it is written.
+
+## Where to go next
+
+[Event sourcing](https://www.cratis.io/concepts/event-sourcing/), [the event store](https://www.cratis.io/concepts/event-store/), [projections and read models](https://www.cratis.io/concepts/projections-and-read-models/) and [CQRS](https://www.cratis.io/concepts/cqrs/) are the four concept guides behind this list. If you come from CRUD, [coming from CRUD](https://www.cratis.io/chronicle/coming-from-crud/) maps the habits above to their event-sourced replacements.
+
+Chronicle is open source under the MIT license. [Start with the get started guide](https://www.cratis.io/chronicle/get-started/), browse the code on [GitHub](https://github.com/Cratis/Chronicle), and ask questions on [Discord](https://discord.gg/kt4AMpV8WV).

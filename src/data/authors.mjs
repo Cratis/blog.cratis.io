@@ -5,6 +5,7 @@
 //   post and the /authors/<id>/ archive pages).
 // - `signature` is the personal sign-off rendered below each post by
 //   src/components/Footer.astro, so posts carry the author's own voice.
+//   An optional `signatureLink` ({ text, url }) is appended as a link after it.
 export const authors = {
     einar: {
         name: 'Einar Ingebrigtsen',
@@ -28,6 +29,7 @@ export const authors = {
         url: 'https://github.com/cratis',
         picture: 'https://github.com/cratis.png?size=160',
         signature:
-            'Written by the Cratis team. Everything we publish today is open source and MIT licensed — come build with us on GitHub or say hi on Discord.',
+            'Written by the Cratis team. Everything we publish today is open source and MIT licensed — come build with us on GitHub or',
+        signatureLink: { text: 'say hi on Discord', url: 'https://discord.gg/kt4AMpV8WV' },
     },
 };

@@ -40,9 +40,11 @@ export default defineConfig({
                 'The Cratis blog — essays and engineering explainers on event sourcing, CQRS, and building the open-source (MIT) Cratis stack: Chronicle, Arc, Components, and friends.',
             // Default social-sharing metadata for every page.
             head: [
-                { tag: 'meta', attrs: { property: 'og:image', content: 'https://blog.cratis.io/favicon-512.png' } },
-                { tag: 'meta', attrs: { name: 'twitter:card', content: 'summary' } },
-                { tag: 'meta', attrs: { name: 'twitter:image', content: 'https://blog.cratis.io/favicon-512.png' } },
+                { tag: 'meta', attrs: { property: 'og:image', content: 'https://blog.cratis.io/og-image.jpg' } },
+                { tag: 'meta', attrs: { property: 'og:image:width', content: '1200' } },
+                { tag: 'meta', attrs: { property: 'og:image:height', content: '630' } },
+                { tag: 'meta', attrs: { name: 'twitter:card', content: 'summary_large_image' } },
+                { tag: 'meta', attrs: { name: 'twitter:image', content: 'https://blog.cratis.io/og-image.jpg' } },
             ],
             logo: {
                 light: './src/assets/cratis-mark-light.svg',
@@ -53,6 +55,8 @@ export default defineConfig({
             // technique as cratis.io (see the component for details).
             components: {
                 Head: './src/components/Head.astro',
+                // Omits Starlight's "Blog" <h1> on the landing (the hero is the h1).
+                PageTitle: './src/components/PageTitle.astro',
                 // Appends the author signature block below each blog post.
                 Footer: './src/components/Footer.astro',
                 // Editorial masthead: logo + Blog/cratis.io links + social icons.

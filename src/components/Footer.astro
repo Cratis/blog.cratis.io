@@ -13,6 +13,7 @@ type SignatureAuthor = {
     url?: string;
     picture?: string;
     signature?: string;
+    signatureLink?: { text: string; url: string };
 };
 
 const { id, entry } = Astro.locals.starlightRoute;
@@ -20,6 +21,10 @@ const { id, entry } = Astro.locals.starlightRoute;
 // Only individual posts (docs entries under blog/) get a signature — the
 // generated index, tag, and author archive pages do not.
 const isBlogPost = id.startsWith('blog/') && id !== 'blog';
+
+// Generated archive pages (tags, authors) also live under blog/ but carry no
+// post date, so the call-to-action keys off it.
+const hasDate = Boolean((entry.data as { date?: unknown }).date);
 
 const frontmatterAuthors = (entry.data as { authors?: unknown }).authors;
 const rawAuthors = frontmatterAuthors
@@ -48,10 +53,30 @@ const signatureAuthors: SignatureAuthor[] = rawAuthors
                             {author.url ? <a href={author.url}>{author.name}</a> : author.name}
                         </p>
                         {author.title && <p class="signature-title">{author.title}</p>}
-                        {author.signature && <p class="signature-text">{author.signature}</p>}
+                        {author.signature && (
+                            <p class="signature-text">
+                                {author.signature}
+                                {author.signatureLink && (
+                                    <>
+                                        {' '}
+                                        <a href={author.signatureLink.url}>{author.signatureLink.text}</a>.
+                                    </>
+                                )}
+                            </p>
+                        )}
                     </div>
                 </div>
             ))}
+        </aside>
+    )
+}
+
+{
+    isBlogPost && hasDate && (
+        <aside class="not-content cratis-discord-cta" aria-label="Join the conversation">
+            <p>
+                Questions or ideas about this post? <a href="https://discord.gg/kt4AMpV8WV">Join the conversation on Discord</a>.
+            </p>
         </aside>
     )
 }

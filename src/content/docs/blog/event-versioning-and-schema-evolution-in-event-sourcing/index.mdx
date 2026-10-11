@@ -1,0 +1,385 @@
+---
+title: "Event versioning and schema evolution in event sourcing"
+description: "How to change an event's shape without rewriting history: Chronicle generations, upcasting and downcasting, validation rules and what each change costs."
+date: 2026-10-10T09:00:00Z
+authors: cratis-team
+excerpt: "A year in, the stored event has one Name and the code wants a first and a last name. Events can't be edited, so Chronicle translates them: generations, upcasts and downcasts, kept side by side by the kernel."
+tags:
+  - chronicle
+  - event-sourcing
+  - migrations
+  - event-versioning
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+An event store holds `AuthorRegistered` events with a single `Name`. A year later the application needs `FirstName` and `LastName`. The old events are facts, so you can't edit them, and every service that reads them has to keep working while the new code rolls out. That is the event versioning problem, and it is the one most people ask about before they commit to [event sourcing](https://www.cratis.io/concepts/event-sourcing/).
+
+Chronicle's answer is to translate instead of edit. Each shape of an event type is a generation, you describe how adjacent generations convert in both directions, and the kernel stores every generation next to the others.
+
+## Three ways to handle a changed event
+
+There are three general approaches:
+
+- **Rewrite the stored events.** The log then no longer shows what was written, and everything that depends on it being an unchanging record loses that guarantee.
+- **Make every reader tolerant.** Each consumer handles every shape the type has ever had, and each new shape touches every consumer.
+- **Translate in one place.** Something that knows how version 1 relates to version 2 converts on the way, and each consumer sees the shape it was built for. This is usually called upcasting for old to new and downcasting for new to old.
+
+Chronicle takes the third approach and puts the translation in the server. The [kernel](https://www.cratis.io/chronicle/migrations/) evaluates migrations whenever an event is appended, whether or not any particular client is connected. A migration registered once applies to every event that passes through, whether it came from a .NET client, a REST call or an integration written long after the migration shipped.
+
+## Declare a generation and its migration
+
+An event type is identified by a stable id, and a new shape is a new generation of that id. The migration class bridges one pair of generations: `Upcast` says how the old shape becomes the new one, and `Downcast` says how the new one becomes the old one again.
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.Events.Migrations;
+
+[EventType("author-registered", generation: 2)]
+public record AuthorRegistered(string FirstName, string LastName);
+
+[EventTypeGenerationFor<AuthorRegistered>(1)]
+public record AuthorRegisteredV1(string Name);
+
+public class AuthorRegisteredMigration : EventTypeMigration<AuthorRegistered, AuthorRegisteredV1>
+{
+    public override void Upcast(IEventMigrationBuilder<AuthorRegistered, AuthorRegisteredV1> builder) =>
+        builder.Properties(pb => pb
+            .Split(m => m.FirstName, e => e.Name, PropertySeparator.Space, SplitPartIndex.First)
+            .Split(m => m.LastName, e => e.Name, PropertySeparator.Space, SplitPartIndex.Second));
+
+    public override void Downcast(IEventMigrationBuilder<AuthorRegisteredV1, AuthorRegistered> builder) =>
+        builder.Properties(pb => pb
+            .Combine(m => m.Name, PropertySeparator.Space, e => e.FirstName, e => e.LastName));
+}
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import io.cratis.chronicle.events.EventType
+import io.cratis.chronicle.events.migrations.EventTypeMigration
+import io.cratis.chronicle.events.migrations.EventTypeMigrationBuilder
+
+@EventType(id = "author-registered", generation = 2)
+data class AuthorRegistered(val firstName: String, val lastName: String)
+
+@EventType(id = "author-registered", generation = 1)
+data class AuthorRegisteredV1(val name: String)
+
+class AuthorRegisteredMigration :
+    EventTypeMigration<AuthorRegistered, AuthorRegisteredV1>(
+        AuthorRegistered::class,
+        AuthorRegisteredV1::class
+    ) {
+    override fun upcast(builder: EventTypeMigrationBuilder<AuthorRegistered, AuthorRegisteredV1>) {
+        builder
+            .split(AuthorRegistered::firstName, AuthorRegisteredV1::name, " ", 0)
+            .split(AuthorRegistered::lastName, AuthorRegisteredV1::name, " ", 1)
+    }
+
+    override fun downcast(builder: EventTypeMigrationBuilder<AuthorRegisteredV1, AuthorRegistered>) {
+        builder.combine(AuthorRegisteredV1::name, " ", AuthorRegistered::firstName, AuthorRegistered::lastName)
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+import io.cratis.chronicle.events.EventType;
+import io.cratis.chronicle.events.migrations.EventTypeMigration;
+import io.cratis.chronicle.events.migrations.EventTypeMigrationBuilder;
+
+@EventType(id = "author-registered", generation = 2)
+record AuthorRegistered(String firstName, String lastName) {
+}
+
+@EventType(id = "author-registered", generation = 1)
+record AuthorRegisteredV1(String name) {
+}
+
+// In its own file: the migration is a public class with a public no-argument constructor
+public class AuthorRegisteredMigration
+        extends EventTypeMigration<AuthorRegistered, AuthorRegisteredV1> {
+    public AuthorRegisteredMigration() {
+        super(AuthorRegistered.class, AuthorRegisteredV1.class);
+    }
+
+    @Override
+    public void upcast(EventTypeMigrationBuilder<AuthorRegistered, AuthorRegisteredV1> builder) {
+        builder
+            .split("firstName", "name", " ", 0)
+            .split("lastName", "name", " ", 1);
+    }
+
+    @Override
+    public void downcast(EventTypeMigrationBuilder<AuthorRegisteredV1, AuthorRegistered> builder) {
+        builder.combine("name", " ", "firstName", "lastName");
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+```elixir
+defmodule MyApp.Events.AuthorRegisteredV1 do
+  use Chronicle.Events.EventType, id: "author-registered", generation: 1
+
+  defstruct [:name]
+end
+
+defmodule MyApp.Events.AuthorRegistered do
+  use Chronicle.Events.EventType, id: "author-registered", generation: 2
+
+  defstruct [:first_name, :last_name]
+end
+
+defmodule MyApp.Migrations.AuthorRegisteredMigration do
+  use Chronicle.Events.Migration,
+    from: {MyApp.Events.AuthorRegisteredV1, generation: 1},
+    to: {MyApp.Events.AuthorRegistered, generation: 2}
+
+  alias Chronicle.Events.MigrationBuilder
+
+  @impl true
+  def upcast(builder) do
+    builder
+    |> MigrationBuilder.split_property(:name, :first_name, " ", 0)
+    |> MigrationBuilder.split_property(:name, :last_name, " ", 1)
+  end
+
+  @impl true
+  def downcast(builder) do
+    builder
+    |> MigrationBuilder.combine_properties([:first_name, :last_name], :name, " ")
+  end
+end
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { eventType, eventTypeMigration, IEventTypeMigration, IEventMigrationBuilder } from '@cratis/chronicle';
+import { field } from '@cratis/fundamentals';
+
+@eventType('author-registered', 1)
+class AuthorRegisteredV1 {
+    @field(String) readonly name: string;
+
+    constructor(name: string) {
+        this.name = name;
+    }
+}
+
+@eventType('author-registered', 2)
+class AuthorRegistered {
+    @field(String) readonly firstName: string;
+    @field(String) readonly lastName: string;
+
+    constructor(firstName: string, lastName: string) {
+        this.firstName = firstName;
+        this.lastName = lastName;
+    }
+}
+
+@eventTypeMigration(AuthorRegistered, AuthorRegisteredV1)
+class AuthorRegisteredMigration implements IEventTypeMigration<AuthorRegistered, AuthorRegisteredV1> {
+    upcast(builder: IEventMigrationBuilder<AuthorRegistered, AuthorRegisteredV1>): void {
+        builder.properties(pb => pb
+            .split('firstName', 'name', ' ', 0)
+            .split('lastName', 'name', ' ', 1));
+    }
+
+    downcast(builder: IEventMigrationBuilder<AuthorRegisteredV1, AuthorRegistered>): void {
+        builder.properties(pb => pb
+            .combine('name', ' ', 'firstName', 'lastName'));
+    }
+}
+```
+
+</TabItem>
+</Tabs>
+
+In the .NET client the older record carries `[EventTypeGenerationFor<AuthorRegistered>(1)]` instead of an `[EventType]` of its own, so its id is read from the current generation and the two can't drift apart. The other clients repeat the same explicit id on every generation. The older style, with a matching explicit id on every generation, still works in .NET.
+
+Leaving the id off a previous generation in that older style is the classic mistake. The record then falls back to its CLR name, which is a different event type id from the current generation's. The `EventTypeMigration` base class catches that when the migrator is constructed, in the application and before anything is registered, and throws `MigrationGenerationsMustShareEventTypeId`. The newer attribute removes the mistake by construction.
+
+Migrators are discovered when the application starts, so there is no registration call. Exactly one migrator may own a given generation pair. Two classes that claim the same pair make `EventTypeMigrators.GetMigratorsFor` throw `MultipleMigratorsForSameEventTypeGeneration`.
+
+## What the kernel stores
+
+When an event arrives, the kernel doesn't convert it and throw the original away. It keeps all generations:
+
+| You append | The kernel stores |
+| --- | --- |
+| Generation 1, with a 1 to 2 migration | Generation 1 as written, and generation 2 upcast from it |
+| Generation 2, with a 1 to 2 migration | Generation 2 as written, and generation 1 downcast from it |
+| Generation 1, with 1 to 2 and 2 to 3 migrations | Generations 1, 2 and 3 |
+
+The consequence is that two versions of your software can share one store. A service on the new code reads generation 2, a service still on the old release reads generation 1, and both read the same physical event. Neither coordinates its upgrade with the other. In the stored record, the event content is keyed by generation, which [*how Chronicle lays out its storage*](/event-sourcing-with-mongodb-postgresql-and-sql-server/) shows.
+
+When you register a new generation, Chronicle starts a background job that produces it for events already stored. You don't start it and the application doesn't wait for it. The job covers the default namespace's event log only. Other namespaces and other event sequences keep the generations their events were stored with, and migrations otherwise run when an event is appended. If you use a namespace per tenant, plan for that.
+
+Register a new generation only after every kernel silo runs the release that supports it. Workers still on an older release can overwrite content during the rollout.
+
+A generated generation holds only what the migration produces. The generation an event was appended as is stored as written, and the others are derived from it. Take the split above, which divides a name on spaces: for "Mary Ann Smith" the upcast keeps "Mary" and "Ann" and drops "Smith". The original is still stored, but a consumer reading the derived generation sees the lossy version. Write migrations that keep every part a consumer needs.
+
+## The operations a migration can use
+
+The builder works on properties. Each call names one output property and draws on properties of the other generation:
+
+| Operation | What it does |
+| --- | --- |
+| `Split` | Takes one part of a string by separator and index |
+| `Combine` | Joins several properties into one string with a separator |
+| `RenamedFrom` | Carries a property across under a new name |
+| `DefaultValue` | Gives a new property a literal value for events that predate it |
+| `MapValues` | Maps values to values, for a renumbered enum or a replaced code set (.NET only today) |
+
+A default is the usual way to introduce a property that old events never had:
+
+```csharp
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.Events.Migrations;
+
+[EventType("task-created", generation: 2)]
+public record TaskCreated(string Title, string Status, int RetryCount, bool Enabled);
+
+[EventTypeGenerationFor<TaskCreated>(1)]
+public record TaskCreatedV1(string Title);
+
+public class TaskCreatedMigration : EventTypeMigration<TaskCreated, TaskCreatedV1>
+{
+    public override void Upcast(IEventMigrationBuilder<TaskCreated, TaskCreatedV1> builder) =>
+        builder.Properties(pb => pb
+            .DefaultValue(t => t.Status, "active")
+            .DefaultValue(t => t.RetryCount, 0)
+            .DefaultValue(t => t.Enabled, true));
+
+    public override void Downcast(IEventMigrationBuilder<TaskCreatedV1, TaskCreated> builder)
+    {
+        // Status, RetryCount, and Enabled did not exist in generation 1 — nothing to map back
+    }
+}
+```
+
+Adding or removing an optional property needs a migration class but no operations inside it. The kernel converts a payload by walking the target generation's schema, so an upcast leaves a missing optional property absent and a downcast drops one the older generation doesn't declare. The class has to exist so the chain of generations is complete.
+
+A value map says which value in one generation is which in the other. It is applied forward when upcasting and inverted when downcasting, so you state it once. Values it doesn't mention pass across unchanged:
+
+```csharp
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.Events.Migrations;
+
+public enum PaymentStatusV1
+{
+    Pending = 0,
+    Settled = 1
+}
+
+public enum PaymentStatus
+{
+    Awaiting = 10,
+    Completed = 11
+}
+
+[EventType("payment-processed", generation: 2)]
+public record PaymentProcessed(PaymentStatus Status);
+
+[EventTypeGenerationFor<PaymentProcessed>(1)]
+public record PaymentProcessedV1(PaymentStatusV1 Status);
+
+public class PaymentProcessedMigration : EventTypeMigration<PaymentProcessed, PaymentProcessedV1>
+{
+    public override void Upcast(IEventMigrationBuilder<PaymentProcessed, PaymentProcessedV1> builder)
+    {
+        // Status is covered by the value map
+    }
+
+    public override void Downcast(IEventMigrationBuilder<PaymentProcessedV1, PaymentProcessed> builder)
+    {
+        // Status is covered by the value map
+    }
+
+    public override void MapValues(IEventValueMapBuilder<PaymentProcessed, PaymentProcessedV1> builder) =>
+        builder.For(current => current.Status, previous => previous.Status, map => map
+            .Map(PaymentStatusV1.Pending, PaymentStatus.Awaiting)
+            .Map(PaymentStatusV1.Settled, PaymentStatus.Completed));
+}
+```
+
+Properties inside nested objects use the expressions you would write anyway, such as `e => e.Price.Description`. Chronicle resolves them to their JSON names.
+
+## More than two generations
+
+Write one migrator per adjacent pair. The kernel chains them, so a generation 1 event is upcast 1 to 2 and then 2 to 3:
+
+```csharp
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.Events.Migrations;
+
+[EventType("person-registered", generation: 3)]
+public record PersonRegistered(string Email, string FirstName, string LastName);
+
+[EventTypeGenerationFor<PersonRegistered>(2)]
+public record PersonRegisteredV2(string Email, string Name);
+
+[EventTypeGenerationFor<PersonRegistered>(1)]
+public record PersonRegisteredV1(string EmailAddress, string Name);
+
+// Generation 1 → 2: rename EmailAddress to Email
+public class PersonRegisteredV1ToV2 : EventTypeMigration<PersonRegisteredV2, PersonRegisteredV1>
+{
+    public override void Upcast(IEventMigrationBuilder<PersonRegisteredV2, PersonRegisteredV1> builder) =>
+        builder.Properties(pb => pb
+            .RenamedFrom(t => t.Email, s => s.EmailAddress));
+
+    public override void Downcast(IEventMigrationBuilder<PersonRegisteredV1, PersonRegisteredV2> builder) =>
+        builder.Properties(pb => pb
+            .RenamedFrom(t => t.EmailAddress, s => s.Email));
+}
+
+// Generation 2 → 3: split Name into FirstName / LastName
+public class PersonRegisteredV2ToV3 : EventTypeMigration<PersonRegistered, PersonRegisteredV2>
+{
+    public override void Upcast(IEventMigrationBuilder<PersonRegistered, PersonRegisteredV2> builder) =>
+        builder.Properties(pb => pb
+            .Split(t => t.FirstName, s => s.Name, PropertySeparator.Space, SplitPartIndex.First)
+            .Split(t => t.LastName, s => s.Name, PropertySeparator.Space, SplitPartIndex.Second));
+
+    public override void Downcast(IEventMigrationBuilder<PersonRegisteredV2, PersonRegistered> builder) =>
+        builder.Properties(pb => pb
+            .Combine(t => t.Name, PropertySeparator.Space, s => s.FirstName, s => s.LastName));
+}
+```
+
+## What the kernel refuses
+
+The production kernel image always validates the chain when you register an event type at generation 2 or higher. The development image honours the client's `EnableEventTypeGenerationValidation` option, which defaults to `false`, so turn it on once your schemas are stable. A type must start at generation 1, generations must be sequential with no gaps, and every consecutive pair from 1 up to the current generation needs a migrator. Breaking those rules throws `MissingFirstGenerationForEventType`, `MissingMigrationForEventTypeGeneration` or `MissingEventTypeMigrators`. In the .NET client, `EventTypeMigration` also throws `MigrationGenerationsMustShareEventTypeId` if its two generations resolve to different ids, and `InvalidMigrationGenerationGap` if the numbers aren't consecutive. The [code analysis rules](https://www.cratis.io/chronicle/code-analysis/) CHR0037 and CHR0049 catch an id mismatch between generations at compile time.
+
+The refusal happens at startup, so a broken chain never reaches an event that is already stored.
+
+## After you deploy
+
+New events are written in the new shape, and the other generations are produced as they are appended. Events already stored in the default namespace's event log get the new generation from the background job once it finishes. Events in other namespaces and sequences don't, and rebuilding a read model doesn't create a generation that was never stored. Read models built before the change reflect the old shape until you [rebuild them](https://www.cratis.io/chronicle/scenarios/rebuild-a-read-model/). The [evolve an event](https://www.cratis.io/chronicle/scenarios/evolve-an-event/) scenario walks through the steps.
+
+## When a new generation is the wrong tool
+
+A generation changes how a fact is represented, not what it says. If the meaning of the event has changed, add a new event type or a new optional value instead of overloading the old one, so each event stays one clear fact. A fact that was wrong when it was recorded is a correction, which is a different operation: a compensating event, a revision or a redaction. [*Event sourcing in year two*](/four-changes-in-year-two/) sorts out which change is which.
+
+## Where to go next
+
+- [Understanding event evolution](https://www.cratis.io/chronicle/understanding-event-evolution/) is the short mental model.
+- [Migrations](https://www.cratis.io/chronicle/migrations/) and the [C# client guide](https://www.cratis.io/chronicle/migrations/dotnet-client/) have the full API.
+- [Generation validation](https://www.cratis.io/chronicle/migrations/validation/) lists every rule and error.
+- [The event store concept](https://www.cratis.io/concepts/event-store/) and [projections and read models](https://www.cratis.io/concepts/projections-and-read-models/) explain what consumes these events.
+
+Chronicle is open source under the MIT license. [Start with the get started guide](https://www.cratis.io/chronicle/get-started/), browse the code on [GitHub](https://github.com/Cratis/Chronicle), and ask questions on [Discord](https://discord.gg/kt4AMpV8WV).

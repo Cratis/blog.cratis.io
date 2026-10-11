@@ -40,7 +40,8 @@ jobs:
 
   deploy:
     # Deploy from main only — pull requests and other branches never deploy.
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # A manual run on main redeploys when a merge's push event was not delivered.
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
     needs: build
     runs-on: ubuntu-latest
     permissions:

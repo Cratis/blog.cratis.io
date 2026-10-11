@@ -1,0 +1,1029 @@
+---
+title: "Event sourcing constraints and concurrency at write time · Script to stage, Part 5"
+description: "Enforce rules at write time in an event-sourced system: Chronicle constraints, concurrency scopes, decision reads and Arc aggregates, and what each covers."
+date: 2026-09-30T09:05:00Z
+authors: sindre
+excerpt: "Checking a read model before you append enforces nothing. Constraints, concurrency scopes, decision reads and Arc aggregates check at write time, and each reaches a different set of appends."
+tags:
+  - chronicle
+  - arc
+  - constraints
+  - concurrency
+  - event-sourcing
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+*[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 05 of 26*
+
+An event-sourced system has no table to put a `UNIQUE` index on. A rule that has to hold at write time has to be checked where the event is committed.
+
+The author feature needs a name to stay unique within the user's organization. Chronicle and Arc have four tools for rules like that, and they differ in what they check, where the check runs and which clients have them.
+
+A read-model race approves "Withdraw 200" twice against a lagging balance in Arc's [bank-account example](https://cratis.io/arc/backend/csharp/chronicle/aggregates/). Neither check was wrong. Both were answered from state that hadn't caught up yet.
+
+![A diagram titled Two requests, one name. Two RegisterAuthor cards for Jane Austen, each noting that a check against a lagging read model passes. Both arrows lead into a frame labeled Chronicle kernel, to one constraint card: unique name, UniqueAuthorName, checked at append, per namespace. From the constraint, the first append goes to a green card, admitted, AuthorRegistered, and the second to a red card, constraint violation, nothing appended.](./two-requests-one-name.png)
+
+*Both checks pass. The kernel admits one append.*
+
+## The rule that holds when it's written
+
+A uniqueness check against a read model races. Two requests in the same second both look, both see no "Jane Austen", and both write.
+
+Chronicle checks [constraints](https://cratis.io/chronicle/constraints/), such as uniqueness, in the kernel when an event is appended, and rejects the append that would break one. In the model-bound form, `[Unique]` goes on the event property. Here it is on a project event:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.Events.Constraints;
+
+[EventType]
+public record ProjectCreated([property: Unique] ProjectName Name, ProjectDescription Description);
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import io.cratis.chronicle.constraints.Unique
+import io.cratis.chronicle.events.EventType
+
+@EventType
+data class ProjectCreated(@Unique val name: ProjectName, val description: ProjectDescription)
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+import io.cratis.chronicle.constraints.Unique;
+import io.cratis.chronicle.events.EventType;
+
+@EventType
+record ProjectCreated(@Unique ProjectName name, ProjectDescription description) {}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { eventType, unique } from '@cratis/chronicle';
+import { field } from '@cratis/fundamentals';
+
+@eventType()
+class ProjectCreated {
+    @unique() @field(ProjectName) name = new ProjectName('');
+    @field(ProjectDescription) description = new ProjectDescription('');
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+```elixir
+defmodule MyApp.Events.ProjectCreated do
+  use Chronicle.Events.EventType, id: "project-created"
+
+  defstruct name: %MyApp.ProjectName{}, description: %MyApp.ProjectDescription{}
+
+  unique(:name)
+end
+```
+
+</TabItem>
+</Tabs>
+
+A constraint is scoped to its event sequence and namespace, and Arc's [Chronicle integration](https://cratis.io/arc/backend/csharp/chronicle/tenancy/) maps each tenant to its own Chronicle namespace. A constraint doesn't reach across namespaces or across event sequences. So the name is unique within each tenant, which is the rule the author feature needs. Nobody wrote a per-tenant uniqueness check. It falls out of the namespace mapping and the constraint scope, both of which were already there.
+
+## What a constraint covers
+
+Chronicle has two kinds of [constraint](https://cratis.io/chronicle/understanding-constraints/), and both are about uniqueness. A unique property keeps a value unique across events of one or more types. A unique event type allows one event of that type per event source, until an event declared with `[RemoveConstraint]` releases it. A rule that isn't about uniqueness can't be written as a constraint.
+
+The kernel checks constraints before it commits, so they apply to every client and every entry point, and no constraint code runs in your application. In .NET they're discovered when the client starts, without a registration call.
+
+The model-bound form is the one to reach for first. Naming the constraint lets another event release the value, so an email can be used again once its user is removed:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.Events.Constraints;
+
+[EventType]
+public record UserRegistered([property: Unique(name: "UniqueEmail")] EmailAddress Email, DisplayName DisplayName);
+
+[EventType]
+[RemoveConstraint("UniqueEmail")]
+public record UserRemoved;
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import io.cratis.chronicle.constraints.RemoveConstraint
+import io.cratis.chronicle.constraints.Unique
+import io.cratis.chronicle.events.EventType
+
+@EventType
+data class UserRegistered(
+    @Unique(id = "UniqueEmail") val email: EmailAddress,
+    val displayName: DisplayName
+)
+
+@EventType
+@RemoveConstraint("UniqueEmail")
+class UserRemoved
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+import io.cratis.chronicle.constraints.RemoveConstraint;
+import io.cratis.chronicle.constraints.Unique;
+import io.cratis.chronicle.events.EventType;
+
+@EventType
+record UserRegistered(@Unique(id = "UniqueEmail") EmailAddress email, DisplayName displayName) {}
+
+@EventType
+@RemoveConstraint("UniqueEmail")
+record UserRemoved() {}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { eventType, removeConstraint, unique } from '@cratis/chronicle';
+import { field } from '@cratis/fundamentals';
+
+@eventType()
+class UserRegistered {
+    @unique('UniqueEmail') @field(EmailAddress) email = new EmailAddress('');
+    @field(DisplayName) displayName = new DisplayName('');
+}
+
+@eventType()
+@removeConstraint('UniqueEmail')
+class UserRemoved {}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+```elixir
+defmodule MyApp.Events.UserRegistered do
+  use Chronicle.Events.EventType, id: "user-registered"
+
+  defstruct email: %MyApp.EmailAddress{}, display_name: %MyApp.DisplayName{}
+
+  unique(:email, name: "UniqueEmail")
+end
+
+defmodule MyApp.Events.UserRemoved do
+  use Chronicle.Events.EventType, id: "user-removed"
+
+  defstruct []
+
+  remove_constraint("UniqueEmail")
+end
+```
+
+</TabItem>
+</Tabs>
+
+Giving several events the same constraint name makes one rule follow the value across them, so a registered email and a changed email share one index. When a lifecycle can end in more than one way, each of those ending events gets its own `[RemoveConstraint]`. For rules that outgrow attributes there's the declarative `IConstraint` class. Its builder covers event types whose property names differ, can ignore casing and supplies messages. In C# and TypeScript it also names the constraint and declares removal, while the JVM clients name it with `@Constraint(id = ...)`. Both forms compile to the same constraint in the kernel.
+
+For a registered email and a changed email, the declarative form of the shared `UniqueEmail` rule looks like this, as a self-contained example with its own event types:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.Events.Constraints;
+
+[EventType]
+public record UserRegistered(string Email);
+
+[EventType]
+public record UserEmailChanged(string NewEmail);
+
+[EventType]
+public record UserRemoved;
+
+public class UniqueEmailAcrossEvents : IConstraint
+{
+    public void Define(IConstraintBuilder builder) =>
+        builder.Unique(unique =>
+            unique
+                .WithName("UniqueEmail")
+                .On<UserRegistered>(e => e.Email)
+                .On<UserEmailChanged>(e => e.NewEmail)
+                .RemovedWith<UserRemoved>());
+}
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import io.cratis.chronicle.constraints.Constraint
+import io.cratis.chronicle.constraints.IConstraint
+import io.cratis.chronicle.constraints.IConstraintBuilder
+import io.cratis.chronicle.events.EventType
+
+@EventType
+data class UserRegistered(val email: String)
+
+@EventType
+data class UserEmailChanged(val newEmail: String)
+
+// The constraint is named through @Constraint(id = ...); the fluent unique builder has no
+// withName() or removedWith() on the JVM.
+@Constraint(id = "UniqueEmail")
+class UniqueEmailAcrossEvents : IConstraint {
+    override fun define(builder: IConstraintBuilder) {
+        builder.unique { unique ->
+            unique
+                .on(UserRegistered::class, UserRegistered::email)
+                .on(UserEmailChanged::class, UserEmailChanged::newEmail)
+        }
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+import io.cratis.chronicle.constraints.Constraint;
+import io.cratis.chronicle.constraints.IConstraint;
+import io.cratis.chronicle.constraints.IConstraintBuilder;
+import io.cratis.chronicle.events.EventType;
+import io.cratis.chronicle.java.UniqueConstraintBuilderJavaBridge;
+
+@EventType
+record UserRegistered(String email) {}
+
+@EventType
+record UserEmailChanged(String newEmail) {}
+
+// The constraint is named through @Constraint(id = ...); the fluent unique builder has no
+// withName() or removedWith() on the JVM.
+@Constraint(id = "UniqueEmail")
+class UniqueEmailAcrossEvents implements IConstraint {
+    @Override
+    public void define(IConstraintBuilder builder) {
+        builder.unique(unique -> {
+            UniqueConstraintBuilderJavaBridge.on(unique, UserRegistered.class, "email");
+            UniqueConstraintBuilderJavaBridge.on(unique, UserEmailChanged.class, "newEmail");
+        });
+    }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { constraint, eventType, IConstraint, IConstraintBuilder } from '@cratis/chronicle';
+import { field } from '@cratis/fundamentals';
+
+@eventType()
+class UserRegistered {
+    @field(String) readonly email: string;
+
+    constructor(email: string) {
+        this.email = email;
+    }
+}
+
+@eventType()
+class UserEmailChanged {
+    @field(String) readonly newEmail: string;
+
+    constructor(newEmail: string) {
+        this.newEmail = newEmail;
+    }
+}
+
+@eventType()
+class UserRemoved {
+}
+
+@constraint()
+class UniqueEmailAcrossEvents implements IConstraint {
+    define(builder: IConstraintBuilder): void {
+        builder.unique(unique =>
+            unique
+                .withName('UniqueEmail')
+                .on(UserRegistered, e => e.email)
+                .on(UserEmailChanged, e => e.newEmail)
+                .removedWith(UserRemoved));
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+The Elixir client declares the rule on the events, as in the model-bound example above, with the same name on each event:
+
+```elixir
+defmodule MyApp.Events.UserRegistered do
+  use Chronicle.Events.EventType, id: "constraints-unique-user-registered"
+
+  unique :email, name: "UniqueEmail"
+
+  defstruct email: ""
+end
+
+defmodule MyApp.Events.UserEmailChanged do
+  use Chronicle.Events.EventType, id: "constraints-unique-user-email-changed"
+
+  unique :new_email, name: "UniqueEmail"
+
+  defstruct new_email: ""
+end
+
+defmodule MyApp.Events.UserRemoved do
+  use Chronicle.Events.EventType, id: "constraints-unique-user-removed"
+
+  remove_constraint "UniqueEmail"
+
+  defstruct []
+end
+```
+
+</TabItem>
+</Tabs>
+
+The kernel doesn't keep the values themselves. It hashes each constraint value with SHA-256, after joining multi-property values and lowercasing when casing is ignored, and stores only the hash in its index. The hash isn't salted, so anyone who can read the index can confirm a guessed value, and erasing a subject's key leaves the entry in place ([*Personal data in an event log*](/personal-data-in-an-event-log/)).
+
+A violation comes back as a failed append. The result names the constraint and carries the message you declared, and the command turns that into "that name's taken" for the user. The [unique value recipe](https://cratis.io/chronicle/scenarios/enforce-a-unique-value/) goes from the event to that message. Schema errors come back the same way, as violations of type `Schema`.
+
+## When one event isn't enough
+
+Uniqueness is the easy invariant. "A member can have at most three books on loan" spans many events, and there you have choices. Chronicle [supports decisions scoped this way](https://cratis.io/chronicle/dynamic-consistency-boundary/), what the community calls a [dynamic consistency boundary](https://dcb.events/), through constraints, concurrency scopes and, in the .NET client, decision reads.
+
+**Concurrency scopes** make an append fail if matching events were appended since you read. By default, the first append into a scope isn't checked unless you opt in, per append with `ExpectingNoMatchingEvent()` in .NET (the JVM and TypeScript clients have an equivalent), or with the `CheckFirstAppendIntoAScope` setting. The Elixir client can't ask for it. The [concurrency docs](https://cratis.io/chronicle/events/concurrency/) have the details.
+
+**[Decision reads](https://cratis.io/chronicle/read-models/decision-reads/)** fold the read model you decided from and guard the append with it. In .NET, with an order as the example:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+using Cratis.Chronicle.EventSequences;
+using Cratis.Chronicle.ReadModels;
+
+var read = await eventStore.GetDecisionReads().GetDetached<OrderEligibility>(orderId.Value);
+if (!read.Exists)
+{
+    // Decide whether creation is allowed, including the absent case.
+}
+
+var result = await eventStore.EventLog.AppendMany(
+    [new EventForEventSourceId(orderId, new OrderPlaced(customerId, total))],
+    guardedBy: [read]);
+var conflicts = result.GetDecisionConflicts([read]);
+if (conflicts.Any())
+{
+    // The decision must be read again and resubmitted; no sequence numbers are exposed.
+}
+// Check result.IsSuccess separately for constraint violations and other append failures.
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+Not available in the Kotlin client.
+
+</TabItem>
+<TabItem label="Java">
+
+Not available in the Java client.
+
+</TabItem>
+<TabItem label="TypeScript">
+
+Not available in the TypeScript client.
+
+</TabItem>
+<TabItem label="Elixir">
+
+Not available in the Elixir client.
+
+</TabItem>
+</Tabs>
+
+It's an optimistic guard, so it doesn't lock and it doesn't retry. The read model has to be a Chronicle projection keyed directly by the event source, with no joins or children, and the cost grows with that key's history.
+
+**Aggregates**, if you want them, come from Arc and not from Chronicle. An Arc command that uses one:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+[Command]
+public record WithdrawFunds(AccountId AccountId, Amount Amount)
+{
+    public async Task<AggregateRootCommitResult> Handle(Account account)
+    {
+        await account.Withdraw(Amount);
+        return await account.Commit();
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+Not available in Arc for Kotlin.
+
+</TabItem>
+<TabItem label="Java">
+
+Not available in Arc for Java.
+
+</TabItem>
+<TabItem label="TypeScript">
+
+Aggregates aren't in any published Arc for TypeScript package, because Arc for TypeScript isn't on npm.
+
+</TabItem>
+<TabItem label="Elixir">
+
+Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
+
+</TabItem>
+</Tabs>
+
+Arc discovers the aggregate, loads its history for the command's key before `Handle` runs, and commits its events in the command's transaction. Loading the history isn't, on its own, a concurrency guarantee, and in the published Arc packages aggregates are .NET only. The Arc for TypeScript source preview has an experimental aggregate root.
+
+![A diagram titled Three ways to guard a rule, three columns side by side. Chronicle, unique constraint: checked in the kernel at append, per event sequence and namespace. Chronicle, decision read: the append is guarded by the read it decided from. Arc, aggregate: loads one key's history and commits in the command. A band underneath reads: All three append to the same event log.](./consistency-choices.png)
+
+*Three ways to guard a rule, from narrowest to most familiar.*
+
+We'd reach for a constraint first, a decision read when the rule really spans events, and an aggregate when your team thinks in aggregates and the boundary is genuinely fixed. Arc's own framing helps here. A read model answers "what does this look like now?" and an aggregate answers "is this change allowed?". They compose well. Validate against the read model for a fast, friendly message, and let the write side enforce the invariant.
+
+## Concurrency scopes up close
+
+A [`ConcurrencyScope`](https://cratis.io/chronicle/events/concurrency/) states what an append expects about the history it was decided on. It's built from formalized, indexed metadata tags: the event source id, event source type, event stream type, event stream id and event types. These are separate from the tags you add yourself. A narrower scope produces fewer false conflicts, since an append with a different event type on the same account won't collide, and it means more scopes to manage.
+
+The expected position is a sequence number, or `EventSequenceNumber.BeforeFirst` when no matching event may exist yet. Opening an account is that case:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+[EventType]
+public record AccountOpened(AccountName Name, Amount InitialBalance);
+
+public class Accounts(IEventLog eventLog)
+{
+    public async Task<bool> TryOpenAccount(AccountId accountId, AccountName name, Amount initialBalance)
+    {
+        var concurrencyScope = new ConcurrencyScope(
+            SequenceNumber: EventSequenceNumber.BeforeFirst, // expect no event for this account yet
+            EventSourceId: accountId);
+
+        var result = await eventLog.Append(
+            accountId,
+            new AccountOpened(name, initialBalance),
+            concurrencyScope: concurrencyScope);
+
+        if (result.HasConcurrencyViolations)
+        {
+            return false;
+        }
+
+        return result.IsSuccess && result.ConcurrencyCheckPerformed;
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+@EventType
+data class AccountOpened(val name: AccountName, val initialBalance: Amount)
+
+class Accounts(private val eventLog: IEventLog) {
+    suspend fun tryOpenAccount(accountId: AccountId, name: AccountName, initialBalance: Amount): Boolean {
+        val concurrencyScope = ConcurrencyScopeBuilder()
+            .withExpectsNoMatchingEvent() // expect no event for this account yet
+            .withEventSourceId()
+            .build()
+
+        val result = eventLog.append(
+            accountId.value.toString(),
+            AccountOpened(name, initialBalance),
+            AppendOptions(concurrencyScope = concurrencyScope)
+        )
+
+        if (result.concurrencyViolation != null) {
+            return false
+        }
+
+        return result.isSuccess
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+@EventType
+record AccountOpened(AccountName name, Amount initialBalance) {}
+
+class Accounts {
+    private final BlockingEventSequence eventLog;
+
+    Accounts(IEventLog eventLog) {
+        this.eventLog = new BlockingEventSequence(eventLog);
+    }
+
+    boolean tryOpenAccount(AccountId accountId, AccountName name, Amount initialBalance) {
+        var concurrencyScope = new ConcurrencyScopeBuilder()
+            .withExpectsNoMatchingEvent() // expect no event for this account yet
+            .withEventSourceId()
+            .build();
+
+        var options = new AppendOptionsBuilder().concurrencyScope(concurrencyScope).build();
+        var result = eventLog.append(accountId.value().toString(), new AccountOpened(name, initialBalance), options);
+
+        if (result.getConcurrencyViolation() != null) {
+            return false;
+        }
+
+        return result.isSuccess();
+    }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+@eventType()
+class AccountOpened {
+    @field(AccountName) readonly name: AccountName;
+    @field(Amount) readonly initialBalance: Amount;
+
+    constructor(name: AccountName, initialBalance: Amount) {
+        this.name = name;
+        this.initialBalance = initialBalance;
+    }
+}
+
+class Accounts {
+    constructor(private readonly eventLog: IEventLog) {}
+
+    async tryOpenAccount(accountId: AccountId, name: AccountName, initialBalance: Amount): Promise<boolean> {
+        const result = await this.eventLog.append(accountId.toString(), new AccountOpened(name, initialBalance), {
+            concurrencyScope: {
+                sequenceNumber: EventSequenceNumber.beforeFirst.value, // expect no event for this account yet
+                eventSourceId: true
+            }
+        });
+
+        if (result.concurrencyViolation) {
+            return false;
+        }
+
+        return result.isSuccess;
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+The Elixir client can't express an expectation that no event exists yet.
+
+</TabItem>
+</Tabs>
+
+A violation means nothing was appended. `HasConcurrencyViolations` reports it, and `ConcurrencyViolation` carries the expected and actual positions. `ConcurrencyCheckPerformed` says whether a comparison happened at all. A skipped check and a passing check both succeed, and that flag is how a test or a command tells them apart. Against an older kernel it always reads `false`, which under-reports but never over-reports.
+
+By default the .NET client appends through `OptimisticConcurrencyStrategy`. It reads the tail within the scope and sends that as the expected sequence number, so it catches an append that lands between its own tail read and its write. Anything your code read before that point is unprotected. A decision that depends on state you've already read needs an explicit scope. TypeScript, Kotlin/Java and Elixir send no concurrency check by default.
+
+With nothing matching a scope yet, there's no tail to read, so the strategy reports `Unavailable`, which means the same as having no expectation, and the kernel skips the check with a debug log. That covers the first event on a new event source, and the first event with a new source type, stream type or stream id. The `CheckFirstAppendIntoAScope` option turns the check on across the application. It's `false` today and planned to become `true` in the next major version. For one behavior, ask per append:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+public async Task<bool> TryOpenPartition(AccountId accountId, PartitionName name)
+{
+    var concurrencyScope = new ConcurrencyScopeBuilder()
+        .ExpectingNoMatchingEvent()
+        .WithEventSourceId(accountId)
+        .WithEventType<PartitionOpened>()
+        .Build();
+
+    var result = await eventLog.Append(
+        accountId,
+        new PartitionOpened(name),
+        concurrencyScope: concurrencyScope);
+
+    return result.IsSuccess;
+}
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+suspend fun tryOpenPartition(accountId: AccountId, name: PartitionName): Boolean {
+    val concurrencyScope = ConcurrencyScopeBuilder()
+        .withExpectsNoMatchingEvent()
+        .withEventSourceId()
+        .withEventType(EventTypeDescriptor(EventTypeId("PartitionOpened")))
+        .build()
+
+    val result = eventLog.append(
+        accountId.value.toString(),
+        PartitionOpened(name),
+        AppendOptions(concurrencyScope = concurrencyScope)
+    )
+
+    return result.isSuccess
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+boolean tryOpenPartition(AccountId accountId, PartitionName name) {
+    var concurrencyScope = new ConcurrencyScopeBuilder()
+        .withExpectsNoMatchingEvent()
+        .withEventSourceId()
+        .withEventType(EventTypeDescriptor.parse("PartitionOpened"))
+        .build();
+
+    var options = new AppendOptionsBuilder().concurrencyScope(concurrencyScope).build();
+    var result = eventLog.append(accountId.value().toString(), new PartitionOpened(name), options);
+
+    return result.isSuccess();
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+async tryOpenPartition(accountId: AccountId, name: PartitionName): Promise<boolean> {
+    const result = await this.eventLog.append(accountId.toString(), new PartitionOpened(name), {
+        concurrencyScope: {
+            sequenceNumber: EventSequenceNumber.beforeFirst.value,
+            eventSourceId: true,
+            eventTypes: [getEventTypeFor(PartitionOpened)]
+        }
+    });
+
+    return result.isSuccess;
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+The Elixir client can't ask the kernel to expect no matching event.
+
+</TabItem>
+</Tabs>
+
+Opting in can reject appends that used to succeed, so be ready for violations you've never seen before. A client and kernel on mismatched versions fall back to skipping the check and say so in the log. `ExpectingNoMatchingEvent` is the .NET name. The JVM client has `withExpectsNoMatchingEvent()` on `ConcurrencyScopeBuilder`, and TypeScript takes `EventSequenceNumber.beforeFirst` as the scope's sequence number.
+
+`AppendMany` takes scopes per event source, so one decision that spans several sources gets a check for each of them in one atomic append.
+
+Pick a constraint for a rule every writer must obey forever, whatever the client asked for. Pick a scope when what matters is that the facts behind this particular decision haven't changed.
+
+![A diagram titled What checked means. A frame labeled Default, one scope: account-7 holds two numbered cards joined by an arrow. 1, first into the scope, in amber: no tail, check skipped, ConcurrencyCheckPerformed = false. 2, next append: compared with tail, ConcurrencyCheckPerformed = true. A second frame, labeled Opt in: ExpectingNoMatchingEvent(), holds card 1 again, first into the scope: expected BeforeFirst, ConcurrencyCheckPerformed = true, next to a chip reading .NET, JVM, TypeScript. A note at the bottom reads: CheckFirstAppendIntoAScope: false by default. Setting it to true turns the check on across the application.](./what-checked-means.png)
+
+*The first append into a scope is checked only when you ask.*
+
+## Decision reads up close
+
+A [decision read](https://cratis.io/chronicle/read-models/decision-reads/) folds an event-source-keyed projection in a fresh session, straight from the event log, and hands you the result together with an opaque guard. `GetDetached<T>(key)` returns the read with `Exists`, `AppendMany(..., guardedBy: [read])` carries the guard, and `GetDecisionConflicts` maps a conflict back to the model type and key without exposing sequence numbers. Inside a unit of work, `Get<T>(key)` enrolls the read in the ambient unit instead.
+
+If an event that could affect the read model is appended for the same event source after the read, the guarded append reports a concurrency violation and appends nothing. An absent model is guarded as well, so a concurrent creation conflicts. An unrelated event type, or another event source, leaves the read valid. On a conflict you read again and resubmit. Chronicle doesn't retry the command, and it takes no global lock.
+
+The admitted shape is narrower than "keyed by the event source". It has to be a single Chronicle projection on the event log, keyed directly by the event source id, with a nonempty, finite set of event types that includes its removal types. Joins, children, nested projections, event-property routing, subscriptions to all events, reducers and other sequences are refused with a typed `DecisionReadRefused`. `IDecisionReads.Admit<T>()` checks the shape without any I/O. GUID keys have to be written in lowercase canonical form by every writer. The other typed refusals are `FoldIncomplete`, `DefinitionMismatch` and `DecisionReadValidateOnlyNotSupported`.
+
+Each attempt costs two tail calls, a fresh projection session and a fold over the key's entire history, and a read can take up to three attempts. The first read per model type adds two calls that list definitions. The longer the history, the more a read costs.
+
+Decision reads need kernel 19.0.0 or newer and exist only in the .NET client. A strict unit-of-work lifecycle is opt-in through `UnitOfWorkLifecyclePolicy.Strict` and becomes the default in the next major release. In ASP.NET Core the middleware normally completes the unit after the response has been written, so a conflict is reported too late to change that response. An action can ask for an early commit through `IUnitOfWorkCompletionFeature`.
+
+The guard covers the event-log tail for that event source. Revisions, redactions, migration replacements, other sequences, external data and definition changes aren't guarded, and the guard assumes a single, ordered writer to the event log. In [dynamic consistency boundary](https://dcb.events/) terms, decision reads are the concrete .NET API for reading what you decide on and guarding the write with it, next to the constraints, scopes and metadata tags that [Chronicle's DCB support](https://cratis.io/chronicle/dynamic-consistency-boundary/) already rests on.
+
+## How an Arc command carries them
+
+Arc's [Chronicle integration](https://cratis.io/arc/backend/csharp/chronicle/commands/) turns these tools into declarations on a command. A `[Command]` returns events from `Handle()`, and Chronicle appends them in the command's pending transaction, committed on success and rolled back on failure. A `Result<TEvent, ValidationResult>` return drops the pending events when it carries a failure and unwraps the event when it succeeds.
+
+Scope can be declared on the command. `[EventStreamId]`, `[EventStreamType]` and `[EventSourceType]` tag the events, and with `concurrency: true` each of them also contributes to the scope. Stream tags bound the check even without the flag, because the fallback strategy narrows by the tags an append carries ([command concurrency](https://cratis.io/arc/backend/csharp/chronicle/commands/concurrency/)).
+
+Returning `EventForEventSourceId`, one or many and mixed with plain events if you like, appends across event sources atomically. A constraint violation, a conflict or an append error rejects the whole batch. Order across sources isn't kept, so `A1, B1, A2` can commit as `A1, A2, B1`, and Arc builds one scope per target, each with that target's own expected tail. A transfer debits one account and credits another in one command:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+On a returned `EventForEventSourceId`, C# keeps only `Occurred` and `Tags`. The event source and stream types come from the command's attributes.
+
+```csharp
+[Command]
+[EventSourceType("Account", concurrency: true)]
+[EventStreamType("Transactions", concurrency: true)]
+public record TransferFunds(AccountId FromAccountId, AccountId ToAccountId, Amount Amount)
+{
+    public IEnumerable<EventForEventSourceId> Handle() =>
+    [
+        new EventForEventSourceId(FromAccountId, new FundsDebited(Amount)),
+        new EventForEventSourceId(ToAccountId, new FundsCredited(Amount))
+    ];
+}
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+The JVM annotations tag the events, and a value set on a wrapper wins. They add no concurrency check; that takes `EventsWithConcurrencyScopes`.
+
+```kotlin
+@Command
+@CommandEventSourceType("Account")
+@CommandEventStreamType("Transactions")
+data class TransferFunds(val fromAccountId: AccountId, val toAccountId: AccountId, val amount: Amount) {
+    fun handle(): List<EventForEventSourceId> = listOf(
+        EventForEventSourceId(fromAccountId.value.toString(), FundsDebited(amount)),
+        EventForEventSourceId(toAccountId.value.toString(), FundsCredited(amount))
+    )
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+The JVM annotations tag the events, and a value set on a wrapper wins. They add no concurrency check; that takes `EventsWithConcurrencyScopes`.
+
+```java
+@Command
+@CommandEventSourceType("Account")
+@CommandEventStreamType("Transactions")
+public record TransferFunds(AccountId fromAccountId, AccountId toAccountId, Amount amount) {
+    public List<EventForEventSourceId> handle() {
+        return List.of(
+            new EventForEventSourceId(fromAccountId.value().toString(), new FundsDebited(amount)),
+            new EventForEventSourceId(toAccountId.value().toString(), new FundsCredited(amount)));
+    }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+From Arc for TypeScript, an early source preview whose packages aren't on npm yet. A value set on an entry wins over the decorators:
+
+```typescript
+@command()
+@eventSourceType('Account', { concurrency: true })
+@eventStreamType('Transactions', { concurrency: true })
+export class TransferFunds {
+    @field(AccountId) fromAccountId!: AccountId;
+    @field(AccountId) toAccountId!: AccountId;
+    @field(Amount) amount!: Amount;
+
+    handle() {
+        return [
+            eventForEventSourceId({ eventSourceId: this.fromAccountId.toString(), event: new FundsDebited(this.amount) }),
+            eventForEventSourceId({ eventSourceId: this.toAccountId.toString(), event: new FundsCredited(this.amount) })
+        ];
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+Arc for Elixir doesn't exist. With the Chronicle Elixir client, one call appends both events:
+
+```elixir
+defmodule MyApp.TransferService do
+  alias Chronicle.EventSequences.{EventForEventSourceId, EventLog}
+  alias MyApp.Events.{FundsCredited, FundsDebited}
+
+  def transfer(from_account_id, to_account_id, amount) do
+    EventLog.append_many_for_event_sources([
+      %EventForEventSourceId{event_source_id: from_account_id, event: %FundsDebited{amount: amount}},
+      %EventForEventSourceId{event_source_id: to_account_id, event: %FundsCredited{amount: amount}}
+    ])
+  end
+end
+```
+
+</TabItem>
+</Tabs>
+
+When global order or an exact revision matters, return `EventsWithConcurrencyScopes`. It carries the revision the decision actually read, under labels you choose, and a label can name an independent fact such as all events about active administrators. Events and scopes are committed together. `BeforeFirst` means no matching event may exist, while `Unavailable` protects nothing. A revision that governs authorization has to come from the server, never from request input.
+
+Opening an account only once is the `BeforeFirst` case:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+[Command]
+public record OpenAccount(AccountId AccountId, AccountName Name, Amount InitialBalance)
+{
+    public EventsWithConcurrencyScopes Handle() =>
+        new(
+            [new(AccountId, new AccountOpened(Name, InitialBalance))],
+            [new(AccountId, new ConcurrencyScope(EventSequenceNumber.BeforeFirst, EventSourceId: AccountId))]);
+}
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+@Command
+data class OpenAccount(@CommandKey val accountId: AccountId, val name: AccountName, val initialBalance: Amount) {
+    fun handle(): EventsWithConcurrencyScopes = eventsWithConcurrencyScopes {
+        event(accountId.value.toString(), AccountOpened(name, initialBalance))
+        concurrencyScope(accountId.value.toString()) {
+            withExpectsNoMatchingEvent()
+            withEventSourceId()
+        }
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+@Command
+public record OpenAccount(@CommandKey AccountId accountId, AccountName name, Amount initialBalance) {
+    public EventsWithConcurrencyScopes handle() {
+        var scope = new ConcurrencyScopeBuilder()
+            .withExpectsNoMatchingEvent()
+            .withEventSourceId()
+            .build();
+
+        return EventsWithConcurrencyScopes.builder()
+            .event(accountId.value().toString(), new AccountOpened(name, initialBalance))
+            .concurrencyScope(accountId.value().toString(), scope)
+            .build();
+    }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+From Arc for TypeScript, an early source preview whose packages aren't on npm yet:
+
+```typescript
+@command()
+export class OpenAccount {
+    @field(AccountId) @key() accountId!: AccountId;
+    @field(AccountName) name!: AccountName;
+    @field(Amount) initialBalance!: Amount;
+
+    handle() {
+        return eventsWithConcurrencyScopes([new AccountOpened(this.name, this.initialBalance)], {
+            [this.accountId.toString()]: { eventSourceId: true, sequenceNumber: EventSequenceNumber.beforeFirst.value }
+        });
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+Arc for Elixir doesn't exist, and the Chronicle Elixir client can't express an expectation that no event exists yet.
+
+</TabItem>
+</Tabs>
+
+`WithdrawFunds` can also decide from a read model instead of an aggregate. Arc resolves the balance by the command's key and passes it to `Handle()`. That balance is a snapshot loaded before `Handle()` runs, so it doesn't stop two concurrent withdrawals from both passing:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+[Command]
+public record WithdrawFunds(AccountId AccountId, Amount Amount)
+{
+    // Required on purpose: a missing balance rejects the command before Handle runs.
+#pragma warning disable ARC0006
+    public Result<FundsWithdrawn, ValidationResult> Handle(AccountBalance balance) =>
+#pragma warning restore ARC0006
+        balance.Balance.Value < Amount.Value
+            ? ValidationResult.Error("Insufficient funds.", ["amount"])
+            : new FundsWithdrawn(Amount);
+}
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+In Arc for Kotlin, a `provide()` that returns a `ValidationResult` instead of a value rejects the command before `handle()` runs.
+
+```kotlin
+@Command
+data class WithdrawFunds(@CommandKey val accountId: AccountId, val amount: Amount) {
+    fun provide(balance: AccountBalance): Any =
+        if (balance.balance.value < amount.value) {
+            ValidationResult.error("Insufficient funds.", listOf("amount"))
+        } else {
+            balance
+        }
+
+    fun handle(balance: AccountBalance): FundsWithdrawn = FundsWithdrawn(amount)
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+In Arc for Java, a `provide()` that returns a `ValidationResult` instead of a value rejects the command before `handle()` runs.
+
+```java
+@Command
+public record WithdrawFunds(@CommandKey AccountId accountId, Amount amount) {
+    public Object provide(AccountBalance balance) {
+        return balance.balance().value().compareTo(amount.value()) < 0
+            ? ValidationResult.error("Insufficient funds.", List.of("amount"))
+            : balance;
+    }
+
+    public FundsWithdrawn handle(AccountBalance balance) {
+        return new FundsWithdrawn(amount);
+    }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+From Arc for TypeScript, an early source preview whose packages aren't on npm yet:
+
+```typescript
+@command()
+export class WithdrawFunds {
+    @field(AccountId) @key() accountId!: AccountId;
+    @field(Amount) amount!: Amount;
+
+    @inject(commandReadModel(AccountBalance))
+    handle(balance: AccountBalance): Outcome<FundsWithdrawn> | FundsWithdrawn {
+        if (balance.balance.value < this.amount.value) {
+            return rejected(validation('Insufficient funds.', ['amount']));
+        }
+
+        return new FundsWithdrawn(this.amount);
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
+
+</TabItem>
+</Tabs>
+
+A [`CommandValidator<T>`](https://cratis.io/arc/backend/csharp/chronicle/validation/) can take the read model Chronicle projected for the command's key and reject the command before `Handle()` runs. How fresh that read model is depends on what backs it, materialized or passive. The rule that must hold needs a constraint or, in .NET, a protected decision read, as in the decision reads above.
+
+## Aggregates up close
+
+An [aggregate root](https://cratis.io/arc/backend/csharp/chronicle/aggregates/defining-an-aggregate-root/) rehydrates from its entity's events, applies new events under its own rules and commits them as one unit. Arc discovers `IAggregateRoot` types, resolves one per command from the command's key (a `[Key]` property, an `EventSourceId` or `EventSourceId<T>` property, or `ICanProvideEventSourceId`) and commits it with the command's transaction.
+
+Inside the aggregate, `Apply` records a new fact. It's async, so always await it. Methods named `On...` rebuild state, both during rehydration and when a new event is applied, and must only change internal state. `Failed(message)` collects failures. `Commit()` returns an `AggregateRootCommitResult`, which Arc turns into the command's outcome, whether that's a validation failure, a constraint violation, a concurrency conflict or an append error.
+
+Automatic completion commits the unit of work directly and doesn't collect the aggregate's `Failed(...)` results, so return `Commit()` through the command result, as `WithdrawFunds` does. An explicit `Commit()` inside a command commits the shared unit of work early, and a later failure can't undo the events already committed. An aggregate's `Apply()` doesn't forward the command's compliance subject.
+
+Chronicle is designed around constraints and decision-scoped consistency, and it treats the classic aggregate as a fixed boundary. Aggregates are an optional Arc feature for .NET, and Arc itself runs without Chronicle.
+
+## What none of them cover
+
+When an append collides on a duplicate sequence number, the kernel retries it with a new number and doesn't revalidate the scopes. Duplicate grain activations, foreign writers, or an earlier storage outcome that was never resolved can therefore defeat a concurrency scope. Decision reads and aggregates don't replace constraints either. A constraint holds for every writer, and a guard holds only for the appends that declare it.
+
+`[Unique]` on the author name is checked by the kernel inside the tenant's namespace, and it holds whichever client or command appends the event. Scopes, decision reads and aggregates earn their place when a rule reaches past one value.
+
+---
+
+- Previous: [Part 04 — Reacting to facts](/reacting-to-facts/)
+- Next: [Part 06 — Arc: commands and queries without the plumbing](/arc-commands-and-queries/)

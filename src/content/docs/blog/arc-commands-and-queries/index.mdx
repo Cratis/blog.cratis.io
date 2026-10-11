@@ -1,0 +1,764 @@
+---
+title: "CQRS with Arc: commands and queries without the plumbing · Script to stage, Part 6"
+description: "CQRS in .NET with Arc: commands as records with a Handle method, queries as static methods, the request pipeline order and generated TypeScript."
+date: 2026-09-30T09:06:00Z
+authors: sindre
+excerpt: "A command is a record with a Handle method and a query is a static method on the read model it returns. What Arc builds from those two shapes, in which order it checks a request, what reaches the generated TypeScript, and what stays the application's job."
+tags:
+  - arc
+  - cqrs
+  - dotnet
+  - typescript
+  - validation
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+*[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 06 of 26*
+
+A C# record marked `[Command]` with a public `Handle()` method is enough for Arc to expose it as a `POST` endpoint, check its authorization, validate it and, with the proxy build package configured, write a TypeScript class the frontend compiles against. There's no controller, no DTO and no list of registrations anywhere in the application. Arc finds the record, reads what's declared on it and builds the rest.
+
+Arc handles the author registration between the edge that knows who the user is and the event store that records what happened.
+
+![A diagram titled One feature, layer by layer. A frame labeled Tenant: Acme holds six numbered cards in two columns, each naming its product. 1 AuthProxy: sign-in and tenant, x-cratis-tenant-id. 2 Arc: command, generated TypeScript proxy. 3 Chronicle: namespace, one per tenant, via Arc. 4 Chronicle: append, unique name checked, AuthorRegistered. 5 Chronicle: view, the Author read model, by projection. 6 Components: screen, React, aligned with Arc.](./one-feature-by-layer.png)
+
+*The author feature, step by step, and the product that owns each step.*
+
+## The command
+
+In Arc, `RegisterAuthor` is a [command](https://cratis.io/arc/backend/csharp/commands/model-bound/), which means a record with a `Handle` method. `AuthorId` and `AuthorName` are the feature's own types:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+[EventType]
+public record AuthorRegistered(AuthorName Name);
+
+[Command]
+public record RegisterAuthor(AuthorId Id, AuthorName Name)
+{
+    public AuthorRegistered Handle() => new(Name);
+}
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+@EventType
+data class AuthorRegistered(val name: AuthorName)
+
+@Command
+data class RegisterAuthor(@CommandKey val id: AuthorId, val name: AuthorName) {
+    fun handle(): AuthorRegistered = AuthorRegistered(name)
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+@EventType
+public record AuthorRegistered(AuthorName name) { }
+
+@Command
+public record RegisterAuthor(@CommandKey AuthorId id, AuthorName name) {
+    public AuthorRegistered handle() { return new AuthorRegistered(name); }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+@eventType()
+export class AuthorRegistered {
+    @field(AuthorName) name: AuthorName;
+    constructor(name: AuthorName = new AuthorName('')) { this.name = name; }
+}
+
+@command()
+export class RegisterAuthor {
+    @key() @field(AuthorId) id!: AuthorId;
+    @field(AuthorName) name!: AuthorName;
+
+    handle(): AuthorRegistered { return new AuthorRegistered(this.name); }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
+
+</TabItem>
+</Tabs>
+
+The TypeScript tab is Arc for TypeScript, an early source preview whose packages aren't on npm yet.
+
+That's the whole command. [Arc](https://cratis.io/arc/) gives it an HTTP route and runs validation and [declared authorization](https://cratis.io/arc/backend/csharp/authorizing-commands-and-queries/) on it (`[Authorize]`, roles and policies). The handler returns an `AuthorRegistered` event, and the command can [append the event it returns](https://cratis.io/arc/backend/csharp/chronicle/commands/events/). You write no controller, no DTO and no registration list, and the name travels as a typed value instead of a bare string. The service code, the authorization policy and the storage stay yours.
+
+In .NET, Arc discovers a command when the type has `[Command]` and a public instance `Handle()`. The route comes from the configured prefix, `api` by default, then the namespace in kebab-case with its leading segments skipped, then the type name. An explicit path is kept exactly as written. Nothing about this needs an event store.
+
+`AuthorId` and `AuthorName` are concepts. The name is personal data, so its type is marked `[PII]` once, and a concept validator puts its rules on every author name:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+public record AuthorId(Guid Value) : EventSourceId<Guid>(Value)
+{
+    public static readonly AuthorId NotSet = new(Guid.Empty);
+    public static AuthorId New() => new(Guid.NewGuid());
+    public static implicit operator AuthorId(Guid value) => new(value);
+}
+
+[PII]
+public record AuthorName(string Value) : ConceptAs<string>(Value)
+{
+    public static readonly AuthorName NotSet = new(string.Empty);
+    public static implicit operator AuthorName(string value) => new(value);
+}
+
+public class AuthorNameValidator : ConceptValidator<AuthorName>
+{
+    public AuthorNameValidator()
+    {
+        RuleFor(name => name.Value).NotEmpty().WithMessage("An author needs a name.");
+        RuleFor(name => name.Value).MaximumLength(200).WithMessage("An author name is at most 200 characters.");
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+data class AuthorId(private val id: UUID) : ArcConceptAs<UUID>, ChronicleConceptAs<UUID> {
+    override fun value(): UUID = id
+    override val value: UUID get() = id
+
+    companion object {
+        val NOT_SET = AuthorId(UUID(0, 0))
+        fun new(): AuthorId = AuthorId(UUID.randomUUID())
+    }
+}
+
+@Pii
+data class AuthorName(private val name: String) : ArcConceptAs<String>, ChronicleConceptAs<String> {
+    override fun value(): String = name
+    override val value: String get() = name
+}
+
+@Component
+class AuthorNameValidator : ConceptValidator<AuthorName> {
+    override val conceptType: Class<AuthorName> = AuthorName::class.java
+
+    override fun validate(concept: AuthorName): List<ValidationResult> = when {
+        concept.value().isBlank() -> listOf(ValidationResult.error("An author needs a name."))
+        concept.value().length > 200 -> listOf(ValidationResult.error("An author name is at most 200 characters."))
+        else -> emptyList()
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+public record AuthorId(UUID value) implements ConceptAs<UUID>, io.cratis.chronicle.concepts.ConceptAs<UUID> {
+    public static final AuthorId NOT_SET = new AuthorId(new UUID(0, 0));
+
+    public static AuthorId newId() {
+        return new AuthorId(UUID.randomUUID());
+    }
+
+    @Override
+    public UUID getValue() {
+        return value;
+    }
+}
+
+@Pii
+public record AuthorName(String value) implements ConceptAs<String>, io.cratis.chronicle.concepts.ConceptAs<String> {
+    @Override
+    public String getValue() {
+        return value;
+    }
+}
+
+@Component
+public final class AuthorNameValidator implements ConceptValidator<AuthorName> {
+    @Override
+    public Class<AuthorName> getConceptType() {
+        return AuthorName.class;
+    }
+
+    @Override
+    public List<ValidationResult> validate(AuthorName concept) {
+        if (concept.value().isBlank()) {
+            return List.of(ValidationResult.error("An author needs a name."));
+        }
+        if (concept.value().length() > 200) {
+            return List.of(ValidationResult.error("An author name is at most 200 characters."));
+        }
+
+        return List.of();
+    }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+From Arc for TypeScript, an early source preview whose packages aren't on npm yet:
+
+```typescript
+export class AuthorId extends ConceptAs<Guid> {
+    static readonly valueType = Guid;
+
+    static create(): AuthorId {
+        return new AuthorId(Guid.create());
+    }
+}
+
+@pii()
+export class AuthorName extends ConceptAs<string> {
+    static readonly valueType = String;
+}
+
+@validator(AuthorName)
+export class AuthorNameValidator extends ConceptValidator<AuthorName> {
+    constructor() {
+        super();
+        this.ruleFor(name => name.value).notEmpty().withMessage('An author needs a name.');
+        this.ruleFor(name => name.value).maxLength(200).withMessage('An author name is at most 200 characters.');
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+Arc for Elixir doesn't exist, so there's no validator. The Chronicle Elixir client declares the two concepts:
+
+```elixir
+defmodule MyApp.AuthorId do
+  use Chronicle.Concept, type: :uuid, event_source_id: true
+end
+
+defmodule MyApp.AuthorName do
+  use Chronicle.Concept, type: :string
+  pii()
+end
+```
+
+</TabItem>
+</Tabs>
+
+On the wire `AuthorName` is just the string, and every Arc proxy generator types it as the underlying primitive in the generated TypeScript, so the C# model gets a named type without the HTTP contract getting a wrapper object.
+
+Dependencies go on `Handle()` as parameters, resolved from the command's service scope. A `CancellationToken` parameter gets the request-aborted token over HTTP. A command that produces the new author's id itself, here `RegisterNewAuthor`, shows the other half of the model:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+[Command]
+public record RegisterNewAuthor(AuthorName Name)
+{
+    public (AuthorId, AuthorRegistered) Handle() => (AuthorId.New(), new AuthorRegistered(Name));
+}
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+@Command
+data class RegisterNewAuthor(val name: AuthorName) {
+    fun handle(): Pair<AuthorId, EventForEventSourceId> {
+        val authorId = AuthorId.new()
+        return authorId to EventForEventSourceId(authorId.value().toString(), AuthorRegistered(name))
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+@Command
+public record RegisterNewAuthor(AuthorName name) {
+    public CommandResponseValues handle() {
+        var authorId = AuthorId.newId();
+        return CommandResponseValues.of(
+            authorId,
+            new EventForEventSourceId(authorId.value().toString(), new AuthorRegistered(name)));
+    }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+@command()
+export class RegisterNewAuthor {
+    @field(AuthorName) name!: AuthorName;
+
+    handle() {
+        const authorId = AuthorId.create();
+        return tuple(eventSourceIdResponse(authorId.toString()), new AuthorRegistered(this.name));
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
+
+</TabItem>
+</Tabs>
+
+When a command needs data loaded first, such as a read model or an answer from another service, `Provide()` loads it. It runs after the request has passed authorization and validation, whatever it returns is handed to `Handle()`, and it can also stop the command with a validation result.
+
+A credit check before an assessment is the usual shape:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+[Command]
+public record AssessLoan(LoanId LoanId, ApplicantId Applicant)
+{
+    public CreditScore Provide(ICreditBureau bureau) => bureau.GetScore(Applicant);
+
+    public LoanAssessment Handle(CreditScore creditScore) => new(LoanId, creditScore);
+}
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+@Command
+data class AssessLoan(val loanId: LoanId, val applicant: ApplicantId) {
+    suspend fun provide(bureau: CreditBureau): CreditScore = bureau.score(applicant)
+
+    fun handle(creditScore: CreditScore): LoanAssessment = LoanAssessment(loanId, creditScore)
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+@Command
+public record AssessLoan(LoanId loanId, ApplicantId applicant) {
+    public CreditScore provide(CreditBureau bureau) {
+        return bureau.score(applicant);
+    }
+
+    public LoanAssessment handle(CreditScore creditScore) {
+        return new LoanAssessment(loanId, creditScore);
+    }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { field } from '@cratis/fundamentals';
+import { command, currentServices } from '@cratis/arc.core';
+
+@command()
+export class AssessLoan {
+    @field(LoanId) loanId!: LoanId;
+    @field(ApplicantId) applicant!: ApplicantId;
+
+    // provide() takes no parameters, so it resolves its services from the execution scope.
+    async provide(): Promise<CreditScore> {
+        const bureau = await currentServices().resolve(CreditBureau);
+        return bureau.scoreFor(this.applicant);
+    }
+
+    handle(creditScore: CreditScore): LoanAssessment {
+        return new LoanAssessment(this.loanId, creditScore);
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
+
+</TabItem>
+</Tabs>
+
+In .NET, what `Handle()` returns decides the response. `void` and `Task` give no response. A plain `T` or `Task<T>` becomes the response, unless a response handler claims it. A `Result<TSuccess, TError>` from `Cratis.Monads` is processed for whichever alternative is active. A tuple is split. Arc processes the values it has handlers for and allows at most one unhandled value, which becomes the response. In `RegisterNewAuthor` above, the Chronicle integration appends the event under the new `AuthorId`, and the id goes back to the caller as the response. Two unhandled values fail with `MultipleUnhandledTupleValues`. An arbitrary error record doesn't mark a command as failed on its own, and a returned `ValidationResult` does.
+
+## The order is part of the contract
+
+Arc runs every command through the same [pipeline](https://cratis.io/arc/backend/csharp/commands/command-pipeline/), and the order matters as much as the steps.
+
+![A diagram titled The command pipeline, in order. Arrows run from Request to Authorization, with roles, policies and filters, to Validation, with annotations, validators and concepts, to Provide, then down to a second row: Handle, response handlers and the result envelope. A red chip under Authorization reads 403, no validation detail. An amber chip under Validation reads 400, field messages. A band below reads: Status precedence: 200 success, 403 authorization, 400 validation or malformed body, 202 result pending, 500 exception. A note reads: A failed result never carries a response value.](./command-pipeline-in-order.png)
+
+*Authorization is decided before anything looks at the command's values.*
+
+Authorization comes first. The built-in authorization filter is ordered ahead of the ordinary [command filters](https://cratis.io/arc/backend/csharp/commands/command-filters/), so a caller who isn't allowed never reaches validation, `Provide()` or `Handle()`. The response is a 403, and it carries no validation detail. A forbidden caller who can see which fields failed has learned something about a command they weren't allowed to run, which is why the 403 carries nothing else.
+
+Arc pins that behavior with a spec. It registers the validation filter *first* on purpose, and then checks that authorization still wins:
+
+```csharp
+// The validation filter is registered first on purpose: authorization must still be decided first (by Order),
+// so a forbidden caller whose command is also invalid gets a clean 403 and the validation filter never runs.
+var filters = new List<ICommandFilter> { _validationFilter, authorizationFilter };
+// ...
+[Fact] void should_not_be_authorized() => _result.IsAuthorized.ShouldBeFalse();
+[Fact] void should_not_be_successful() => _result.IsSuccess.ShouldBeFalse();
+[Fact] void should_map_to_forbidden_not_bad_request() => EndpointRouteHelper.GetStatusCode(_result.IsSuccess, _result.IsAuthorized, _result.IsValid).ShouldEqual(HttpStatusCode.Forbidden);
+[Fact] void should_not_run_the_validation_filter() => _validationFilter.WasCalled.ShouldBeFalse();
+[Fact] void should_not_leak_any_validation_detail() => _result.ValidationResults.ShouldBeEmpty();
+```
+
+Validation runs next; [*Validation all the way down*](/validation-all-the-way-down/) covers command and concept validators, data annotations and the severity header. On a positional record, DataAnnotations must target the property, as in `[property: Required]`, because the filter doesn't read attributes on constructor parameters.
+
+Then `Provide()`, then `Handle()`, then response handlers, command operations and the execution scope.
+
+The [HTTP contract](https://cratis.io/arc/http-contract/) fixes the status codes in the same order. Success is 200. An authorization failure is 403 (401 when authentication itself fails). A validation failure, a malformed body or a dependency Arc can't resolve is 400. A result that isn't ready yet is 202, and an exception is 500. A failed result never carries a response value. A malformed or wrongly typed body turns into a validation failure with the reason `malformedRequest`, and the parser's own message isn't echoed back. Outside the Development environment, exception messages and stack traces are replaced with a generic message, and the detail is logged on the server with the correlation id.
+
+For early form feedback, use the command's `POST <route>/validate` endpoint. A check that passes reserves nothing, so the real `POST` can still fail; [*Validation all the way down*](/validation-all-the-way-down/) covers what the endpoint runs and what it leaves out.
+
+Exceptions thrown by a handler, a filter, a response handler or the execution scope are caught into the `CommandResult`. If a handler wrote to a service directly and a later step failed, Arc catches the exception but doesn't roll that write back.
+
+## Authorization sits on the artifact
+
+Authorization is declared on the command or query it protects. `[Authorize]` requires an authenticated caller. `[Roles("A", "B")]` requires any one of the listed roles. `[Authorize(Policy = ...)]` names a policy, either a scoped `IAuthorizationPolicy` or an ASP.NET policy on an ASP.NET host, and `[AllowAnonymous]` opens the artifact up. With no requirement at all, the built-in check permits access. Putting `[AllowAnonymous]` together with `[Authorize]` or `[Roles]` on one target is ambiguous. The ARC0019 analyzer reports it at build time, and at run time Arc rejects the call. A rule that applies across many commands goes in an `IAuthorizationCommandFilter` that returns `CommandResult.Unauthorized`.
+
+[Queries are authorized](https://cratis.io/arc/backend/csharp/queries/model-bound/authorization/) the same way, and a method-level attribute replaces the type-level one:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+using Cratis.Arc.Authorization;
+using Cratis.Arc.Queries.ModelBound;
+using MongoDB.Driver;
+
+namespace Banking.Accounts;
+
+public enum AccountRole { AccountReader, Admin, Auditor }
+
+[ReadModel]
+[Roles(nameof(AccountRole.AccountReader))]
+public record DebitAccount(AccountId Id, AccountName Name, Amount Balance)
+{
+    [Path("/api/accounts")]
+    public static IQueryable<DebitAccount> AllAccounts(IMongoCollection<DebitAccount> collection) =>
+        collection.AsQueryable();
+
+    [Roles(nameof(AccountRole.Admin), nameof(AccountRole.Auditor))]
+    [Path("/api/accounts/overdrawn")]
+    public static IQueryable<DebitAccount> OverdrawnAccounts(IMongoCollection<DebitAccount> collection) =>
+        collection.AsQueryable().Where(account => account.Balance < new Amount(0));
+}
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+package banking.accounts
+
+import io.cratis.arc.artifacts.FromServices
+import io.cratis.arc.artifacts.ReadModel
+import io.cratis.arc.authorization.Roles
+import io.cratis.arc.queries.Path
+
+@ReadModel
+@Roles("AccountReader")
+data class DebitAccount(val id: AccountId, val name: AccountName, val balance: Amount) {
+    companion object {
+        @JvmStatic
+        @Path("/api/accounts")
+        fun allAccounts(@FromServices accounts: DebitAccountRepository): List<DebitAccount> =
+            accounts.findAll()
+
+        @JvmStatic
+        @Roles("Admin", "Auditor")
+        @Path("/api/accounts/overdrawn")
+        fun overdrawnAccounts(@FromServices accounts: DebitAccountRepository): List<DebitAccount> =
+            accounts.findOverdrawn()
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+package banking.accounts;
+
+import io.cratis.arc.artifacts.FromServices;
+import io.cratis.arc.artifacts.ReadModel;
+import io.cratis.arc.authorization.Roles;
+import io.cratis.arc.queries.Path;
+import java.util.List;
+
+@ReadModel
+@Roles("AccountReader")
+public record DebitAccount(AccountId id, AccountName name, Amount balance) {
+    @Path("/api/accounts")
+    public static List<DebitAccount> allAccounts(@FromServices DebitAccountRepository accounts) {
+        return accounts.findAll();
+    }
+
+    @Roles({"Admin", "Auditor"})
+    @Path("/api/accounts/overdrawn")
+    public static List<DebitAccount> overdrawnAccounts(@FromServices DebitAccountRepository accounts) {
+        return accounts.findOverdrawn();
+    }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { field } from '@cratis/fundamentals';
+import { path, query, readModel, roles, service } from '@cratis/arc.core';
+import { mongoCollection, type MongoCollection } from '@cratis/arc.mongodb';
+import { AccountId } from './AccountId.js';
+import { AccountName } from './AccountName.js';
+import { Amount } from './Amount.js';
+
+export class DebitAccount {
+    @field(AccountId) id!: AccountId;
+    @field(AccountName) name!: AccountName;
+    @field(Amount) balance!: Amount;
+}
+
+const accounts = mongoCollection(DebitAccount);
+
+@readModel()
+@roles('AccountReader')
+export class DebitAccounts {
+    @query(service(accounts))
+    @path('/api/accounts')
+    static allAccounts(items: MongoCollection<DebitAccount>): Promise<DebitAccount[]> {
+        return items.find();
+    }
+
+    @roles('Admin', 'Auditor')
+    @query(service(accounts))
+    @path('/api/accounts/overdrawn')
+    static overdrawnAccounts(items: MongoCollection<DebitAccount>): Promise<DebitAccount[]> {
+        return items.find({ balance: { $lt: 0 } });
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
+
+</TabItem>
+</Tabs>
+
+A role says what kind of caller someone is. It doesn't say which records are theirs. An account reader in that example can read every account. If each caller should only see their own, the query has to derive the owner from the authenticated principal and filter on it, and Arc has no universal mapping from a claim to an owner that could do it for you.
+
+Arc doesn't authenticate anyone either. The host establishes the principal, through ASP.NET authentication or an edge proxy such as AuthProxy, and Arc's attributes check it. Arc doesn't validate or modify the identity provider's token. An [identity details provider](https://cratis.io/arc/understanding-identity-and-access/) can compose application-specific details from the principal, and in .NET Arc maps `/.cratis/me` for the frontend by default, with a default provider when you register none. Arc derives that identity from the authenticated request each time and in .NET no longer reads or writes the `.cratis-identity` cookie. It's display data, and backend authorization must never rest on it.
+
+Two more endpoints are open in Development by default. `/.cratis/commands` and `/.cratis/queries` list every command and query with its route and schema, and on .NET they require an authenticated caller elsewhere unless you configure them otherwise. On the JVM they're always anonymous.
+
+A resolver, whether it reads a header, a query string, a claim or a subdomain, selects a tenant. It doesn't check that the caller belongs to it, and a header the caller controls isn't evidence of membership. [*Tenancy and identity end to end*](/tenancy-and-identity-end-to-end/) follows the tenant from the edge to the event store.
+
+## A query is a static method on the read model
+
+A [model-bound query](https://cratis.io/arc/backend/csharp/queries/model-bound/) is a static method on the record it returns. Mark the record `[ReadModel]`, and any non-generic public or internal static method that returns that type, a collection of it or a supported wrapper becomes a `GET` endpoint. The supported wrappers include `Task<T>`, `ISubject<T>` for a query that keeps pushing results, and `IQueryable<T>` for paging and sorting. A `QUERY` method that takes its arguments as a JSON body is registered alongside by default, with `Cache-Control: no-store`. A method that returns some other type isn't discovered.
+
+Parameters work the way they do on a command. Arc resolves a parameter from the container when it can, as with the `IMongoCollection<DebitAccount>` above, and treats the rest as arguments from the caller. `[Path]` fixes the route.
+
+The response is an envelope with `data`, `isReady`, `isAuthorized` and `validationResults`, plus `paging` with a zero-based page, the page size, total items and total pages. A query that returns null has succeeded. Arc doesn't turn it into a 404.
+
+The read model doesn't have to come from Chronicle. It can come from MongoDB, EF Core, another service or memory. [Arc without event sourcing](https://cratis.io/arc/arc-without-event-sourcing/) is a supported way to use it, and Chronicle never depends on Arc.
+
+Returning `ISubject<T>` instead of a list makes it an observable query, and a browser that subscribes gets later results pushed to it. [*Live UIs*](/live-uis-with-arc/) is about that path.
+
+## The TypeScript the build writes
+
+At build time, Arc's [proxy generator](https://cratis.io/arc/backend/csharp/proxy-generation/) loads the compiled assembly and writes a TypeScript file for each command and query into the folder you configure. A command becomes a class that extends `Command<ICommandName>` and carries its route. Its interface has the C# XML documentation as comments. The class has typed property accessors, property descriptors and a validator, plus the roles from the C# attributes. A static `use()` hook for React returns the command with functions to set and clear its values.
+
+In .NET, validation rules are extracted from the compiled model and projected into the generated validator. The Ideas board sample in the Cratis Samples repository has a title concept with a rule on it:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+public record IdeaTitle(string Value) : ConceptAs<string>(Value)
+{
+    public static readonly IdeaTitle NotSet = new(string.Empty);
+    public static implicit operator IdeaTitle(string value) => new(value);
+}
+
+public class IdeaTitleValidator : ConceptValidator<IdeaTitle>
+{
+    public IdeaTitleValidator() => RuleFor(_ => _.Value).NotEmpty().MaximumLength(72);
+}
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+Arc for Kotlin and Java runs `ConceptValidator` rules on the server only; the generated TypeScript gets its client rules from Jakarta constraint annotations and shared `FluentModelValidator` rules.
+
+```kotlin
+data class IdeaTitle(private val title: String) :
+    io.cratis.arc.concepts.ConceptAs<String>,
+    io.cratis.chronicle.concepts.ConceptAs<String> {
+    override fun value(): String = title
+    override val value: String get() = title
+
+    companion object {
+        val NOT_SET = IdeaTitle("")
+    }
+}
+
+@Component
+class IdeaTitleValidator : ConceptValidator<IdeaTitle> {
+    override val conceptType: Class<IdeaTitle> = IdeaTitle::class.java
+
+    override fun validate(concept: IdeaTitle): List<ValidationResult> = buildList {
+        if (concept.value().isBlank()) add(ValidationResult.error("A title is required."))
+        if (concept.value().length > 72) add(ValidationResult.error("A title can be at most 72 characters."))
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+Arc for Kotlin and Java runs `ConceptValidator` rules on the server only; the generated TypeScript gets its client rules from Jakarta constraint annotations and shared `FluentModelValidator` rules.
+
+```java
+public record IdeaTitle(String value)
+        implements io.cratis.arc.concepts.ConceptAs<String>, io.cratis.chronicle.concepts.ConceptAs<String> {
+    public static final IdeaTitle NOT_SET = new IdeaTitle("");
+
+    @Override
+    public String getValue() {
+        return value;
+    }
+}
+
+@Component
+public final class IdeaTitleValidator implements ConceptValidator<IdeaTitle> {
+    @Override
+    public Class<IdeaTitle> getConceptType() {
+        return IdeaTitle.class;
+    }
+
+    @Override
+    public List<ValidationResult> validate(IdeaTitle concept) {
+        var results = new ArrayList<ValidationResult>();
+        if (concept.value().isBlank()) results.add(ValidationResult.error("A title is required."));
+        if (concept.value().length() > 72) results.add(ValidationResult.error("A title can be at most 72 characters."));
+        return results;
+    }
+}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+export class IdeaTitle extends ConceptAs<string> {
+    static readonly valueType = String;
+    static readonly NotSet = new IdeaTitle('');
+}
+
+@validator(IdeaTitle)
+export class IdeaTitleValidator extends ConceptValidator<IdeaTitle> {
+    constructor() {
+        super();
+        this.ruleFor(_ => _.value).notEmpty().maxLength(72);
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
+
+</TabItem>
+</Tabs>
+
+The command that captures an idea carries an `IdeaTitle` and an `IdeaSummary`, whose own concept validator limits it to 240 characters. In .NET, after a build, the generated `CaptureIdea.ts` has both rules, and the hook:
+
+```ts
+export class CaptureIdeaValidator extends CommandValidator<ICaptureIdea> {
+    constructor() {
+        super();
+        this.ruleFor(c => c.summary).notEmpty();
+        this.ruleFor(c => c.summary).maxLength(240);
+        this.ruleFor(c => c.title).notEmpty();
+        this.ruleFor(c => c.title).maxLength(72);
+    }
+}
+// ...
+static use(initialValues?: ICaptureIdea): [CaptureIdea, SetCommandValues<ICaptureIdea>, ClearCommandValues] {
+    return useCommand<CaptureIdea, ICaptureIdea>(CaptureIdea, initialValues);
+}
+```
+
+In .NET, nobody wrote `maxLength(72)` in TypeScript. It came from the concept. When several sources contribute rules for one member, an explicit FluentValidation validator takes precedence, direct concept-validator rules add to it, and DataAnnotations fill in only where nothing else contributed.
+
+The browser gets only the rules the generator can translate; [*Validation all the way down*](/validation-all-the-way-down/) covers that subset and why passing it doesn't guarantee a successful `POST`.
+
+![A diagram titled A rule travels. On the left, a C# card: IdeaTitleValidator, RuleFor Value, NotEmpty and MaximumLength 72. An arrow labeled build leads to a generated TypeScript card on the right: CaptureIdeaValidator, ruleFor title, notEmpty and maxLength 72. It leads down to a browser form giving early feedback, and from the form an arrow labeled POST leads left to a server card: the same C# rule runs again. A band reads: Early feedback in the browser. The server stays authoritative. A note reads: Stays on the server: cross-property comparisons, non-numeric constants, rules that call services.](./a-rule-travels.png)
+
+*Written once on a concept, checked early in the browser and again on the server.*
+
+Rename `Title` on the C# command, rebuild, and every piece of TypeScript that used the old accessor stops compiling. Drift between the backend and the frontend shows up as a compile error in your own build, before anyone opens a browser. That only holds if the build runs in order, backend first so the proxies are regenerated, then the frontend.
+
+Setting it up takes the build package, a `CratisProxiesOutputPath` pointing at a folder that holds only generated files, and the `@cratis/arc`, `@cratis/arc.react` and `@cratis/fundamentals` packages on the frontend. The MSBuild integration writes incrementally, keeping files whose content hash still matches and removing stale ones. A full regeneration, through the generator executable or with `CratisProxiesSkipOutputDeletion=false`, deletes the entire output directory, handwritten files included, which is why the folder should hold nothing else. The generated files start with a `DO NOT EDIT` header, and a later build can overwrite anything changed in them. [*Arc gotchas*](/arc-gotchas/) collects the ways this bites.
+
+Only public properties declared directly on the command type become fields in the proxy. Properties inherited from a base type aren't collected.
+
+## The same pipeline without HTTP
+
+A background worker can run a command through the same pipeline. Inject `ICommandPipeline` and call `Execute<TResult>(command)`, and you get a result with `IsSuccess`, `IsAuthorized`, `IsValid`, `HasExceptions`, `ValidationResults` and a `CorrelationId`. `Validate(command)` runs the filters and stops before `Provide()` and `Handle()`.
+
+The typed `Execute<T>` returns `default(TResult)` when the command fails, so a failed command that should have produced a `Guid` hands back `Guid.Empty`. Check `IsSuccess`. `IsValid` alone misses authorization failures and exceptions.
+
+Work outside a request has no header to read and no signed-in user. `ITenantScope.Begin(tenant)` selects a tenant for the work, and `ISystemExecution.AsSystem(roles)` runs it as a trusted system identity with the roles you name. [*Testing with Arc and Chronicle*](/testing-with-arc-and-chronicle/) runs the pipeline in a spec, in one process.
+
+## The Chronicle bridge, if you want it
+
+Chronicle is optional. With the Chronicle integration package, the events a command returns from `Handle()` are appended for it, whether that's a single event, a collection, a tuple or a `Result`. They join the command's pending transaction, so the batch commits when the command succeeds and rolls back when it fails, unless your code completed that transaction earlier. That's the one kind of write Arc does undo. A direct write to another service still isn't.
+
+The event source id comes from a convention. A command that implements `ICanProvideEventSourceId` supplies it. Otherwise Arc takes the first property that's an `EventSourceId`, a descendant of `EventSourceId<T>` or marked `[Key]`, and if there's none, it creates a new `EventSourceId`.
+
+The command also leaves a trace. In .NET and TypeScript, its name and property values are recorded in the causation of every event it appends, and `[PII]` and `[NotAudited]` keep top-level values out of that record. The subject, the identity personal data is keyed to, can be returned from `Handle()` as well. [*Personal data in an event log*](/personal-data-in-an-event-log/) explains why both matter.
+
+A Chronicle [read model can be a parameter](https://cratis.io/arc/backend/csharp/chronicle/read-models/) of a command's validator, `Provide()` or `Handle()`, looked up by the key the command already carries. It has to be backed by a projection or a reducer. If the instance doesn't exist, a nullable parameter gets null, and a non-nullable one fails the command with `ReadModelDoesNotExistForCommand` before your code runs. `[ReadModel]` on its own doesn't make a type injectable. [*Rules that hold when you write*](/rules-that-hold-when-you-write/) covers decision reads and aggregates, which build on this.
+
+## What Arc does and what stays yours
+
+For the author feature, Arc turned one record into a route, an authorization check, a validation step and a TypeScript class, and with the Chronicle integration it appended the event the handler returned. The query that lists authors is a static method on the `Author` read model, and it's routed and authorized the same way.
+
+Arc evaluates what's declared on the artifact, against a principal someone else established. The host or the edge proxy authenticates. Which records belong to which caller, and whether a caller belongs to the tenant they selected, are rules the application writes. Storage per tenant is configuration you choose, and with EF Core a tenant-specific connection is yours to set up.
+
+Arc for Kotlin and Java on Spring Boot and Arc for TypeScript share the HTTP contract and generate the same kind of proxies, each with its own gaps compared with .NET, and [*Beyond .NET*](/beyond-dotnet/) goes through them.
+
+---
+
+- Previous: [Part 05 — Rules that hold when you write](/rules-that-hold-when-you-write/)
+- Next: [Part 07 — Validation all the way down](/validation-all-the-way-down/)

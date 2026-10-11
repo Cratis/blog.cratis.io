@@ -1,0 +1,10 @@
+---
+// Override of Starlight's <PageTitle>. The generated blog landing is titled
+// "Blog", and its visible heading is the hero <h1> in MarkdownContent.astro, so
+// rendering Starlight's title as well would give the page two <h1> elements.
+import Default from '@astrojs/starlight/components/PageTitle.astro';
+
+const isBlogIndex = Astro.locals.starlightRoute.id === 'blog';
+---
+
+{!isBlogIndex && <Default><slot /></Default>}
