@@ -311,8 +311,8 @@ You don't need Chronicle running to see this behave. `ReadModelScenario` from th
 ```shell
 dotnet new xunit -n Reducers -f net10.0
 cd Reducers
-dotnet add package Cratis.Chronicle --version 19.39.2
-dotnet add package Cratis.Chronicle.Testing --version 19.39.2
+dotnet add package Cratis.Chronicle
+dotnet add package Cratis.Chronicle.Testing
 ```
 
 Put the reducer above in the project, and add a spec that supplies the policy and folds some events:
