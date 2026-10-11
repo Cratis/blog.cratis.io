@@ -248,6 +248,9 @@ I should be honest about this example too. A running balance is something the pr
 
 The reducer earns its place when the next state depends on the previous one in a way you'd rather write as an `if`. Say customers earn a loyalty tier based on what they've spent, and a refund lowers the total but never takes a tier away:
 
+<Tabs syncKey="language">
+<TabItem label="C#">
+
 ```csharp
 using Cratis.Chronicle.Events;
 using Cratis.Chronicle.Reducers;
@@ -260,7 +263,7 @@ public record OrderRefunded(decimal Amount);
 
 public enum Tier { Standard, Silver, Gold }
 
-public record CustomerSpend(decimal Total, Tier Tier, DateTimeOffset LastChanged);
+public record CustomerSpend(decimal Total, Tier Tier);
 
 public interface ILoyaltyPolicy
 {
@@ -269,13 +272,13 @@ public interface ILoyaltyPolicy
 
 public class CustomerSpendReducer(ILoyaltyPolicy policy) : IReducerFor<CustomerSpend>
 {
-    public Task<CustomerSpend> Placed(OrderPlaced @event, CustomerSpend? current, EventContext context) =>
-        Next(current, @event.Amount, context);
+    public Task<CustomerSpend> Placed(OrderPlaced @event, CustomerSpend? current) =>
+        Next(current, @event.Amount);
 
-    public Task<CustomerSpend> Refunded(OrderRefunded @event, CustomerSpend? current, EventContext context) =>
-        Next(current, -@event.Amount, context);
+    public Task<CustomerSpend> Refunded(OrderRefunded @event, CustomerSpend? current) =>
+        Next(current, -@event.Amount);
 
-    async Task<CustomerSpend> Next(CustomerSpend? current, decimal change, EventContext context)
+    async Task<CustomerSpend> Next(CustomerSpend? current, decimal change)
     {
         var total = (current?.Total ?? 0m) + change;
         var earned = await policy.TierFor(total);
@@ -283,12 +286,217 @@ public class CustomerSpendReducer(ILoyaltyPolicy policy) : IReducerFor<CustomerS
         // A refund lowers the total, but never takes a tier away.
         var tier = current is null || earned > current.Tier ? earned : current.Tier;
 
-        return new CustomerSpend(total, tier, context.Occurred);
+        return new CustomerSpend(total, tier);
     }
 }
 ```
 
-Nothing here is exotic. The decision about the tier is ordinary C#, it looks at the state we had before, and the shape of `CustomerSpend` is whatever we say it is. There's no attribute for "keep the highest tier so far", and I wouldn't want one. The reducer is an ordinary class, so the policy arrives through the constructor like any other dependency, and [the testing docs](https://cratis.io/chronicle/testing/read-models/scenario/) show how to supply one when you test a reducer. The method can be asynchronous too, and the [event processing docs](https://cratis.io/chronicle/reducers/event-processing/) cover how the other clients shape theirs.
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import io.cratis.chronicle.events.EventType
+import io.cratis.chronicle.observation.Reducer
+import io.cratis.chronicle.readModels.ReadModel
+
+@EventType
+data class OrderPlaced(val amount: Double)
+
+@EventType
+data class OrderRefunded(val amount: Double)
+
+enum class Tier { STANDARD, SILVER, GOLD }
+
+@ReadModel
+data class CustomerSpend(val total: Double = 0.0, val tier: Tier = Tier.STANDARD)
+
+interface LoyaltyPolicy {
+    suspend fun tierFor(totalSpent: Double): Tier
+}
+
+@Reducer
+class CustomerSpendReducer(private val policy: LoyaltyPolicy) {
+    suspend fun placed(event: OrderPlaced, current: CustomerSpend?): CustomerSpend =
+        next(current, event.amount)
+
+    suspend fun refunded(event: OrderRefunded, current: CustomerSpend?): CustomerSpend =
+        next(current, -event.amount)
+
+    private suspend fun next(current: CustomerSpend?, change: Double): CustomerSpend {
+        val total = (current?.total ?: 0.0) + change
+        val earned = policy.tierFor(total)
+
+        // A refund lowers the total, but never takes a tier away.
+        val tier = if (current == null || earned > current.tier) earned else current.tier
+
+        return CustomerSpend(total, tier)
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+import io.cratis.chronicle.events.EventType;
+import io.cratis.chronicle.observation.Reducer;
+import io.cratis.chronicle.readModels.ReadModel;
+
+@EventType
+record OrderPlaced(double amount) {}
+
+@EventType
+record OrderRefunded(double amount) {}
+
+enum Tier { STANDARD, SILVER, GOLD }
+
+@ReadModel
+record CustomerSpend(double total, Tier tier) {
+    CustomerSpend() {
+        this(0.0, Tier.STANDARD);
+    }
+}
+
+interface LoyaltyPolicy {
+    Tier tierFor(double totalSpent);
+}
+
+@Reducer
+class CustomerSpendReducer {
+    private final LoyaltyPolicy policy;
+
+    CustomerSpendReducer(LoyaltyPolicy policy) {
+        this.policy = policy;
+    }
+
+    CustomerSpend placed(OrderPlaced event, CustomerSpend current) {
+        return next(current, event.amount());
+    }
+
+    CustomerSpend refunded(OrderRefunded event, CustomerSpend current) {
+        return next(current, -event.amount());
+    }
+
+    private CustomerSpend next(CustomerSpend current, double change) {
+        var total = (current != null ? current.total() : 0.0) + change;
+        var earned = policy.tierFor(total);
+
+        // A refund lowers the total, but never takes a tier away.
+        var tier = current == null || earned.compareTo(current.tier()) > 0 ? earned : current.tier();
+
+        return new CustomerSpend(total, tier);
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+```elixir
+defmodule MyApp.Events.OrderPlaced do
+  use Chronicle.Events.EventType, id: "order-placed"
+
+  defstruct [:amount]
+end
+
+defmodule MyApp.Events.OrderRefunded do
+  use Chronicle.Events.EventType, id: "order-refunded"
+
+  defstruct [:amount]
+end
+
+defmodule MyApp.ReadModels.CustomerSpend do
+  defstruct total: 0, tier: :standard
+end
+
+defmodule MyApp.Reducers.CustomerSpendReducer do
+  use Chronicle.Reducers.Reducer, model: MyApp.ReadModels.CustomerSpend
+
+  alias MyApp.Events.{OrderPlaced, OrderRefunded}
+  alias MyApp.ReadModels.CustomerSpend
+
+  @handles OrderPlaced
+  @handles OrderRefunded
+
+  @tiers [:standard, :silver, :gold]
+
+  @impl true
+  def reduce(%OrderPlaced{} = event, current, _context), do: next(current, event.amount)
+  def reduce(%OrderRefunded{} = event, current, _context), do: next(current, -event.amount)
+
+  defp next(current, change) do
+    total = (if current, do: current.total, else: 0) + change
+    earned = tier_for(total)
+
+    # A refund lowers the total, but never takes a tier away.
+    tier = if current == nil or rank(earned) > rank(current.tier), do: earned, else: current.tier
+
+    %CustomerSpend{total: total, tier: tier}
+  end
+
+  defp tier_for(total) when total >= 500, do: :gold
+  defp tier_for(total) when total >= 100, do: :silver
+  defp tier_for(_total), do: :standard
+
+  defp rank(tier), do: Enum.find_index(@tiers, &(&1 == tier))
+end
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { eventType, reducer } from '@cratis/chronicle';
+
+@eventType()
+export class OrderPlaced {
+    amount = 0;
+}
+
+@eventType()
+export class OrderRefunded {
+    amount = 0;
+}
+
+export type Tier = 'standard' | 'silver' | 'gold';
+const tiers: Tier[] = ['standard', 'silver', 'gold'];
+
+export class CustomerSpend {
+    total = 0;
+    tier: Tier = 'standard';
+}
+
+export const policy = { silverAt: 100, goldAt: 500 };
+
+const tierFor = (totalSpent: number): Tier =>
+    totalSpent >= policy.goldAt ? 'gold' : totalSpent >= policy.silverAt ? 'silver' : 'standard';
+
+@reducer('', undefined, CustomerSpend)
+export class CustomerSpendReducer {
+    orderPlaced(event: OrderPlaced, current: CustomerSpend | undefined): CustomerSpend {
+        return this.next(current, event.amount);
+    }
+
+    orderRefunded(event: OrderRefunded, current: CustomerSpend | undefined): CustomerSpend {
+        return this.next(current, -event.amount);
+    }
+
+    private next(current: CustomerSpend | undefined, change: number): CustomerSpend {
+        const total = (current?.total ?? 0) + change;
+        const earned = tierFor(total);
+
+        // A refund lowers the total, but never takes a tier away.
+        const tier = !current || tiers.indexOf(earned) > tiers.indexOf(current.tier) ? earned : current.tier;
+
+        return { total, tier };
+    }
+}
+```
+
+</TabItem>
+</Tabs>
+
+Nothing here is exotic. The decision about the tier is ordinary C#, it looks at the state we had before, and the shape of `CustomerSpend` is whatever we say it is. There's no attribute for "keep the highest tier so far", and I wouldn't want one. In C#, Kotlin and Java the reducer is an ordinary class, so the policy arrives through the constructor like any other dependency, and [the testing docs](https://cratis.io/chronicle/testing/read-models/scenario/) show how to supply one when you test it. The docs don't show that for TypeScript and Elixir yet, so in those two the policy is a plain function. The clients also differ in how they do asynchronous work: C# returns a `Task`, Kotlin uses `suspend`, and Java blocks. The TypeScript handlers are named after the event class, and don't receive the event context, which is why that tab has no timestamp. The [event processing docs](https://cratis.io/chronicle/reducers/event-processing/) cover each client's shape.
 
 What Chronicle does for you here is everything around it. It calls the right method for each event, in order, per event source. It stores the state you return. And for a read model keyed by its event source, it handles redelivery, so an event delivered a second time after a crash doesn't change the stored state. [The docs](https://cratis.io/chronicle/concepts/observer-patterns/) spell out what "handled" means. You focus on what the read model should look like.
 
@@ -306,7 +514,10 @@ Sometimes that is exactly what you want. Change the tier policy, replay, and eve
 
 ## Try it without a server
 
-You don't need Chronicle running to see this behave. `ReadModelScenario` from the testing package runs a reducer in-process: you give it events, you read the instance. Start a test project and add the packages:
+You don't need Chronicle running to see this behave. In C# and Kotlin, `ReadModelScenario` from the testing package runs a reducer in-process: you give it events, you read the instance. In the other clients you call the reducer yourself. Set up a test project:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
 
 ```shell
 dotnet new xunit -n Reducers -f net10.0
@@ -315,7 +526,38 @@ dotnet add package Cratis.Chronicle
 dotnet add package Cratis.Chronicle.Testing
 ```
 
+</TabItem>
+<TabItem label="Kotlin">
+
+Add `io.cratis:chronicle` from Maven Central, and `io.cratis:chronicle-testing` and JUnit 5 for the tests. Kotlin specs that call `suspend` code also use `kotlinx-coroutines-core`. The [Kotlin client docs](https://cratis.io/chronicle/clients/kotlin/) show the Gradle and Maven setup.
+
+</TabItem>
+<TabItem label="Java">
+
+Add `io.cratis:chronicle` from Maven Central, and JUnit 5 for the tests. The [Kotlin client docs](https://cratis.io/chronicle/clients/kotlin/) cover the setup for both, because one artifact serves both.
+
+</TabItem>
+<TabItem label="Elixir">
+
+ExUnit comes with Elixir, and the reducer is an ordinary module, so a spec can call `reduce/3` directly.
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```shell
+npm install @cratis/chronicle
+npm install --save-dev vitest typescript
+```
+
+The decorators need `experimentalDecorators` switched on in `tsconfig.json`.
+
+</TabItem>
+</Tabs>
+
 Put the reducer above in the project, and add a spec that supplies the policy and folds some events:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
 
 ```csharp
 using Cratis.Chronicle.Testing.ReadModels;
@@ -365,7 +607,150 @@ public class Specs
 }
 ```
 
-Run `dotnet test`. The first spec is the reducer doing its job. The second is the replay point from above, shown as a test: nothing about the events changed, only the answer from the dependency.
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import io.cratis.chronicle.testing.ReadModelScenario
+import kotlinx.coroutines.runBlocking
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Test
+
+class FixedPolicy : LoyaltyPolicy {
+    var silverAt = 100.0
+    var goldAt = 500.0
+
+    override suspend fun tierFor(totalSpent: Double) = when {
+        totalSpent >= goldAt -> Tier.GOLD
+        totalSpent >= silverAt -> Tier.SILVER
+        else -> Tier.STANDARD
+    }
+}
+
+class CustomerSpendReducerTests {
+    @Test
+    fun `a refund lowers the total but keeps the tier`() = runBlocking {
+        val scenario = ReadModelScenario<CustomerSpend>(CustomerSpendReducer(FixedPolicy()))
+
+        val spend = scenario.fold("customer-1", OrderPlaced(520.0), OrderRefunded(450.0))
+
+        assertEquals(70.0, spend!!.total)
+        assertEquals(Tier.GOLD, spend.tier)
+    }
+
+    @Test
+    fun `a changed policy changes the tier when the events are folded again`() = runBlocking {
+        val policy = FixedPolicy()
+        val first = ReadModelScenario<CustomerSpend>(CustomerSpendReducer(policy))
+        assertEquals(Tier.GOLD, first.fold("customer-1", OrderPlaced(520.0))!!.tier)
+
+        policy.goldAt = 5000.0
+        policy.silverAt = 5000.0
+
+        // A replay starts from a clean read model, so fold the same events in a fresh scenario.
+        val replay = ReadModelScenario<CustomerSpend>(CustomerSpendReducer(policy))
+        assertEquals(Tier.STANDARD, replay.fold("customer-1", OrderPlaced(520.0))!!.tier)
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+class FixedPolicy implements LoyaltyPolicy {
+    double silverAt = 100.0;
+    double goldAt = 500.0;
+
+    public Tier tierFor(double totalSpent) {
+        return totalSpent >= goldAt ? Tier.GOLD : totalSpent >= silverAt ? Tier.SILVER : Tier.STANDARD;
+    }
+}
+
+class CustomerSpendReducerTests {
+    @Test
+    void aRefundLowersTheTotalButKeepsTheTier() {
+        var reducer = new CustomerSpendReducer(new FixedPolicy());
+
+        var spend = reducer.placed(new OrderPlaced(520.0), null);
+        spend = reducer.refunded(new OrderRefunded(450.0), spend);
+
+        assertEquals(70.0, spend.total());
+        assertEquals(Tier.GOLD, spend.tier());
+    }
+
+    @Test
+    void aChangedPolicyChangesTheTierWhenTheEventsAreFoldedAgain() {
+        var policy = new FixedPolicy();
+        var reducer = new CustomerSpendReducer(policy);
+        assertEquals(Tier.GOLD, reducer.placed(new OrderPlaced(520.0), null).tier());
+
+        policy.goldAt = 5000.0;
+        policy.silverAt = 5000.0;
+        assertEquals(Tier.STANDARD, reducer.placed(new OrderPlaced(520.0), null).tier());
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+```elixir
+defmodule MyApp.Reducers.CustomerSpendReducerTest do
+  use ExUnit.Case, async: true
+
+  alias MyApp.Events.{OrderPlaced, OrderRefunded}
+  alias MyApp.Reducers.CustomerSpendReducer
+
+  test "a refund lowers the total but keeps the tier" do
+    spend = CustomerSpendReducer.reduce(%OrderPlaced{amount: 520}, nil, %{})
+    spend = CustomerSpendReducer.reduce(%OrderRefunded{amount: 450}, spend, %{})
+
+    assert spend.total == 70
+    assert spend.tier == :gold
+  end
+end
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { describe, expect, it } from 'vitest';
+import { CustomerSpendReducer, OrderPlaced, OrderRefunded, policy } from './customer';
+
+const placed = (amount: number) => Object.assign(new OrderPlaced(), { amount });
+const refunded = (amount: number) => Object.assign(new OrderRefunded(), { amount });
+
+describe('CustomerSpendReducer', () => {
+    it('lowers the total on a refund but keeps the tier', () => {
+        const reducer = new CustomerSpendReducer();
+
+        const spend = reducer.orderRefunded(refunded(450), reducer.orderPlaced(placed(520), undefined));
+
+        expect(spend.total).toBe(70);
+        expect(spend.tier).toBe('gold');
+    });
+
+    it('changes the tier when the events are folded again under a changed policy', () => {
+        const reducer = new CustomerSpendReducer();
+        expect(reducer.orderPlaced(placed(520), undefined).tier).toBe('gold');
+
+        policy.goldAt = 5000;
+        policy.silverAt = 5000;
+
+        expect(reducer.orderPlaced(placed(520), undefined).tier).toBe('standard');
+    });
+});
+```
+
+</TabItem>
+</Tabs>
+
+Run the specs the way your language does. The first spec is the reducer doing its job. The second is the replay point from above, shown as a test: nothing about the events changed, only the answer from the dependency. The Kotlin client's scenario keeps state between folds, so there a replay is a fresh scenario, which is also how Chronicle starts a rebuild. Java and TypeScript call the reducer method directly. The Elixir spec shows the first case only, because the policy there is a function with fixed thresholds.
 
 ## Which one, then
 
