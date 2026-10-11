@@ -1,0 +1,11 @@
+Projections describe a read model. Reactors do things. A reducer is the one in between, and it gets less love than it deserves.
+
+You write the code that decides what the read model looks like. Chronicle calls it once per event, hands you the current state, and stores whatever you return. Persistence is not your problem.
+
+The honest limit: a reducer builds state, it doesn't do things to the outside world. And a rebuild runs it again for every event, so whatever it asks a dependency gets asked again.
+
+I wrote it up, with samples in all five Chronicle clients.
+
+https://blog.cratis.io/reducers-full-control-persistence-for-free/
+
+#EventSourcing #CQRS #Chronicle #dotnet #Cratis

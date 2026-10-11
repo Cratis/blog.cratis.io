@@ -1,4 +1,4 @@
-AuthProxy isn't a .NET thing. It's a container you put in front of anything, and it does the sign-in so your services don't have to.
+AuthProxy is a container you put in front of anything, and it does the sign-in so your services don't have to.
 
 You configure it and run it at the ingress. Your backend can be written in whatever you like, and the frontend is any SPA or static site. Aspire has a nice integration, but that's just one way to run a container.
 
