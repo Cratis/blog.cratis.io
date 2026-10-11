@@ -1,0 +1,11 @@
+Most of a form is not the fields. It's everything around them.
+
+State, validation that has to match the backend, getting a server rejection back to the field it was about. I'd rather point at a command by its type and only write the fields.
+
+That's a command form. Rule fails in C#, message shows under the right field. Rename a property in C#, and the TypeScript build fails at the exact field that used it. In the age of AI assistants, that's a guard rail that doesn't depend on anyone reading carefully.
+
+It checks that the property exists. It doesn't check that the control fits it. I wrote down where it stops.
+
+https://blog.cratis.io/command-forms-link-the-command-focus-on-the-fields/
+
+#React #TypeScript #CQRS #dotnet #Cratis
