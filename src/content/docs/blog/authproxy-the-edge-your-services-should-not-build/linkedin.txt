@@ -1,0 +1,13 @@
+AuthProxy isn't a .NET thing. It's a container you put in front of anything, and it does the sign-in so your services don't have to.
+
+You configure it and run it at the ingress. Your backend can be written in whatever you like, and the frontend is any SPA or static site. Aspire has a nice integration, but that's just one way to run a container.
+
+It authenticates, resolves the tenant, enriches the identity and forwards it as headers. Spoofed headers are removed, claims are checked before anything is forwarded, and an unclear answer from your identity endpoint means no.
+
+The price is a trust boundary: only the proxy may reach your services.
+
+And for people who are signed in but don't belong anywhere yet, Ante is the invitation lobby. I wrote down how it fits, and where it's still early.
+
+https://blog.cratis.io/authproxy-the-edge-your-services-should-not-build/
+
+#AuthProxy #Security #MultiTenancy #OpenIDConnect #Cratis
