@@ -1,0 +1,11 @@
+Checking a read model before you append loses races. Not sometimes. By design.
+
+Two commands both want the same username. Both read it as free, because the read model lags. Both append. Nothing on the read path notices.
+
+A Chronicle constraint moves the check into the kernel, where the append happens. The loser doesn't get an exception, it gets an outcome from the append that names the rule, the event type and the sequence number.
+
+It's narrow on purpose: uniqueness, and closing a stream. For everything else, the boundary should follow the decision, not the aggregate.
+
+https://blog.cratis.io/invariants-at-write-time-with-chronicle-constraints/
+
+#EventSourcing #DDD #Chronicle #dotnet #Cratis
