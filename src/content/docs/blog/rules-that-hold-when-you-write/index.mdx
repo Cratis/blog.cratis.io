@@ -465,7 +465,7 @@ Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
 </TabItem>
 </Tabs>
 
-Arc discovers the aggregate, loads its history for the command's key before `Handle` runs, and commits its events in the command's transaction. Loading the history isn't, on its own, a concurrency guarantee, and in the published Arc packages aggregates are .NET only. The Arc for TypeScript source preview has an experimental aggregate root.
+Arc discovers the aggregate, loads its history for the command's key before `Handle` runs, and commits its events in the command's transaction. It reads the tail before it loads the history and commits against that position, so an event that would change the aggregate's state and lands in between makes the commit fail. A new aggregate expects no event at all. In the published Arc packages aggregates are .NET only. The Arc for TypeScript source preview has an experimental aggregate root.
 
 ![A diagram titled Three ways to guard a rule, three columns side by side. Chronicle, unique constraint: checked in the kernel at append, per event sequence and namespace. Chronicle, decision read: the append is guarded by the read it decided from. Arc, aggregate: loads one key's history and commits in the command. A band underneath reads: All three append to the same event log.](./consistency-choices.png)
 
@@ -1019,7 +1019,7 @@ Chronicle is designed around constraints and decision-scoped consistency, and it
 
 ## What none of them cover
 
-When an append collides on a duplicate sequence number, the kernel retries it with a new number and doesn't revalidate the scopes. Duplicate grain activations, foreign writers, or an earlier storage outcome that was never resolved can therefore defeat a concurrency scope. Decision reads and aggregates don't replace constraints either. A constraint holds for every writer, and a guard holds only for the appends that declare it.
+When an append collides on a duplicate sequence number, the kernel retries it with a new number and validates the concurrency scopes again first, so a guard still applies. Constraints aren't run again on that path. Decision reads and aggregates don't replace constraints. A constraint holds for every writer, and a guard holds only for the appends that declare it.
 
 `[Unique]` on the author name is checked by the kernel inside the tenant's namespace, and it holds whichever client or command appends the event. Scopes, decision reads and aggregates earn their place when a rule reaches past one value.
 

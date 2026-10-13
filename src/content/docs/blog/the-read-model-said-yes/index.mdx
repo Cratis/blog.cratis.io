@@ -1,0 +1,326 @@
+---
+title: "The read model said yes: making a decision hold in Arc and Chronicle"
+description: "Why checking a read model before appending guards nothing, how a protected decision makes the rule hold in Arc and Chronicle, how to choose between that and the alternatives, and what it costs."
+date: 2026-10-13T12:00:00Z
+authors: sindre
+excerpt: "A command that reads a read model and then appends can approve the same last copy twice. How a protected decision closes that race, how it maps to the dynamic consistency boundary, which mechanism to pick for which rule, and what protection costs."
+tags:
+  - chronicle
+  - arc
+  - concurrency
+  - event-sourcing
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+A library lends a book only while a copy is on the shelf. In an event-sourced system the stock is a fold over the book's events, and Chronicle can keep it as a read model:
+
+```csharp
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.Projections.ModelBound;
+using Cratis.Concepts;
+
+public record MemberId(Guid Value) : ConceptAs<Guid>(Value);
+
+[EventType]
+public record CopyAdded();
+
+[EventType]
+public record BookBorrowed(MemberId MemberId);
+
+[EventType]
+public record BookReturned();
+
+public record BookStock(
+    EventSourceId Id,
+    [Increment<CopyAdded>, Decrement<BookBorrowed>, Increment<BookReturned>] int Available);
+```
+
+The command most of us write first takes that read model and checks it:
+
+```csharp
+using Cratis.Arc.Commands.ModelBound;
+using Cratis.Arc.Validation;
+using Cratis.Chronicle.Events;
+using Cratis.Monads;
+
+[Command]
+public record BorrowBook(EventSourceId BookId, MemberId MemberId)
+{
+    public Result<BookBorrowed, ValidationResult> Handle(BookStock? stock) =>
+        stock is not { Available: > 0 }
+            ? ValidationResult.Error("No copies of this book are available.")
+            : new BookBorrowed(MemberId);
+}
+```
+
+`BookId` is the command's event source id. Arc looks up `BookStock` by that key before `Handle()` runs and passes it in. `Handle()` decides from it and returns an event, and when the command succeeds Arc commits that event to Chronicle. Nothing in this path connects the commit to the value of `Available` that `Handle()` looked at.
+
+## Two requests for the last copy
+
+Take a book with one copy left and two members who press **Borrow** at about the same time:
+
+```text
+request A                                  request B
+read BookStock: Available = 1
+                                           read BookStock: Available = 1
+Handle: 1 > 0, return BookBorrowed
+commit: read tail, append, success
+                                           Handle: 1 > 0, return BookBorrowed
+                                           commit: read tail, append, success
+
+BookStock.Available is now -1
+```
+
+Both commands succeed, both `BookBorrowed` events are in the log, and the stock folds to -1.
+
+Arc does run a concurrency check when it commits to an event source that already has events. By default the .NET client reads the event source's tail when the events are appended and sends that position along, so the kernel rejects the append if another event landed between that tail read and the write. That window opens after `Handle()` has decided. It catches two commits that overlap, so when both requests arrive at exactly the same moment it can reject one of them. With request B a few milliseconds behind A, as above, B reads the tail after A's event is already there, and the check passes.
+
+It doesn't even take concurrency. `BookStock` here is a materialized read model, which Chronicle updates after the append returns, not with it. A second request sent after the first one has completed can still read `Available = 1` and be approved.
+
+The same holds for every other place a command can read state on its way to the append:
+
+- A `CommandValidator<T>` that takes the read model runs before `Handle()` and gets a snapshot the same way.
+- A passive projection folds fresh from the events when it's read, so it doesn't lag, but it records no position either, and the append that follows isn't conditioned on it.
+- `concurrency: true` on `[EventSourceType]`, `[EventStreamType]` or `[EventStreamId]` narrows the default check by those tags. It still reads the tail after `Handle()`.
+
+Arc's analyzer [ARCCHR0011](https://cratis.io/arc/backend/csharp/code-analysis/) points at plain reads in commands that produce events, at Info severity. More on that below.
+
+## Making the decision hold
+
+The fix is to mark the command `[ProtectedDecision]` and take the stock as a `DecisionRead<BookStock>`:
+
+```csharp
+using Cratis.Arc.Chronicle.ReadModels;
+using Cratis.Arc.Commands.ModelBound;
+using Cratis.Arc.Validation;
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.ReadModels;
+using Cratis.Monads;
+
+[Command]
+[ProtectedDecision]
+public record BorrowBook(EventSourceId BookId, MemberId MemberId)
+{
+    public Result<BookBorrowed, ValidationResult> Handle(DecisionRead<BookStock> stock) =>
+        stock.Instance is not { Available: > 0 }
+            ? ValidationResult.Error("No copies of this book are available.")
+            : new BookBorrowed(MemberId);
+}
+```
+
+What changes is when the position is taken and what the commit checks against it:
+
+1. Arc begins the command's Chronicle unit of work and claims ownership of it.
+2. Before `Handle()`, Chronicle reads the tail of the whole event log, and in parallel the tail of `BookStock`'s event types for this book. The first position is the boundary.
+3. Only then does it fold `BookStock` from the book's events, in a fresh session straight from the event log. The materialized copy isn't used. If the fold stops short of the second position or runs past the boundary, it tries again, up to three attempts.
+4. The read is enrolled in the unit of work with a guard: no event of the types `BookStock` is built from (`CopyAdded`, `BookBorrowed`, `BookReturned`), on this book, after the boundary.
+5. `Handle()` decides from `stock.Instance`. A declining `Result` appends nothing.
+6. Arc commits as the owner. The kernel rejects the append if anything matching the guard arrived after the boundary, and nothing is written.
+
+In the interleaving above, request B now loses. Its command fails with a 400, the validation result's reason is `concurrencyViolation`, and the message reads:
+
+```text
+BookStock '<book id>' changed after it was read. Read it again and resubmit.
+```
+
+If B starts late enough to fold A's event, it gets the business rejection instead, "No copies of this book are available." In both cases the book has one `BookBorrowed` event and the stock ends at zero.
+
+Arc doesn't retry the command. A conflict means the state the decision rested on changed, and running the same decision again from new state is the caller's call. An absent model is guarded too: a `BookStock` that doesn't exist yet still carries a guard, so a concurrent first event for that book conflicts.
+
+The model needs a property named `Id`, string-like or a `Guid`, because the key is matched to it. A model without one compiles fine and is refused when the command runs, with `DecisionReadCouldNotBeAcquired`. Arc's [choosing page](https://cratis.io/arc/backend/csharp/chronicle/consistency/) walks through the same command, and [*Rules that hold when you write*](/rules-that-hold-when-you-write/) covers the Chronicle-side API in more detail.
+
+## The same guard, in DCB terms
+
+The [dynamic consistency boundary](https://dcb.events/specification/) (DCB) describes exactly this shape. A decision reads the events matching a query, remembers the position of the last event it knew, and appends with a condition: fail if any event matching the query exists after that position. There is no stream that has to be locked or versioned as a whole, only the events the decision depended on.
+
+Chronicle expresses that append condition. A concurrency scope is one query item with a position: its event types are ORed, and its event source id, source type, stream type and stream id are ANDed. Several scopes on one append act as an OR, and an append across several event sources is atomic. A decision read is the API that captures the position before it folds and builds the scope for you. Without Arc, the same decision reads like this:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+using Cratis.Chronicle;
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.EventSequences;
+using Cratis.Chronicle.ReadModels;
+
+public static class Lending
+{
+    public static async Task<bool> Borrow(IEventStore eventStore, EventSourceId bookId, MemberId memberId)
+    {
+        var stock = await eventStore.GetDecisionReads().GetDetached<BookStock>(bookId.Value);
+        if (stock.Instance is not { Available: > 0 })
+        {
+            return false;
+        }
+
+        var result = await eventStore.EventLog.AppendMany(
+            [new EventForEventSourceId(bookId, new BookBorrowed(memberId))],
+            guardedBy: [stock]);
+
+        // A conflict means a stock event arrived after the read. Nothing was appended.
+        return result.IsSuccess && !result.GetDecisionConflicts([stock]).Any();
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+Decision reads exist only in the .NET client.
+
+</TabItem>
+<TabItem label="Java">
+
+Decision reads exist only in the .NET client.
+
+</TabItem>
+<TabItem label="TypeScript">
+
+Decision reads exist only in the .NET client.
+
+</TabItem>
+<TabItem label="Elixir">
+
+Decision reads exist only in the .NET client.
+
+</TabItem>
+</Tabs>
+
+Chronicle adds a few things the DCB specification doesn't ask for. Constraints enforce uniqueness inside the append, for every writer, with no read at all. A decision read checks the projection's shape before it reads and refuses one it can't guard exactly. It retries the fold when events arrive during it, and refuses with `FoldIncomplete` if it can't settle. A conflict is mapped back to the read model and key that changed, so a command can say what changed instead of only "try again".
+
+There are also things DCB can do that Chronicle can't. Tags are stored on events, but they take no part in consistency, so a query item can't match on an arbitrary tag. An event has exactly one event source id, so a fact about two entities is written as two events in one atomic append. Two query items for the same key are merged into one scope, which is wider than necessary and still safe. And a decision read won't fold across entities: joins, children and models keyed by a property are refused. [Chronicle's DCB page](https://cratis.io/chronicle/dynamic-consistency-boundary/chronicle/) has the full mapping.
+
+## A rule over two keys
+
+Course subscription is one of the standard [DCB examples](https://dcb.events/examples/): a course has a capacity, and a student can join at most a few courses. Neither limit lives on one entity, which is where a single aggregate per entity runs out. With decision reads it's two reads and one event per source:
+
+```csharp
+using Cratis.Arc.Chronicle.ReadModels;
+using Cratis.Arc.Commands.ModelBound;
+using Cratis.Arc.Validation;
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.EventSequences;
+using Cratis.Chronicle.Projections.ModelBound;
+using Cratis.Chronicle.ReadModels;
+using Cratis.Monads;
+
+[EventType]
+public record CourseDefined(int Capacity);
+
+[EventType]
+public record StudentSubscribed(EventSourceId CourseId, EventSourceId StudentId);
+
+[EventType]
+public record StudentUnsubscribed(EventSourceId CourseId, EventSourceId StudentId);
+
+[FromEvent<CourseDefined>]
+public record CourseSeats(
+    EventSourceId Id,
+    int Capacity,
+    [Increment<StudentSubscribed>, Decrement<StudentUnsubscribed>] int Taken);
+
+public record StudentLoad(
+    EventSourceId Id,
+    [Increment<StudentSubscribed>, Decrement<StudentUnsubscribed>] int Courses);
+
+[Command]
+[ProtectedDecision]
+public record SubscribeToCourse(EventSourceId CourseId, EventSourceId StudentId) : ICanProvideEventSourceId
+{
+    public const int MaximumCourses = 3;
+
+    public EventSourceId GetEventSourceId() => CourseId;
+
+    public async Task<Result<IEnumerable<EventForEventSourceId>, ValidationResult>> Handle(
+        DecisionRead<CourseSeats> course,
+        IDecisionReads reads)
+    {
+        var student = await reads.Get<StudentLoad>((ReadModelKey)StudentId.Value);
+
+        if (course.Instance is not { } seats)
+        {
+            return ValidationResult.Error("The course does not exist.");
+        }
+
+        if (seats.Taken >= seats.Capacity)
+        {
+            return ValidationResult.Error("The course is full.");
+        }
+
+        if (student.Instance is { Courses: >= MaximumCourses })
+        {
+            return ValidationResult.Error("The student is already in three courses.");
+        }
+
+        var subscribed = new StudentSubscribed(CourseId, StudentId);
+        return new[]
+        {
+            new EventForEventSourceId(CourseId, subscribed),
+            new EventForEventSourceId(StudentId, subscribed)
+        };
+    }
+}
+```
+
+`ICanProvideEventSourceId` makes the course the command's key, so the `DecisionRead<CourseSeats>` parameter reads the course. With two `EventSourceId` properties and no explicit choice, Arc takes the first one and its analyzer warns (ARCCHR0002). `IDecisionReads.Get<T>` reads the student by its own key, and both reads are enrolled in the same unit of work. `StudentSubscribed` goes to both event sources because each model only folds the events of its own source, and the commit is one atomic append: both events or neither. Another subscription for the same student, or another student taking the last seat, between the reads and the commit rejects the command.
+
+This guards exactly the keys that were read. If the set of keys a rule counts over can grow, say a loan limit where each loan is its own event source, a new key enters nobody's guard. Model such a limit on one key that carries all the facts, the member in that case.
+
+## Choosing the mechanism
+
+A protected decision isn't the first thing I'd reach for. For a unique value, or something that may happen once, a [constraint](https://cratis.io/chronicle/constraints/) is cheaper and stronger: the kernel checks it inside every append, from every writer and every client, without a read. A decision read guards one key's history, so it can't make an email unique across members at all.
+
+| Rule | Use | Note |
+| --- | --- | --- |
+| A unique value, or created once | Constraint | Checked in the kernel for every writer; it can't count or sum |
+| State on one key (stock, status, a count) | `[ProtectedDecision]` with `DecisionRead<T>` | The model must be a flat projection keyed by the event source |
+| State on two or more keys | `DecisionRead<T>` plus `IDecisionReads`, one event per source | Guards only the keys that were read |
+| Raw events in one routed stream | Stream decision with `IStreamReads` | Every event in the stream conflicts; the whole stream is read |
+| Rich behaviour on one entity | Aggregate root, returning the result of `Commit()` | Can't be combined with `[ProtectedDecision]` reads |
+| The client sends the revision it saw | Explicit scope with `EventsWithConcurrencyScopes` | As strong as where the revision came from |
+| A hint before submit | Plain read or validator | Advisory; never the rule |
+| A rare violation is acceptable | Default append, then a reactor that repairs | No guard at write time |
+
+[Stream decisions](https://cratis.io/arc/backend/csharp/chronicle/commands/stream-decisions/) read the tail of one routed stream in `Provide()`, before `Handle()`, then read the stream's raw events. The guard covers any event in that stream, with no narrowing by event type, so there's no projection for Chronicle to admit or refuse. The whole stream crosses the wire on every command, which is fine for a short stream such as approvals for one period.
+
+[Aggregates](https://cratis.io/arc/backend/csharp/chronicle/aggregates/) guard their own state. When Arc resolves an aggregate, it reads the tail of the aggregate's scope before it loads the events, and commits the events the aggregate applies against that position. An event that would have changed the aggregate's state, appended in between, makes the commit fail. A new aggregate expects no event at all, so two concurrent creations can't both succeed. The costs are that there are no snapshots, so every command reads the handled events again, that the command has to return the result of `Commit()` (a handler that ignores it lets a rejected command report success), and that an aggregate guards one entity, never a rule across aggregates.
+
+Validators and plain reads stay useful for what they are. A `CommandValidator<T>` without dependencies checks the shape of the input and runs on protected commands. One that takes a read model is advisory. On a `[ProtectedDecision]` command Arc refuses any validator with constructor dependencies, and the command fails, because a read there would sit next to the guard without being part of it. A plain or passive read is right for a screen or a hint, as long as nobody treats it as the rule. Arc's [validators page](https://cratis.io/arc/backend/csharp/chronicle/consistency/validators/) goes through what a protected command accepts.
+
+## What protection costs
+
+A decision read is a fresh fold every time. It doesn't use the materialized state, because that can lag and has no position, and nothing caches the result between commands. Each read starts at the first event of the model's types for that key, so the cost grows with the key's history, on every command. An attempt is about four calls: two tail reads in parallel, the fold, and a cleanup request it doesn't wait for. A read can take up to three attempts, and the first read of a model type in a process makes two more calls to check the projection definition.
+
+In the kernel, those folds go through one projection grain per model type, shared by every key of that type and every tenant. Reads of a hot model type are expected to queue behind each other across keys. That queueing hasn't been measured under load.
+
+The only published numbers come from [one scratch run](https://cratis.io/arc/backend/csharp/chronicle/consistency/#costs) on a heavily loaded machine, so read them as an order of magnitude. A decision read cost about 4 to 6 times a materialized read and 1.6 to 2 times a cold passive fold, with 10 to 100 events on the key. The guarded commit itself added nothing that stood out from the noise. Nothing has been measured at thousands of events per key.
+
+There's no retry. A conflict is a 400, and the caller reads again and resubmits. The chance of a conflict grows with how often the key is written and how long the window between boundary and commit is, and the fold is inside that window. A key with a long history and many writers pays twice: slower folds and more conflicts. Keep decision-read models flat and keys short-lived, a key per order, booking or period rather than one for the life of the library.
+
+## Why it's opt-in
+
+Protection is a per-command choice. When protected decisions were [added to Arc](https://github.com/Cratis/Arc/pull/2911), the stated rule was that unmarked commands keep their current behaviour, and there's no application-wide switch. I think that's the right default for now, for mechanical reasons more than caution. A protected command fails closed. It refuses a validator with constructor dependencies, a read model shape it can't guard, and a direct commit of its unit of work, instead of quietly running unguarded. Turned on everywhere, that would make many commands that work today fail on every call. Decision reads also cost real work per command, which is worth paying where a rule needs it and nowhere else.
+
+The price of opt-in is that a plain read next to a protected decision stays unguarded without any error. ARCCHR0011 reports plain reads in event-producing commands, but at Info, which disappears in a build log. In a project that relies on protected decisions, I'd raise it:
+
+```ini
+[*.cs]
+dotnet_diagnostic.ARCCHR0011.severity = warning
+dotnet_diagnostic.ARCCHR0012.severity = warning
+```
+
+ARCCHR0012 is the companion rule for immediate appends through an injected `IEventLog`, which are written before the owner commits and survive a conflict.
+
+There's one more boundary to understand, and it's easy to get wrong in both directions. A guard detects every matching event appended after its boundary, whoever wrote it. If the racy `BorrowBook` above appends while the protected one is between read and commit, the protected command conflicts. But the racy command's own decision is still unguarded: if it reads first and commits last, it lends a copy that isn't there, and nothing stops it. A rule holds only when every writer that decides on it carries a guard, or when the rule is a constraint, which the kernel checks for every append.
+
+Some things no decision read covers: a `Revise` or `Redact` between read and commit, a projection definition changed by another process, other event sequences, and data outside Chronicle. Reducers, self-reducing read models, joins, children and models keyed by something other than the event source are refused. And decision reads exist only in the .NET client.
+
+## Where to start
+
+Find the commands in your application that take a read model, or call `IReadModels`, and then append. For each one, ask what the rule actually is. If it's uniqueness, move it to a constraint. If it's state on one or a few keys and the model is a flat projection, mark the command `[ProtectedDecision]` and switch the parameter to `DecisionRead<T>`. If it's a hint, leave it as it is and stop counting on it. Then raise ARCCHR0011, so the next plain read doesn't slip in unnoticed.
+
+Arc's [choosing page](https://cratis.io/arc/backend/csharp/chronicle/consistency/) has the full decision matrix, [scenarios](https://cratis.io/arc/backend/csharp/chronicle/consistency/scenarios/) with tests that interleave a competing append, and the [pitfalls](https://cratis.io/arc/backend/csharp/chronicle/consistency/pitfalls/) that fail silently. If you use the Chronicle client without Arc, start from [Choosing how a rule holds](https://cratis.io/chronicle/dynamic-consistency-boundary/choosing/).
+
+*The examples use the `Cratis` 22.87.2 package (Arc 22.87.2), `Cratis.Chronicle` and `Cratis.Chronicle.AspNetCore` 19.59.1, and the Chronicle development image `cratis/chronicle@sha256:4dd8a9be3afb9bb123768c0c714124626017e343f46d684fa1e83d5c2c6c8cb4` (19.59.1), on .NET 10.*
