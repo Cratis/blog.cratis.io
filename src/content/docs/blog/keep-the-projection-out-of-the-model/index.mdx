@@ -1,0 +1,822 @@
+---
+title: "Keep the projection out of the model"
+date: 2026-10-13T09:00:00Z
+authors: einar
+excerpt: "Model-bound projections put the mapping on the read model. Fluent projections keep it beside the model, in IProjectionFor<T>. Same engine, a different trade-off, and how both differ from a reducer."
+tags:
+  - chronicle
+  - event-sourcing
+---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+![A diagram titled Where the mapping lives. Two columns. Model-bound, attributes on the model, is one file, Order.cs, labeled Model plus mapping together. Fluent, IProjectionFor of T, is two files, Order.cs and OrderProjection.cs, labeled Plain record plus mapping. Both columns point to a band that reads Same projection engine, same read model.](./two-places-one-definition.png)
+
+Model-bound projections get most of the attention, and I get it. You put an attribute on a property, the read model says where its data comes from, and there's nothing else to go looking for. That cohesion is a big part of why it's where we tell people to start.
+
+But it wasn't the first thing we built. The fluent, declarative `IProjectionFor<T>` was. And to be honest, I think it gets undersold now. The trade-off model-bound makes is real: everything ends up in the same place. The read model, the events it listens to, the keys, the children, the removals. For a small read model that's lovely. For a bigger one it turns into a pile of attributes that a human has to decode, and let's face it, a projection gets read a lot more often than it gets written.
+
+So this post is about the other option: what it is, when it earns its keep, and how it differs from the thing people most often confuse it with, the reducer.
+
+## TL;DR
+
+- Model-bound and fluent are two ways to write the same kind of projection. Chronicle stores a projection definition either way and its projection engine runs it.
+- Model-bound gives you **cohesion**. Fluent gives you **separation**: a plain read model and a mapping you can read on its own.
+- In Kotlin and Java, fluent is also the way to express a mapping the annotations can't, such as toggling a flag per event type.
+- A reducer is not a third spelling of the same idea. It's your code, running in your application, that takes an event and the current state and returns the next state.
+- Start with model-bound. Reach for fluent when the attributes stop being readable or you want a read model without Chronicle attributes on it. Reach for a reducer when the logic reads better as code.
+
+## Two places for the same mapping
+
+Every projection answers the same question: given these [events](/events-are-facts/), what does the read model look like? The two styles only disagree on where you write the answer.
+
+With [model-bound projections](https://cratis.io/chronicle/projections/model-bound/) the answer is attributes on the read model itself. With [declarative projections](https://cratis.io/chronicle/projections/declarative/) the read model is an ordinary type, and a separate class implementing `IProjectionFor<TReadModel>` uses a builder to say how events map onto it.
+
+What happens next is identical. [*From event to read model*](/from-event-to-read-model/) walks through how all the ways of writing a projection converge: the client turns what you wrote into a projection definition, the kernel stores it, and the projection engine applies it to events and writes the result to the sink. The engine never knows which style you picked. Which means the choice is about *you*, and the people who'll read this code later.
+
+## The same book, both ways
+
+Chronicle's documentation has a deliberately small example in its [guide to choosing a read-model style](https://cratis.io/chronicle/projections/choosing-a-read-model-style/): a book is registered, borrowed and returned. These are the three events. The tabs on this page stay in sync, so pick your language once.
+
+{/* group:book */}
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+using Cratis.Chronicle.Events;
+
+[EventType]
+public record BookRegistered(string Title, string Isbn);
+
+[EventType]
+public record BookBorrowed(string MemberName);
+
+[EventType]
+public record BookReturned;
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import io.cratis.chronicle.events.EventType
+
+@EventType
+data class BookRegistered(val title: String, val isbn: String)
+
+@EventType
+data class BookBorrowed(val memberName: String)
+
+@EventType
+class BookReturned
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+import io.cratis.chronicle.events.EventType;
+
+@EventType
+record BookRegistered(String title, String isbn) {}
+
+@EventType
+record BookBorrowed(String memberName) {}
+
+@EventType
+record BookReturned() {}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+```elixir
+defmodule MyApp.Events.BookRegistered do
+  use Chronicle.Events.EventType, id: "choosing-style-book-registered"
+
+  defstruct [:title, :isbn]
+end
+
+defmodule MyApp.Events.BookBorrowed do
+  use Chronicle.Events.EventType, id: "choosing-style-book-borrowed"
+
+  defstruct [:member_name]
+end
+
+defmodule MyApp.Events.BookReturned do
+  use Chronicle.Events.EventType, id: "choosing-style-book-returned"
+
+  defstruct []
+end
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { eventType } from '@cratis/chronicle';
+
+@eventType()
+class BookRegistered {
+    title = '';
+    isbn = '';
+}
+
+@eventType()
+class BookBorrowed {
+    memberName = '';
+}
+
+@eventType()
+class BookReturned {
+}
+```
+
+</TabItem>
+</Tabs>
+
+First the model-bound version. The mapping lives on the properties:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+using Cratis.Chronicle.Keys;
+using Cratis.Chronicle.Projections.ModelBound;
+
+public record BookStatusModelBound(
+    [Key] string Id,
+
+    [SetFrom<BookRegistered>] string Title,
+    [SetFrom<BookRegistered>] string Isbn,
+
+    [SetValue<BookBorrowed>(true)]
+    [SetValue<BookReturned>(false)]
+    bool IsBorrowed,
+
+    [SetFrom<BookBorrowed>(nameof(BookBorrowed.MemberName))]
+    [SetValue<BookReturned>(null!)] // null! - SetValue's constructor takes non-nullable object
+    string? BorrowedBy);
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+> Kotlin does not support this workflow yet.
+> The model-bound `@SetFrom` annotation maps a property from an event, but there is
+> no equivalent to C#'s `[SetValue<TEvent>(...)]` for assigning a constant value —
+> so a flag like `isBorrowed` cannot be toggled per event type through model-bound
+> attributes alone. Track the client SDK issue, or use a reducer instead.
+
+</TabItem>
+<TabItem label="Java">
+
+> Java does not support this workflow yet.
+> The model-bound `@SetFrom` annotation maps a property from an event, but there is
+> no equivalent to C#'s `[SetValue<TEvent>(...)]` for assigning a constant value —
+> so a flag like `isBorrowed` cannot be toggled per event type through model-bound
+> attributes alone. Track the client SDK issue, or use a reducer instead.
+
+</TabItem>
+<TabItem label="Elixir">
+
+```elixir
+defmodule MyApp.ReadModels.BookStatusModelBound do
+  use Chronicle.ReadModels.ReadModel
+
+  defstruct id: "", title: "", isbn: "", is_borrowed: false, borrowed_by: nil
+
+  from MyApp.Events.BookRegistered,
+    set: [id: :event_source_id, title: :title, isbn: :isbn, is_borrowed: false, borrowed_by: nil]
+
+  from MyApp.Events.BookBorrowed,
+    set: [is_borrowed: true, borrowed_by: :member_name]
+
+  from MyApp.Events.BookReturned,
+    set: [is_borrowed: false, borrowed_by: nil]
+end
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { setFrom, setValue } from '@cratis/chronicle';
+import { field } from '@cratis/fundamentals';
+
+export class BookStatusModelBound {
+    id = '';
+
+    @setFrom(BookRegistered, 'title')
+    title = '';
+
+    @setFrom(BookRegistered, 'isbn')
+    isbn = '';
+
+    @setValue(BookBorrowed, true)
+    @setValue(BookReturned, false)
+    isBorrowed = false;
+
+    @setFrom(BookBorrowed, 'memberName')
+    @setValue(BookReturned, null)
+    @field(String) borrowedBy: string | null = null;
+}
+```
+
+</TabItem>
+</Tabs>
+
+Then the fluent version. The read model has no mapping on it at all, and a projection class says what each event does:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+using Cratis.Chronicle.Projections;
+
+public record BookStatusFluent(
+    string Id,
+    string Title,
+    string Isbn,
+    bool IsBorrowed,
+    string? BorrowedBy);
+
+public class BookStatusProjection : IProjectionFor<BookStatusFluent>
+{
+    public void Define(IProjectionBuilderFor<BookStatusFluent> builder) => builder
+        .From<BookRegistered>(_ => _
+            .Set(m => m.Id).ToEventSourceId()
+            .Set(m => m.IsBorrowed).ToValue(false)
+            .Clear(m => m.BorrowedBy))
+        .From<BookBorrowed>(_ => _
+            .Set(m => m.IsBorrowed).ToValue(true)
+            .Set(m => m.BorrowedBy).To(e => e.MemberName))
+        .From<BookReturned>(_ => _
+            .Set(m => m.IsBorrowed).ToValue(false)
+            .Clear(m => m.BorrowedBy));
+}
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+// Requires io.cratis:chronicle 6.5.0 or later.
+import io.cratis.chronicle.projections.IProjectionBuilderFor
+import io.cratis.chronicle.projections.IProjectionFor
+
+data class BookStatus(
+    val id: String = "",
+    val title: String = "",
+    val isbn: String = "",
+    val isBorrowed: Boolean = false,
+    val borrowedBy: String? = null
+)
+
+class BookStatusProjection : IProjectionFor<BookStatus> {
+    override fun define(builder: IProjectionBuilderFor<BookStatus>) {
+        builder
+            .from(BookRegistered::class) {
+                it.set(BookStatus::id).toEventSourceId()
+                it.set(BookStatus::title).toProperty("title")
+                it.set(BookStatus::isbn).toProperty("isbn")
+                it.set(BookStatus::isBorrowed).toValue(false)
+                it.set(BookStatus::borrowedBy).toValue(null)
+            }
+            .from(BookBorrowed::class) {
+                it.set(BookStatus::isBorrowed).toValue(true)
+                it.set(BookStatus::borrowedBy).toProperty("memberName")
+            }
+            .from(BookReturned::class) {
+                it.set(BookStatus::isBorrowed).toValue(false)
+                it.set(BookStatus::borrowedBy).toValue(null)
+            }
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+// Requires io.cratis:chronicle 6.5.0 or later.
+import io.cratis.chronicle.projections.IProjectionBuilderFor;
+import io.cratis.chronicle.projections.IProjectionFor;
+
+class BookStatus {
+    public String id = "";
+    public String title = "";
+    public String isbn = "";
+    public boolean isBorrowed = false;
+    public String borrowedBy = null;
+}
+
+class BookStatusProjection implements IProjectionFor<BookStatus> {
+    @Override
+    public void define(IProjectionBuilderFor<BookStatus> builder) {
+        builder
+            .from(BookRegistered.class, fb -> {
+                fb.<String>set("id").toEventSourceId();
+                fb.<String>set("title").toProperty("title");
+                fb.<String>set("isbn").toProperty("isbn");
+                fb.<Boolean>set("isBorrowed").toValue(false);
+                fb.<String>set("borrowedBy").toValue(null);
+            })
+            .from(BookBorrowed.class, fb -> {
+                fb.<Boolean>set("isBorrowed").toValue(true);
+                fb.<String>set("borrowedBy").toProperty("memberName");
+            })
+            .from(BookReturned.class, fb -> {
+                fb.<Boolean>set("isBorrowed").toValue(false);
+                fb.<String>set("borrowedBy").toValue(null);
+            });
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+```elixir
+defmodule MyApp.ReadModels.BookStatusFluent do
+  use Chronicle.ReadModels.ReadModel
+
+  defstruct id: "", title: "", isbn: "", is_borrowed: false, borrowed_by: nil
+end
+
+defmodule MyApp.Projections.BookStatusProjection do
+  use Chronicle.Projections.Projection, model: MyApp.ReadModels.BookStatusFluent
+
+  from MyApp.Events.BookRegistered,
+    set: [id: :event_source_id, title: :title, isbn: :isbn, is_borrowed: false, borrowed_by: nil]
+
+  from MyApp.Events.BookBorrowed,
+    set: [is_borrowed: true, borrowed_by: :member_name]
+
+  from MyApp.Events.BookReturned,
+    set: [is_borrowed: false, borrowed_by: nil]
+end
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { IProjectionBuilderFor, IProjectionFor, projection } from '@cratis/chronicle';
+
+class BookStatusFluent {
+    id = '';
+    title = '';
+    isbn = '';
+    isBorrowed = false;
+    borrowedBy: string | null = null;
+}
+
+@projection()
+class BookStatusProjection implements IProjectionFor<BookStatusFluent> {
+    define(builder: IProjectionBuilderFor<BookStatusFluent>): void {
+        builder
+            .from(BookRegistered, _ => _
+                .set(m => m.id).toEventSourceId()
+                .set(m => m.title).to(e => e.title)
+                .set(m => m.isbn).to(e => e.isbn)
+                .set(m => m.isBorrowed).toValue(false)
+                .set(m => m.borrowedBy).toValue(null))
+            .from(BookBorrowed, _ => _
+                .set(m => m.isBorrowed).toValue(true)
+                .set(m => m.borrowedBy).to(e => e.memberName))
+            .from(BookReturned, _ => _
+                .set(m => m.isBorrowed).toValue(false)
+                .set(m => m.borrowedBy).toValue(null));
+    }
+}
+```
+
+</TabItem>
+</Tabs>
+
+Same events, same documents come out. Read the two next to each other and notice where your eyes go. In the model-bound version you read the model and learn the mapping as a side effect. In the fluent version you read one event at a time: *when a book is borrowed, set `IsBorrowed` to true and `BorrowedBy` to the member*. It's a bit more code, and for this tiny model I'd happily take the attributes.
+
+Now look at the Kotlin and Java tabs of the model-bound example. That's not me skipping something. Chronicle's docs say the model-bound `@SetFrom` annotation has no equivalent to C#'s `[SetValue<TEvent>(...)]`, so a flag like `isBorrowed` can't be toggled per event type through annotations alone. The note in the docs suggests tracking the client SDK issue or using a reducer instead, and the fluent example on the same page does it with `toValue(true)`. So in those clients, fluent isn't just a matter of taste.
+
+## When the attributes pile up
+
+The book is a gentle example. Here is one where the attributes start to hurt: an order with line items that get added, adjusted and removed. This is the model-bound version, adapted from the [children documentation](https://cratis.io/chronicle/projections/model-bound/children/).
+
+{/* group:order */}
+
+```csharp
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.Keys;
+using Cratis.Chronicle.Projections.ModelBound;
+
+[EventType]
+public record OrderCreated(string CustomerName);
+
+[EventType]
+public record LineItemAdded(Guid ItemId, string ProductName, int InitialQuantity, decimal UnitPrice);
+
+[EventType]
+public record QuantityAdjusted(Guid ItemId, int NewQuantity);
+
+[EventType]
+public record LineItemRemoved(Guid ItemId);
+
+public record Order(
+    [Key] Guid Id,
+
+    [SetFrom<OrderCreated>(nameof(OrderCreated.CustomerName))]
+    string Customer,
+
+    [ChildrenFrom<LineItemAdded>(key: nameof(LineItemAdded.ItemId))]
+    [RemovedWith<LineItemRemoved>(key: nameof(LineItemRemoved.ItemId))]
+    IEnumerable<OrderLine> Lines);
+
+[FromEvent<QuantityAdjusted>(key: nameof(QuantityAdjusted.ItemId))]
+public record OrderLine(
+    [Key] Guid Id,
+
+    [SetFrom<LineItemAdded>(nameof(LineItemAdded.ProductName))]
+    string Product,
+
+    [SetFrom<LineItemAdded>(nameof(LineItemAdded.InitialQuantity))]
+    [SetFrom<QuantityAdjusted>(nameof(QuantityAdjusted.NewQuantity))]
+    int Quantity,
+
+    [SetFrom<LineItemAdded>(nameof(LineItemAdded.UnitPrice))]
+    decimal UnitPrice);
+```
+
+It works, and I'd argue it's readable as long as you already know the attribute vocabulary. But look at `Quantity`. Two different events set it, so the story of that one property is spread over two attributes. The story of the *line* is spread over an attribute on the class and attributes on its members, and the story of the removal is up on the parent. To answer "what happens when an item is removed?" you read the whole thing.
+
+Here is the same read model as a fluent projection, with a plain read model next to it:
+
+```csharp
+using Cratis.Chronicle.Projections;
+
+public record OrderSummary(Guid Id, string Customer, IEnumerable<OrderSummaryLine> Lines);
+
+public record OrderSummaryLine(Guid Id, string Product, int Quantity, decimal UnitPrice);
+
+public class OrderSummaryProjection : IProjectionFor<OrderSummary>
+{
+    public void Define(IProjectionBuilderFor<OrderSummary> builder) => builder
+        .From<OrderCreated>(_ => _
+            .Set(m => m.Customer).To(e => e.CustomerName))
+        .Children(m => m.Lines, children => children
+            .IdentifiedBy(l => l.Id)
+            .From<LineItemAdded>(_ => _
+                .UsingKey(e => e.ItemId)
+                .Set(l => l.Product).To(e => e.ProductName)
+                .Set(l => l.Quantity).To(e => e.InitialQuantity))
+            .From<QuantityAdjusted>(_ => _
+                .UsingKey(e => e.ItemId)
+                .Set(l => l.Quantity).To(e => e.NewQuantity))
+            .RemovedWith<LineItemRemoved>(_ => _
+                .UsingKey(e => e.ItemId)));
+}
+```
+
+It isn't shorter, and I won't pretend it is. What changed is the shape of the reading. The two records at the top are the read model, and you can take them in at a glance, with no Chronicle attributes on them. The projection reads top to bottom as a description of the *order's life*: created, line added, quantity adjusted, line removed. The question "what happens when an item is removed?" has one line to point at.
+
+Notice what's missing, too. `UnitPrice` has no mapping. Auto-mapping is on by default in fluent projections, so a property whose name matches an event property is mapped for you, and only `Product`, `Quantity` and `Customer` need an explicit `Set` because their event properties are named differently. Same rule as in model-bound, just not written down anywhere you have to look at.
+
+## What you get by pulling them apart
+
+- **A read model you can read.** A plain record that says what a screen or an API will see, and nothing about how it was built. The docs call this out as the point of the fluent style: the read model stays free of Chronicle attributes.
+- **Room for the harder parts.** Joins, nested children, event context and transformations all have a home in the builder, and the docs recommend declarative projections for exactly those shapes.
+- **A projection you can share.** The docs list sharing one projection definition across several read models as a reason to go declarative.
+- **The same tests.** A [`ReadModelScenario`](https://cratis.io/chronicle/testing/read-models/scenario/) discovers a model-bound projection, an `IProjectionFor<T>` or a reducer for the read model type on its own, so switching styles doesn't mean rewriting the specification.
+
+## What it costs
+
+It's more code, and the docs say so plainly. There's also a price the attributes don't charge: two things have to agree. The read model lives in one file, the mapping in another, and renaming a property means you have to remember there's a second place that cares. The compiler helps, since the builder uses lambdas over your properties and a rename shows up as a build error. But a reader now has to hold two files in their head, which is, funnily enough, the exact thing model-bound saves you from.
+
+That's the whole trade. Cohesion on one side, readability and a clean read model on the other. Neither is the grown-up option.
+
+## Projection or reducer?
+
+This is the one I most want to get straight, because "fluent" and "reducer" both sound like "write some code that builds the read model", and they're not the same thing at all.
+
+![A diagram titled Declare it or compute it. Two columns. Projection: you declare the mapping, runs in the kernel, set add count clear, and changing it means a partial or full replay. Reducer: you write the fold, runs in your app, any code you write, and changing it means a full replay.](./projection-or-reducer.png)
+
+A fluent projection is still a **declaration**. You describe what each event does to the read model, and Chronicle runs that description for you in the projection engine, inside the kernel. The operations on offer are a short list: set, add, subtract, increment, decrement, count and clear.
+
+A [reducer](https://cratis.io/chronicle/reducers/) is **code**. It's an `IReducerFor<TModel>` in your application with one method per event. Chronicle sends it the event and the current state, and it returns the next state. The kernel streams events to it and stores whatever it returns. Here is the same book once more, this time as a reducer:
+
+{/* group:book */}
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.Reducers;
+
+public record BookStatusReducerModel(
+    string Id,
+    string Title,
+    string Isbn,
+    bool IsBorrowed,
+    string? BorrowedBy);
+
+public class BookStatusReducer : IReducerFor<BookStatusReducerModel>
+{
+    public BookStatusReducerModel OnBookRegistered(
+        BookRegistered @event,
+        BookStatusReducerModel? current,
+        EventContext context) =>
+        new(
+            Id: context.EventSourceId.Value,
+            Title: @event.Title,
+            Isbn: @event.Isbn,
+            IsBorrowed: false,
+            BorrowedBy: null);
+
+    public BookStatusReducerModel OnBookBorrowed(
+        BookBorrowed @event,
+        BookStatusReducerModel? current,
+        EventContext context) =>
+        current! with
+        {
+            IsBorrowed = true,
+            BorrowedBy = @event.MemberName
+        };
+
+    public BookStatusReducerModel OnBookReturned(
+        BookReturned @event,
+        BookStatusReducerModel? current,
+        EventContext context) =>
+        current! with
+        {
+            IsBorrowed = false,
+            BorrowedBy = null
+        };
+}
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import io.cratis.chronicle.observation.Reducer
+
+data class BookStatusReducerModel(
+    val title: String = "",
+    val isbn: String = "",
+    val isBorrowed: Boolean = false,
+    val borrowedBy: String? = null
+)
+
+@Reducer
+class BookStatusReducer {
+    fun choosingStyleBookRegistered(event: BookRegistered): BookStatusReducerModel =
+        BookStatusReducerModel(
+            title = event.title,
+            isbn = event.isbn,
+            isBorrowed = false,
+            borrowedBy = null
+        )
+
+    fun choosingStyleBookBorrowed(
+        event: BookBorrowed,
+        current: BookStatusReducerModel
+    ): BookStatusReducerModel =
+        current.copy(isBorrowed = true, borrowedBy = event.memberName)
+
+    fun choosingStyleBookReturned(
+        event: BookReturned,
+        current: BookStatusReducerModel
+    ): BookStatusReducerModel =
+        current.copy(isBorrowed = false, borrowedBy = null)
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+import io.cratis.chronicle.observation.Reducer;
+
+record BookStatusReducerModel(
+    String title,
+    String isbn,
+    boolean isBorrowed,
+    String borrowedBy) {}
+
+@Reducer
+class BookStatusReducer {
+    BookStatusReducerModel choosingStyleBookRegistered(BookRegistered event) {
+        return new BookStatusReducerModel(event.title(), event.isbn(), false, null);
+    }
+
+    BookStatusReducerModel choosingStyleBookBorrowed(
+        BookBorrowed event,
+        BookStatusReducerModel current) {
+        return new BookStatusReducerModel(
+            current.title(), current.isbn(), true, event.memberName());
+    }
+
+    BookStatusReducerModel choosingStyleBookReturned(
+        BookReturned event,
+        BookStatusReducerModel current) {
+        return new BookStatusReducerModel(
+            current.title(), current.isbn(), false, null);
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+```elixir
+defmodule MyApp.ReadModels.BookStatusReducerModel do
+  defstruct title: "", isbn: "", is_borrowed: false, borrowed_by: nil
+end
+
+defmodule MyApp.Reducers.BookStatusReducer do
+  use Chronicle.Reducers.Reducer, model: MyApp.ReadModels.BookStatusReducerModel
+
+  alias MyApp.Events.{
+    BookBorrowed,
+    BookRegistered,
+    BookReturned
+  }
+
+  @handles BookRegistered
+  @handles BookBorrowed
+  @handles BookReturned
+
+  @impl true
+  def reduce(%BookRegistered{} = event, _model, _context) do
+    %MyApp.ReadModels.BookStatusReducerModel{
+      title: event.title,
+      isbn: event.isbn,
+      is_borrowed: false,
+      borrowed_by: nil
+    }
+  end
+
+  def reduce(%BookBorrowed{} = event, model, _context) do
+    %{model | is_borrowed: true, borrowed_by: event.member_name}
+  end
+
+  def reduce(%BookReturned{}, model, _context) do
+    %{model | is_borrowed: false, borrowed_by: nil}
+  end
+end
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { reducer } from '@cratis/chronicle';
+
+class BookStatusReducerModel {
+    title = '';
+    isbn = '';
+    isBorrowed = false;
+    borrowedBy: string | null = null;
+}
+
+// Handler methods receive the event, the current state, and an optional EventContext
+// as a third argument; this reducer does not need the context.
+// The method name must be the exact camelCase of the event's class name -
+// Chronicle discovers handlers by name, not by parameter type.
+@reducer('', undefined, BookStatusReducerModel)
+class BookStatusReducer {
+    choosingStyleBookRegistered(
+        event: BookRegistered,
+        current: BookStatusReducerModel | undefined
+    ): BookStatusReducerModel {
+        return {
+            title: event.title,
+            isbn: event.isbn,
+            isBorrowed: false,
+            borrowedBy: null
+        };
+    }
+
+    choosingStyleBookBorrowed(
+        event: BookBorrowed,
+        current: BookStatusReducerModel
+    ): BookStatusReducerModel {
+        return { ...current, isBorrowed: true, borrowedBy: event.memberName };
+    }
+
+    choosingStyleBookReturned(
+        event: BookReturned,
+        current: BookStatusReducerModel
+    ): BookStatusReducerModel {
+        return { ...current, isBorrowed: false, borrowedBy: null };
+    }
+}
+```
+
+</TabItem>
+</Tabs>
+
+For the TypeScript reducer, handler methods only receive the event and the current state, with no event context, so that example leaves out `Id`. Everything else is the same idea: a fold over state instead of a definition of a mapping.
+
+Three differences matter in practice:
+
+1. **Where it runs, and what it can express.** A projection runs in the kernel and is limited to the operations above. A reducer runs in your app, so branching, derived values, totals with guard logic and temporal state are all just code. `current` has to be nullable, because the first event for an instance arrives before there's any state, and it's on you to keep the method free of side effects.
+2. **What a change costs.** The kernel can look at a changed projection definition and, in some cases, replay only part of it. A changed reducer implementation needs a full replay. [*From event to read model*](/from-event-to-read-model/#when-attributes-cant-say-it-reducers) has the details of how Chronicle classifies those changes.
+3. **How you test it.** A reducer is a plain method, so the easiest test is to call it with an event and a state. A projection you'd run through a scenario. Both work with `ReadModelScenario`, as the next section shows.
+
+The practical rule is the one the docs give: use the simplest style that keeps the intent obvious. And a reducer builds state, just like a projection does. If what you want is for something to *happen* when an event arrives, an email or a follow-up event, that's a reactor, and [*Reacting to facts*](/reacting-to-facts/) is about those.
+
+## Choosing
+
+![A flow titled Pick the simplest style that reads clearly. Do attributes say it clearly? Yes leads to Model-bound, least code. No leads to Joins, children, or a plain model? Yes leads to Fluent, IProjectionFor of T. No leads to Easier to read as code? Yes leads to Reducer, state in, state out.](./which-style.png)
+
+I'd put it in that order and I'd follow it honestly. Model-bound first. If you catch yourself scrolling to work out where a property comes from, or you want the read model free of attributes, move the mapping into a fluent projection. If the thing you're describing is really a calculation, write the reducer.
+
+And it isn't a one-way door. Here is the book as a model-bound read model, a fluent one and a reducer, fed the same history through the same scenario:
+
+{/* group:book */}
+
+```csharp
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.Keys;
+using Cratis.Chronicle.Testing.ReadModels;
+using Cratis.Specifications;
+using Xunit;
+
+public class when_a_book_is_borrowed : Specification
+{
+    readonly EventSourceId _bookId = EventSourceId.New();
+    readonly ReadModelScenario<BookStatusModelBound> _modelBound = new();
+    readonly ReadModelScenario<BookStatusFluent> _fluent = new();
+    readonly ReadModelScenario<BookStatusReducerModel> _reducer = new();
+
+    async Task Because()
+    {
+        object[] history = [new BookRegistered("Dune", "9780441013593"), new BookBorrowed("Ada")];
+
+        await _modelBound.Given.ForEventSource(_bookId).Events(history);
+        await _fluent.Given.ForEventSource(_bookId).Events(history);
+        await _reducer.Given.ForEventSource(_bookId).Events(history);
+    }
+
+    [Fact] void should_flag_the_model_bound_book_as_borrowed() => _modelBound.Instance!.IsBorrowed.ShouldBeTrue();
+    [Fact] void should_flag_the_fluent_book_as_borrowed() => _fluent.Instance!.IsBorrowed.ShouldBeTrue();
+    [Fact] void should_flag_the_reduced_book_as_borrowed() => _reducer.Instance!.IsBorrowed.ShouldBeTrue();
+    [Fact] void should_name_the_member_in_the_model_bound_book() => _modelBound.Instance!.BorrowedBy.ShouldEqual("Ada");
+    [Fact] void should_name_the_member_in_the_fluent_book() => _fluent.Instance!.BorrowedBy.ShouldEqual("Ada");
+    [Fact] void should_name_the_member_in_the_reduced_book() => _reducer.Instance!.BorrowedBy.ShouldEqual("Ada");
+}
+```
+
+The same goes for the order from earlier. Feed the model-bound `Order` and the fluent `OrderSummary` one history, with a quantity adjusted and a line removed, and they have to agree:
+
+{/* group:order */}
+
+```csharp
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.Keys;
+using Cratis.Chronicle.Testing.ReadModels;
+using Cratis.Specifications;
+using Xunit;
+
+public class when_a_line_is_adjusted_and_another_is_removed : Specification
+{
+    readonly EventSourceId _orderId = EventSourceId.New();
+    readonly Guid _pen = Guid.NewGuid();
+    readonly Guid _ink = Guid.NewGuid();
+    readonly ReadModelScenario<Order> _modelBound = new();
+    readonly ReadModelScenario<OrderSummary> _fluent = new();
+
+    async Task Because()
+    {
+        object[] history =
+        [
+            new OrderCreated("Ada"),
+            new LineItemAdded(_pen, "Pen", 2, 1.5m),
+            new LineItemAdded(_ink, "Ink", 1, 4m),
+            new QuantityAdjusted(_pen, 5),
+            new LineItemRemoved(_ink)
+        ];
+
+        await _modelBound.Given.ForEventSource(_orderId).Events(history);
+        await _fluent.Given.ForEventSource(_orderId).Events(history);
+    }
+
+    [Fact] void should_keep_one_line_in_the_model_bound_order() => _modelBound.Instance!.Lines.Count().ShouldEqual(1);
+    [Fact] void should_keep_one_line_in_the_fluent_order() => _fluent.Instance!.Lines.Count().ShouldEqual(1);
+    [Fact] void should_adjust_the_quantity_in_the_model_bound_order() => _modelBound.Instance!.Lines.Single().Quantity.ShouldEqual(5);
+    [Fact] void should_adjust_the_quantity_in_the_fluent_order() => _fluent.Instance!.Lines.Single().Quantity.ShouldEqual(5);
+    [Fact] void should_map_the_price_by_name_in_the_fluent_order() => _fluent.Instance!.Lines.Single().UnitPrice.ShouldEqual(1.5m);
+}
+```
+
+That's what makes the choice cheap. Start with attributes. If it stops reading well, move the mapping out, keep the events and the expected state, and let the specification tell you whether you changed behavior. [*Testing with Arc and Chronicle*](/testing-with-arc-and-chronicle/) covers the scenarios in more depth.
+
+## Wrapping up
+
+Model-bound and fluent aren't rivals. They're the same engine with the mapping in two different places, and the right one is whichever leaves the next person able to read the read model, or the mapping, without a detour. I said fluent gets undersold. More precisely, it's what you reach for when cohesion has stopped paying for itself.
+
+If you want the full reference, the docs have a page for [declarative projections](https://cratis.io/chronicle/projections/declarative/) and one for [model-bound projections](https://cratis.io/chronicle/projections/model-bound/). The next post, [*Stop filtering on status*](/stop-filtering-on-status/), takes the same two styles into a feature that works in both: projection variants.
+
+*Tested with Cratis.Chronicle and Cratis.Chronicle.Testing 19.57.1 on .NET 10 (SDK 10.0.400), 13 October 2026. The C# samples compile, and the specifications above pass. The Kotlin, Java, Elixir and TypeScript tabs are the samples from cratis.io, with names shortened, and weren't run for this post.*

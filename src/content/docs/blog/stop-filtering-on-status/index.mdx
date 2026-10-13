@@ -1,0 +1,1125 @@
+---
+title: "Stop filtering on status"
+date: 2026-10-13T09:30:00Z
+authors: einar
+excerpt: "Give each stage of an entity its own read model and let Chronicle move it from one to the next. No Status column, no pile of nullable fields, nothing to index just to find the backlog. How projection variants work, model-bound and fluent."
+tags:
+  - chronicle
+  - event-sourcing
+---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+![A diagram titled One entity, one shape at a time. On the left, a card labeled WorkItem with a Status column and nullable fields. On the right, two stores joined by an arrow labeled PullRequestCreated: BacklogItem with Id and Title, then PullRequestItem with Id and PullRequestUrl. A band underneath reads Entering one variant removes the entity from the others.](./one-collection-or-two.png)
+
+Almost every read model starts out innocent. A work item has a title, so you add a `Title`. Then it needs to know whether it's still a backlog entry or has become a pull request, so you add a `Status`. Then pull requests have a URL, and builds have a result, and suddenly you have a record where half the properties are nullable and every query begins with "first, filter on status, *then* you can trust the rest".
+
+Let's face it, that's the shape of the data fighting the shape of the model. A backlog entry and a pull request aren't the same thing with different flags. They're different things an entity is at different times, and they have different properties. I wrote about the declarative side of projections in [*Keep the projection out of the model*](/keep-the-projection-out-of-the-model/). This post is about a feature that works in both styles, and that I like a lot: **variants**.
+
+## TL;DR
+
+- A variant group is a set of read models for the *same* logical entity, where the entity is in **exactly one** of them at a time.
+- Each variant has only the properties its stage has. No `Status`, no nullable leftovers.
+- When an entity enters one variant, Chronicle removes it from the others. You don't write the removal.
+- Only the variant's **entering event** can create it. Any other event it listens to can only update an instance that already exists, so a late or replayed event can't resurrect something that has moved on.
+- It works with model-bound attributes and with the fluent builder. The fluent one has no equivalent of `[GlobalFor<T>]`.
+- Each variant is its own collection or table, and nothing queries across the group for you.
+
+## One entity, several shapes
+
+The documentation uses a work item that is a backlog entry until a pull request exists for it, and then a pull request. Modeled as one read model, you get the `Status` problem from the intro. With variants, you declare one read model per stage instead.
+
+Two things make that work. First, every variant points at the same *identity type*, which is what ties them into a group. Second, each variant names the event that **enters** it. Here it is with model-bound attributes. As in the last post, the tabs are synced, so pick your language once.
+
+{/* group:basic */}
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.Keys;
+using Cratis.Chronicle.Projections.ModelBound;
+
+[EventType]
+public record IssueCreated(string Title);
+
+[EventType]
+public record PullRequestCreated(string PullRequestUrl);
+
+/// <summary>
+/// Anchors the logical identity shared by every variant. It does not need to be a
+/// read model itself, and it does not need a common CLR base type with any of the variants.
+/// </summary>
+public class WorkItem;
+
+[VariantOf<WorkItem>]
+[EntersOn<IssueCreated>]
+public record BacklogItem([property: Key] Guid Id, string Title);
+
+[VariantOf<WorkItem>]
+[EntersOn<PullRequestCreated>]
+public record PullRequestItem([property: Key] Guid Id, [property: SetFrom<PullRequestCreated>] string PullRequestUrl);
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import io.cratis.chronicle.events.EventType
+import io.cratis.chronicle.projections.EntersOn
+import io.cratis.chronicle.projections.FromEvent
+import io.cratis.chronicle.projections.FromEventSourceId
+import io.cratis.chronicle.projections.SetFrom
+import io.cratis.chronicle.projections.VariantOf
+import io.cratis.chronicle.readModels.ReadModel
+
+@EventType
+data class IssueCreated(val title: String)
+
+@EventType
+data class PullRequestCreated(val pullRequestUrl: String)
+
+/**
+ * Anchors the logical identity shared by every variant. It does not need to be a read model
+ * itself, and it does not need a common supertype with any of the variants.
+ */
+class WorkItem
+
+@ReadModel
+@VariantOf(WorkItem::class, key = "id")
+@EntersOn(IssueCreated::class)
+@FromEvent(IssueCreated::class)
+data class BacklogItem(
+    @FromEventSourceId
+    val id: String = "",
+
+    @SetFrom("title", IssueCreated::class)
+    val title: String = ""
+)
+
+@ReadModel
+@VariantOf(WorkItem::class, key = "id")
+@EntersOn(PullRequestCreated::class)
+@FromEvent(PullRequestCreated::class)
+data class PullRequestItem(
+    @FromEventSourceId
+    val id: String = "",
+
+    @SetFrom("pullRequestUrl", PullRequestCreated::class)
+    val pullRequestUrl: String = ""
+)
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+import io.cratis.chronicle.events.EventType;
+import io.cratis.chronicle.projections.EntersOn;
+import io.cratis.chronicle.projections.FromEvent;
+import io.cratis.chronicle.projections.FromEventSourceId;
+import io.cratis.chronicle.projections.SetFrom;
+import io.cratis.chronicle.projections.VariantOf;
+import io.cratis.chronicle.readModels.ReadModel;
+
+@EventType
+record IssueCreated(String title) {}
+
+@EventType
+record PullRequestCreated(String pullRequestUrl) {}
+
+/**
+ * Anchors the logical identity shared by every variant. It does not need to be a read model
+ * itself, and it does not need a common supertype with any of the variants.
+ */
+class WorkItem {}
+
+@ReadModel
+@VariantOf(identity = WorkItem.class, key = "id")
+@EntersOn(eventType = IssueCreated.class)
+@FromEvent(eventType = IssueCreated.class)
+class BacklogItem {
+    @FromEventSourceId
+    public String id = "";
+
+    @SetFrom(propertyPath = "title", eventType = IssueCreated.class)
+    public String title = "";
+}
+
+@ReadModel
+@VariantOf(identity = WorkItem.class, key = "id")
+@EntersOn(eventType = PullRequestCreated.class)
+@FromEvent(eventType = PullRequestCreated.class)
+class PullRequestItem {
+    @FromEventSourceId
+    public String id = "";
+
+    @SetFrom(propertyPath = "pullRequestUrl", eventType = PullRequestCreated.class)
+    public String pullRequestUrl = "";
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+```elixir
+defmodule MyApp.Events.IssueCreated do
+  use Chronicle.Events.EventType, id: "issue-created-v1"
+
+  defstruct [:title]
+end
+
+defmodule MyApp.Events.PullRequestCreated do
+  use Chronicle.Events.EventType, id: "pull-request-created-v1"
+
+  defstruct [:pull_request_url]
+end
+
+# Anchors the logical identity shared by every variant. It does not need to be a read model
+# itself, and it does not need a common shape with any of the variants.
+defmodule MyApp.ReadModels.WorkItem do
+end
+
+defmodule MyApp.ReadModels.BacklogItem do
+  use Chronicle.ReadModels.ReadModel
+
+  alias MyApp.Events.IssueCreated
+  alias MyApp.ReadModels.WorkItem
+
+  defstruct [:id, :title]
+
+  variant_of WorkItem, key: :id
+  enters_on IssueCreated
+
+  from IssueCreated,
+    set: [id: :event_source_id, title: :title]
+end
+
+defmodule MyApp.ReadModels.PullRequestItem do
+  use Chronicle.ReadModels.ReadModel
+
+  alias MyApp.Events.PullRequestCreated
+  alias MyApp.ReadModels.WorkItem
+
+  defstruct [:id, :pull_request_url]
+
+  variant_of WorkItem, key: :id
+  enters_on PullRequestCreated
+
+  from PullRequestCreated,
+    set: [id: :event_source_id, pull_request_url: :pull_request_url]
+end
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { entersOn, eventType, fromEvent, setFrom, variantOf } from '@cratis/chronicle';
+
+@eventType()
+export class IssueCreated {
+    title = '';
+}
+
+@eventType()
+export class PullRequestCreated {
+    pullRequestUrl = '';
+}
+
+/**
+ * Anchors the logical identity shared by every variant. It does not need to be a read model
+ * itself, and it does not need a common shape with any of the variants.
+ */
+export class WorkItem {}
+
+@variantOf(WorkItem, 'id')
+@entersOn(IssueCreated)
+@fromEvent(IssueCreated)
+export class BacklogItem {
+    id = '';
+
+    @setFrom(IssueCreated, 'title')
+    title = '';
+}
+
+@variantOf(WorkItem, 'id')
+@entersOn(PullRequestCreated)
+@fromEvent(PullRequestCreated)
+export class PullRequestItem {
+    id = '';
+
+    @setFrom(PullRequestCreated, 'pullRequestUrl')
+    pullRequestUrl = '';
+}
+```
+
+</TabItem>
+</Tabs>
+
+`WorkItem` is only an anchor. It doesn't have to be a read model, and it doesn't need a common base type with the variants. Its job is to be the shared type that every variant in the group points at, which is why the docs suggest choosing one that means something on its own, rather than a marker with no purpose beyond grouping.
+
+Now follow an entity through it. When `IssueCreated` is processed, a `BacklogItem` is created, and `Title` maps by convention just like in any other projection. When `PullRequestCreated` is processed for the same entity, a `PullRequestItem` is created **and the `BacklogItem` for that entity is removed**. There's no `RemovedWith` anywhere. The group takes care of it. Variants aren't required to be entered in any particular order, only to be mutually exclusive once entered, so a `PullRequestCreated` for an entity that was never a backlog item still creates a `PullRequestItem`.
+
+A third variant for a later stage, say a closed work item, would be declared the same way, with its own entering event.
+
+Here is what that says in specifications. First, an issue makes a backlog item:
+
+```csharp
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.Keys;
+using Cratis.Chronicle.Testing.ReadModels;
+using Cratis.Specifications;
+using Xunit;
+
+public class when_an_issue_is_created : Specification
+{
+    readonly EventSourceId _workItemId = EventSourceId.New();
+    readonly ReadModelScenario<BacklogItem> _backlog = new();
+
+    Task Because() => _backlog.Given.ForEventSource(_workItemId).Events(new IssueCreated("Fix the login redirect"));
+
+    [Fact] void should_be_in_the_backlog() => _backlog.Instance!.Title.ShouldEqual("Fix the login redirect");
+}
+```
+
+Then a pull request for the same work item, with one `ReadModelScenario` per variant fed the same history:
+
+```csharp
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.Keys;
+using Cratis.Chronicle.Testing.ReadModels;
+using Cratis.Specifications;
+using Xunit;
+
+public class when_a_pull_request_is_created_for_a_backlog_item : Specification
+{
+    readonly EventSourceId _workItemId = EventSourceId.New();
+    readonly ReadModelScenario<BacklogItem> _backlog = new();
+    readonly ReadModelScenario<PullRequestItem> _pullRequest = new();
+
+    async Task Because()
+    {
+        object[] history = [new IssueCreated("Fix the login redirect"), new PullRequestCreated("https://example.com/pull/42")];
+
+        await _backlog.Given.ForEventSource(_workItemId).Events(history);
+        await _pullRequest.Given.ForEventSource(_workItemId).Events(history);
+    }
+
+    [Fact] void should_no_longer_be_in_the_backlog() => (_backlog.Instance is null).ShouldBeTrue();
+    [Fact] void should_be_a_pull_request() => _pullRequest.Instance!.PullRequestUrl.ShouldEqual("https://example.com/pull/42");
+}
+```
+
+There's a nice property hiding in how this is built. Each variant compiles to an ordinary, independent projection definition, and the [release that introduced variants](https://github.com/Cratis/Chronicle/releases/tag/v19.1.0) made no kernel, wire or storage changes. So there's nothing new to operate. A variant is a projection like any other, and the engine does the exclusion.
+
+## Only the entering event can create a variant
+
+Variants rarely listen to one event. A pull request also wants to know how its build went. You declare that exactly as you would on any projection, with `SetFrom` in the model-bound case. The one difference is what that mapping is allowed to do: it can update a variant that already exists, but it can never create one.
+
+{/* group:updating */}
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.Keys;
+using Cratis.Chronicle.Projections.ModelBound;
+
+[EventType]
+public record PullRequestCreated(string PullRequestUrl);
+
+[EventType]
+public record BuildCompleted(string BuildStatus);
+
+public class WorkItem;
+
+/// <summary>
+/// BuildStatus is mapped from BuildCompleted - an event that is NOT this
+/// variant's entering event, so it is automatically reclassified into an update-only join. It can bring
+/// an already-active instance up to date, but it can never create one on its own.
+/// </summary>
+[VariantOf<WorkItem>]
+[EntersOn<PullRequestCreated>]
+public record PullRequestItem(
+    [property: Key] Guid Id,
+    [property: SetFrom<PullRequestCreated>] string PullRequestUrl,
+    [property: SetFrom<BuildCompleted>] string BuildStatus);
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import io.cratis.chronicle.events.EventType
+import io.cratis.chronicle.projections.EntersOn
+import io.cratis.chronicle.projections.FromEvent
+import io.cratis.chronicle.projections.FromEventSourceId
+import io.cratis.chronicle.projections.SetFrom
+import io.cratis.chronicle.projections.VariantOf
+import io.cratis.chronicle.readModels.ReadModel
+
+@EventType
+data class PullRequestCreated(val pullRequestUrl: String)
+
+@EventType
+data class BuildCompleted(val buildStatus: String)
+
+class WorkItem
+
+/**
+ * buildStatus is mapped from BuildCompleted - an event that is NOT this variant's
+ * entering event, so it is automatically reclassified into an update-only join. It can bring an
+ * already-active instance up to date, but it can never create one on its own.
+ */
+@ReadModel
+@VariantOf(WorkItem::class, key = "id")
+@EntersOn(PullRequestCreated::class)
+@FromEvent(PullRequestCreated::class)
+@FromEvent(BuildCompleted::class)
+data class PullRequestItem(
+    @FromEventSourceId
+    val id: String = "",
+
+    @SetFrom("pullRequestUrl", PullRequestCreated::class)
+    val pullRequestUrl: String = "",
+
+    @SetFrom("buildStatus", BuildCompleted::class)
+    val buildStatus: String = ""
+)
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+import io.cratis.chronicle.events.EventType;
+import io.cratis.chronicle.projections.EntersOn;
+import io.cratis.chronicle.projections.FromEvent;
+import io.cratis.chronicle.projections.FromEventSourceId;
+import io.cratis.chronicle.projections.SetFrom;
+import io.cratis.chronicle.projections.VariantOf;
+import io.cratis.chronicle.readModels.ReadModel;
+
+@EventType
+record PullRequestCreated(String pullRequestUrl) {}
+
+@EventType
+record BuildCompleted(String buildStatus) {}
+
+class WorkItem {}
+
+/**
+ * buildStatus is mapped from BuildCompleted - an event that is NOT this variant's
+ * entering event, so it is automatically reclassified into an update-only join. It can bring an
+ * already-active instance up to date, but it can never create one on its own.
+ */
+@ReadModel
+@VariantOf(identity = WorkItem.class, key = "id")
+@EntersOn(eventType = PullRequestCreated.class)
+@FromEvent(eventType = PullRequestCreated.class)
+@FromEvent(eventType = BuildCompleted.class)
+class PullRequestItem {
+    @FromEventSourceId
+    public String id = "";
+
+    @SetFrom(propertyPath = "pullRequestUrl", eventType = PullRequestCreated.class)
+    public String pullRequestUrl = "";
+
+    @SetFrom(propertyPath = "buildStatus", eventType = BuildCompleted.class)
+    public String buildStatus = "";
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+```elixir
+defmodule MyApp.Events.PullRequestCreated do
+  use Chronicle.Events.EventType, id: "pull-request-created-v1"
+
+  defstruct [:pull_request_url]
+end
+
+defmodule MyApp.Events.BuildCompleted do
+  use Chronicle.Events.EventType, id: "build-completed-v1"
+
+  defstruct [:build_status]
+end
+
+defmodule MyApp.ReadModels.WorkItem do
+end
+
+# build_status is mapped from BuildCompleted - an event that is NOT this
+# variant's entering event, so it is automatically reclassified into an update-only join. It can
+# bring an already-active instance up to date, but it can never create one on its own.
+defmodule MyApp.ReadModels.PullRequestItem do
+  use Chronicle.ReadModels.ReadModel
+
+  alias MyApp.Events.{PullRequestCreated, BuildCompleted}
+  alias MyApp.ReadModels.WorkItem
+
+  defstruct [:id, :pull_request_url, :build_status]
+
+  variant_of WorkItem, key: :id
+  enters_on PullRequestCreated
+
+  from PullRequestCreated,
+    set: [id: :event_source_id, pull_request_url: :pull_request_url]
+
+  from BuildCompleted,
+    set: [build_status: :build_status]
+end
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { entersOn, eventType, fromEvent, setFrom, variantOf } from '@cratis/chronicle';
+
+@eventType()
+export class PullRequestCreated {
+    pullRequestUrl = '';
+}
+
+@eventType()
+export class BuildCompleted {
+    buildStatus = '';
+}
+
+export class WorkItem {}
+
+/**
+ * buildStatus is mapped from BuildCompleted - an event that is NOT this variant's
+ * entering event, so it is automatically reclassified into an update-only join. It can bring an
+ * already-active instance up to date, but it can never create one on its own.
+ */
+@variantOf(WorkItem, 'id')
+@entersOn(PullRequestCreated)
+@fromEvent(PullRequestCreated)
+@fromEvent(BuildCompleted)
+export class PullRequestItem {
+    id = '';
+
+    @setFrom(PullRequestCreated, 'pullRequestUrl')
+    pullRequestUrl = '';
+
+    @setFrom(BuildCompleted, 'buildStatus')
+    buildStatus = '';
+}
+```
+
+</TabItem>
+</Tabs>
+
+`BuildStatus` is mapped from `BuildCompleted`, which isn't the event named in `EntersOn`. Chronicle reclassifies that mapping into an update-only join on the variant's own key before it ever reaches the projection engine. The entering event stays the only door in.
+
+![A diagram titled Only the entering event creates a variant. Three events on the left, each with an arrow to a result. IssueCreated: BacklogItem created. PullRequestCreated: PullRequestItem created, BacklogItem removed. BuildCompleted: PullRequestItem updated, only if it already exists. A red band reads A late or replayed BuildCompleted cannot bring a variant back.](./only-the-entering-event.png)
+
+The docs explain why this matters, and it's the part of the feature I find most convincing. Without that reclassification, a `BuildCompleted` that arrives out of order, or is replayed, could **resurrect** a `PullRequestItem` for an entity that has since moved on to another variant, or one that was never a pull request at all. That's exactly the bug a status column invites, and here it's structurally impossible. You don't have to reason about event ordering to get the guarantee. Declaring the entering event gives it to you.
+
+You can see that in specifications too. A build for something that never became a pull request creates nothing:
+
+```csharp
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.Keys;
+using Cratis.Chronicle.Testing.ReadModels;
+using Cratis.Specifications;
+using Xunit;
+
+public class when_a_build_completes_for_something_that_is_not_a_pull_request : Specification
+{
+    readonly EventSourceId _workItemId = EventSourceId.New();
+    readonly ReadModelScenario<PullRequestItem> _pullRequest = new();
+
+    Task Because() => _pullRequest.Given.ForEventSource(_workItemId).Events(new BuildCompleted("passed"));
+
+    [Fact] void should_not_create_a_pull_request() => (_pullRequest.Instance is null).ShouldBeTrue();
+}
+```
+
+And when the pull request exists, the build status lands on it:
+
+```csharp
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.Keys;
+using Cratis.Chronicle.Testing.ReadModels;
+using Cratis.Specifications;
+using Xunit;
+
+public class when_a_build_completes_after_the_pull_request_was_created : Specification
+{
+    readonly EventSourceId _workItemId = EventSourceId.New();
+    readonly ReadModelScenario<PullRequestItem> _pullRequest = new();
+
+    Task Because() => _pullRequest.Given.ForEventSource(_workItemId).Events(
+        new PullRequestCreated("https://example.com/pull/42"),
+        new BuildCompleted("passed"));
+
+    [Fact] void should_report_the_build_status() => _pullRequest.Instance!.BuildStatus.ShouldEqual("passed");
+}
+```
+
+So what about a build that finishes *before* the pull request exists? The first spec says it creates nothing, and that holds. What happens once the pull request does arrive is more interesting. `BuildStatus` is mapped through a join, and joins are re-resolved against the last stored event of the joined stream whenever the projection handles one of the read model's own events. So the earlier `BuildCompleted` is picked up the moment `PullRequestCreated` creates the variant:
+
+```csharp
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.Keys;
+using Cratis.Chronicle.Testing.ReadModels;
+using Cratis.Specifications;
+using Xunit;
+
+public class when_a_build_completes_before_the_pull_request_was_created : Specification
+{
+    readonly EventSourceId _workItemId = EventSourceId.New();
+    readonly ReadModelScenario<PullRequestItem> _pullRequest = new();
+
+    Task Because() => _pullRequest.Given.ForEventSource(_workItemId).Events(
+        new BuildCompleted("passed"),
+        new PullRequestCreated("https://example.com/pull/42"));
+
+    [Fact] void should_still_create_the_pull_request() => _pullRequest.Instance!.PullRequestUrl.ShouldEqual("https://example.com/pull/42");
+    [Fact] void should_pick_up_the_build_status_reported_before_entering() => _pullRequest.Instance!.BuildStatus.ShouldEqual("passed");
+}
+```
+
+I also appended the same two events to a running Chronicle server, and it gives the same answer. If your build can really finish before the pull request exists, that's still worth a thought about your events, but the projection won't lose the result.
+
+## Sharing a mapping across variants
+
+Some properties every stage wants. A title is the obvious one. Repeating the mapping on each variant gets old, so model-bound projections have `[GlobalFor<TIdentity>]`: declare the mapping once, and it's merged into every variant in the group. The other clients spell this their own way, and the [model-bound variants page](https://cratis.io/chronicle/projections/model-bound/variants/) has all five.
+
+{/* group:shared */}
+
+```csharp
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.Keys;
+using Cratis.Chronicle.Projections.ModelBound;
+
+[EventType]
+public record IssueCreated(string Title);
+
+[EventType]
+public record PullRequestCreated(string Title, string PullRequestUrl);
+
+[EventType]
+public record TitleChanged(string Title);
+
+public class WorkItem;
+
+[VariantOf<WorkItem>]
+[EntersOn<IssueCreated>]
+public record BacklogItem([property: Key] Guid Id, string Title);
+
+[VariantOf<WorkItem>]
+[EntersOn<PullRequestCreated>]
+public record PullRequestItem([property: Key] Guid Id, string Title, string PullRequestUrl);
+
+[GlobalFor<WorkItem>]
+public record SharedHandlers([property: SetFrom<TitleChanged>] string Title);
+```
+
+This block is its own small example, with a fresh set of events. `SharedHandlers` is not a read model and no variant inherits from it. It only carries the mapping, and `TitleChanged` now updates the title on whichever variant the work item is in:
+
+```csharp
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.Keys;
+using Cratis.Chronicle.Testing.ReadModels;
+using Cratis.Specifications;
+using Xunit;
+
+public class when_the_title_changes_after_the_pull_request_was_created : Specification
+{
+    readonly EventSourceId _workItemId = EventSourceId.New();
+    readonly ReadModelScenario<PullRequestItem> _pullRequest = new();
+
+    Task Because() => _pullRequest.Given.ForEventSource(_workItemId).Events(
+        new IssueCreated("Fix login"),
+        new PullRequestCreated("Fix login", "https://example.com/pull/42"),
+        new TitleChanged("Fix the login redirect"));
+
+    [Fact] void should_have_the_new_title() => _pullRequest.Instance!.Title.ShouldEqual("Fix the login redirect");
+}
+```
+
+Like any other non-entering mapping, a shared one can only update an active variant, so it's safe to share across stages that begin at different times. And every variant must have the member a shared mapping targets. A variant without it is a declaration error, caught when the projection is discovered, not an unpredictable surprise when a shared event finally shows up.
+
+## The same thing, fluent
+
+Everything above is also available in the declarative style, and this is where the two styles from the last post line up one to one.
+
+![A diagram titled Same group, two spellings. Model-bound column: VariantOf of T, EntersOn of E, SetFrom of E, GlobalFor of T. Fluent column: .VariantOf of T with a key lambda, .EntersOn of E, .From of E, and Repeat .From of E on each variant for the one that has no equivalent. A band reads Both build the same mutually exclusive group.](./two-spellings.png)
+
+The read models are plain records, the projections say which group and which entering event, and the identity type is declared exactly as before.
+
+{/* group:decbasic */}
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.Projections;
+
+[EventType]
+public record IssueCreated(string Title);
+
+[EventType]
+public record PullRequestCreated(string PullRequestUrl);
+
+/// <summary>
+/// Anchors the logical identity shared by BacklogItem and PullRequestItem.
+/// Deliberately not a read model itself, and does not need a common CLR base type with either variant.
+/// </summary>
+public class WorkItem;
+
+public record BacklogItem(Guid Id, string Title);
+
+public record PullRequestItem(Guid Id, string PullRequestUrl);
+
+public class BacklogItemProjection : IProjectionFor<BacklogItem>
+{
+    public void Define(IProjectionBuilderFor<BacklogItem> builder) => builder
+        .VariantOf<WorkItem>(_ => _.Id)
+        .EntersOn<IssueCreated>();
+}
+
+public class PullRequestItemProjection : IProjectionFor<PullRequestItem>
+{
+    public void Define(IProjectionBuilderFor<PullRequestItem> builder) => builder
+        .VariantOf<WorkItem>(_ => _.Id)
+        .EntersOn<PullRequestCreated>();
+}
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import io.cratis.chronicle.events.EventType
+import io.cratis.chronicle.projections.IProjectionBuilderFor
+import io.cratis.chronicle.projections.IProjectionFor
+
+@EventType
+data class IssueCreated(val title: String)
+
+@EventType
+data class PullRequestCreated(val pullRequestUrl: String)
+
+/**
+ * Anchors the logical identity shared by BacklogItem and PullRequestItem.
+ * Deliberately not a read model itself, and does not need a common supertype with either variant.
+ */
+class WorkItem
+
+data class BacklogItem(val id: String = "", val title: String = "")
+
+data class PullRequestItem(val id: String = "", val pullRequestUrl: String = "")
+
+class BacklogItemProjection : IProjectionFor<BacklogItem> {
+    override fun define(builder: IProjectionBuilderFor<BacklogItem>) {
+        builder
+            .variantOf(WorkItem::class, BacklogItem::id)
+            .entersOn(IssueCreated::class)
+    }
+}
+
+class PullRequestItemProjection : IProjectionFor<PullRequestItem> {
+    override fun define(builder: IProjectionBuilderFor<PullRequestItem>) {
+        builder
+            .variantOf(WorkItem::class, PullRequestItem::id)
+            .entersOn(PullRequestCreated::class)
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+import io.cratis.chronicle.events.EventType;
+import io.cratis.chronicle.projections.IProjectionBuilderFor;
+import io.cratis.chronicle.projections.IProjectionFor;
+
+@EventType
+record IssueCreated(String title) {}
+
+@EventType
+record PullRequestCreated(String pullRequestUrl) {}
+
+/**
+ * Anchors the logical identity shared by BacklogItem and PullRequestItem.
+ * Deliberately not a read model itself, and does not need a common supertype with either variant.
+ */
+class WorkItem {}
+
+class BacklogItem {
+    public String id = "";
+    public String title = "";
+}
+
+class PullRequestItem {
+    public String id = "";
+    public String pullRequestUrl = "";
+}
+
+class BacklogItemProjection implements IProjectionFor<BacklogItem> {
+    @Override
+    public void define(IProjectionBuilderFor<BacklogItem> builder) {
+        builder
+            .variantOf(WorkItem.class, "id")
+            .entersOn(IssueCreated.class);
+    }
+}
+
+class PullRequestItemProjection implements IProjectionFor<PullRequestItem> {
+    @Override
+    public void define(IProjectionBuilderFor<PullRequestItem> builder) {
+        builder
+            .variantOf(WorkItem.class, "id")
+            .entersOn(PullRequestCreated.class);
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+```elixir
+defmodule MyApp.Events.IssueCreated do
+  use Chronicle.Events.EventType, id: "dec-variant-issue-created-v1"
+
+  defstruct [:title]
+end
+
+defmodule MyApp.Events.PullRequestCreated do
+  use Chronicle.Events.EventType, id: "dec-variant-pull-request-created-v1"
+
+  defstruct [:pull_request_url]
+end
+
+# Anchors the logical identity shared by BacklogItem and PullRequestItem.
+# Deliberately not a read model itself, and does not need a common shape with either variant.
+defmodule MyApp.ReadModels.WorkItem do
+end
+
+defmodule MyApp.ReadModels.BacklogItem do
+  use Chronicle.ReadModels.ReadModel
+
+  defstruct [:id, :title]
+end
+
+defmodule MyApp.ReadModels.PullRequestItem do
+  use Chronicle.ReadModels.ReadModel
+
+  defstruct [:id, :pull_request_url]
+end
+
+defmodule MyApp.Projections.BacklogItemProjection do
+  use Chronicle.Projections.Projection, model: MyApp.ReadModels.BacklogItem
+
+  alias MyApp.Events.IssueCreated
+  alias MyApp.ReadModels.WorkItem
+
+  variant_of WorkItem, key: :id
+  enters_on IssueCreated
+
+  from IssueCreated,
+    set: [id: :event_source_id, title: :title]
+end
+
+defmodule MyApp.Projections.PullRequestItemProjection do
+  use Chronicle.Projections.Projection, model: MyApp.ReadModels.PullRequestItem
+
+  alias MyApp.Events.PullRequestCreated
+  alias MyApp.ReadModels.WorkItem
+
+  variant_of WorkItem, key: :id
+  enters_on PullRequestCreated
+
+  from PullRequestCreated,
+    set: [id: :event_source_id, pull_request_url: :pull_request_url]
+end
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { eventType } from '@cratis/chronicle';
+import { IProjectionBuilderFor, IProjectionFor, projection } from '@cratis/chronicle';
+
+@eventType()
+class IssueCreated {
+    title = '';
+}
+
+@eventType()
+class PullRequestCreated {
+    pullRequestUrl = '';
+}
+
+/**
+ * Anchors the logical identity shared by BacklogItem and PullRequestItem.
+ * Deliberately not a read model itself, and does not need a common shape with either variant.
+ */
+class WorkItem {}
+
+class BacklogItem {
+    id = '';
+    title = '';
+}
+
+class PullRequestItem {
+    id = '';
+    pullRequestUrl = '';
+}
+
+@projection()
+class BacklogItemProjection implements IProjectionFor<BacklogItem> {
+    define(builder: IProjectionBuilderFor<BacklogItem>): void {
+        builder
+            .variantOf(WorkItem, m => m.id)
+            .entersOn(IssueCreated);
+    }
+}
+
+@projection()
+class PullRequestItemProjection implements IProjectionFor<PullRequestItem> {
+    define(builder: IProjectionBuilderFor<PullRequestItem>): void {
+        builder
+            .variantOf(WorkItem, m => m.id)
+            .entersOn(PullRequestCreated);
+    }
+}
+```
+
+</TabItem>
+</Tabs>
+
+`VariantOf` takes the identity type and a key accessor, and `EntersOn` names the entering event. Auto-mapping is on as in any fluent projection, so `Title` and `PullRequestUrl` map by name without a `Set`. Entering `PullRequestItem` removes the `BacklogItem`, again with no removal call, because the group is cross-wired automatically once every variant in it has been discovered.
+
+An additional event is an ordinary `From`, and it gets the same reclassification as `SetFrom` did:
+
+{/* group:decupdating */}
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.Projections;
+
+[EventType]
+public record PullRequestCreated(string PullRequestUrl);
+
+[EventType]
+public record BuildCompleted(string BuildStatus);
+
+public class WorkItem;
+
+public record PullRequestItem(Guid Id, string PullRequestUrl, string BuildStatus);
+
+/// <summary>
+/// From&lt;BuildCompleted&gt; is declared exactly like an ordinary multi-event
+/// projection. Because that event is NOT the one named with EntersOn, the builder automatically
+/// reclassifies it into an update-only join on the variant's own key when the definition is built - it
+/// can bring an already-active instance up to date, but it can never create one on its own.
+/// </summary>
+public class PullRequestItemProjection : IProjectionFor<PullRequestItem>
+{
+    public void Define(IProjectionBuilderFor<PullRequestItem> builder) => builder
+        .VariantOf<WorkItem>(_ => _.Id)
+        .EntersOn<PullRequestCreated>()
+        .From<BuildCompleted>();
+}
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import io.cratis.chronicle.events.EventType
+import io.cratis.chronicle.projections.IProjectionBuilderFor
+import io.cratis.chronicle.projections.IProjectionFor
+
+@EventType
+data class PullRequestCreated(val pullRequestUrl: String)
+
+@EventType
+data class BuildCompleted(val buildStatus: String)
+
+class WorkItem
+
+data class PullRequestItem(val id: String = "", val pullRequestUrl: String = "", val buildStatus: String = "")
+
+/**
+ * from(BuildCompleted::class) is declared exactly like an ordinary multi-event
+ * projection. Because that event is NOT the one named with entersOn, the builder automatically
+ * reclassifies it into an update-only join on the variant's own key when the definition is built -
+ * it can bring an already-active instance up to date, but it can never create one on its own.
+ */
+class PullRequestItemProjection : IProjectionFor<PullRequestItem> {
+    override fun define(builder: IProjectionBuilderFor<PullRequestItem>) {
+        builder
+            .variantOf(WorkItem::class, PullRequestItem::id)
+            .entersOn(PullRequestCreated::class)
+            .from(BuildCompleted::class)
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+import io.cratis.chronicle.events.EventType;
+import io.cratis.chronicle.projections.IProjectionBuilderFor;
+import io.cratis.chronicle.projections.IProjectionFor;
+
+@EventType
+record PullRequestCreated(String pullRequestUrl) {}
+
+@EventType
+record BuildCompleted(String buildStatus) {}
+
+class WorkItem {}
+
+class PullRequestItem {
+    public String id = "";
+    public String pullRequestUrl = "";
+    public String buildStatus = "";
+}
+
+/**
+ * from(BuildCompleted.class) is declared exactly like an ordinary multi-event
+ * projection. Because that event is NOT the one named with entersOn, the builder automatically
+ * reclassifies it into an update-only join on the variant's own key when the definition is built -
+ * it can bring an already-active instance up to date, but it can never create one on its own.
+ */
+class PullRequestItemProjection implements IProjectionFor<PullRequestItem> {
+    @Override
+    public void define(IProjectionBuilderFor<PullRequestItem> builder) {
+        builder
+            .variantOf(WorkItem.class, "id")
+            .entersOn(PullRequestCreated.class)
+            .from(BuildCompleted.class);
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+```elixir
+defmodule MyApp.Events.PullRequestCreated do
+  use Chronicle.Events.EventType, id: "dec-variant-updating-pull-request-created-v1"
+
+  defstruct [:pull_request_url]
+end
+
+defmodule MyApp.Events.BuildCompleted do
+  use Chronicle.Events.EventType, id: "dec-variant-updating-build-completed-v1"
+
+  defstruct [:build_status]
+end
+
+defmodule MyApp.ReadModels.WorkItem do
+end
+
+defmodule MyApp.ReadModels.PullRequestItem do
+  use Chronicle.ReadModels.ReadModel
+
+  defstruct [:id, :pull_request_url, :build_status]
+end
+
+# `from BuildCompleted` is declared exactly like an ordinary multi-event
+# projection. Because that event is NOT the one named with enters_on, it is automatically
+# reclassified into an update-only join on the variant's own key when the definition is built -
+# it can bring an already-active instance up to date, but it can never create one on its own.
+defmodule MyApp.Projections.PullRequestItemProjection do
+  use Chronicle.Projections.Projection, model: MyApp.ReadModels.PullRequestItem
+
+  alias MyApp.Events.{PullRequestCreated, BuildCompleted}
+  alias MyApp.ReadModels.WorkItem
+
+  variant_of WorkItem, key: :id
+  enters_on PullRequestCreated
+
+  from PullRequestCreated,
+    set: [id: :event_source_id, pull_request_url: :pull_request_url]
+
+  from BuildCompleted,
+    set: [build_status: :build_status]
+end
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { eventType, IProjectionBuilderFor, IProjectionFor, projection } from '@cratis/chronicle';
+
+@eventType()
+class PullRequestCreated {
+    pullRequestUrl = '';
+}
+
+@eventType()
+class BuildCompleted {
+    buildStatus = '';
+}
+
+class WorkItem {}
+
+class PullRequestItem {
+    id = '';
+    pullRequestUrl = '';
+    buildStatus = '';
+}
+
+/**
+ * .from(BuildCompleted) is declared exactly like an ordinary multi-event
+ * projection. Because that event is NOT the one named with entersOn, the builder automatically
+ * reclassifies it into an update-only join on the variant's own key when the definition is built -
+ * it can bring an already-active instance up to date, but it can never create one on its own.
+ */
+@projection()
+class PullRequestItemProjection implements IProjectionFor<PullRequestItem> {
+    define(builder: IProjectionBuilderFor<PullRequestItem>): void {
+        builder
+            .variantOf(WorkItem, m => m.id)
+            .entersOn(PullRequestCreated)
+            .from(BuildCompleted);
+    }
+}
+```
+
+</TabItem>
+</Tabs>
+
+`From<BuildCompleted>()` looks like any other subscription. Because it isn't the entering event, the builder turns it into an update-only join keyed on the same property `VariantOf` named, before the definition reaches the engine. Same guarantee, spelled differently.
+
+The one real difference is sharing. Fluent projections have no equivalent of `[GlobalFor<T>]`. Each projection is its own class with its own definition, so a mapping every variant needs is a `.From<TEvent>()` on each builder. The docs' own advice is that if you end up repeating one often enough for it to hurt, that repetition is a reason to use model-bound variants for that group.
+
+The first specification in this post, with the same history and the same assertions against `FluentBacklogItem` and `FluentPullRequestItem`, passes for the fluent version too. A `ReadModelScenario` discovers the other variants of the group, model-bound or fluent, so entering one variant removes the entity from the others there as it does on a server.
+
+## What it costs
+
+Be honest with yourself about the trade, because there is one.
+
+- **Each variant is its own collection.** There's no built-in query that spans the group. If a caller needs "this entity, whichever stage it's in", it asks each variant explicitly. That's by design, and it's also something you have to build.
+- **The shapes have to genuinely differ.** If every stage shares nearly all its properties and differs by a flag or two, a single read model with a `Status` is still the right answer. The docs say so too.
+- **It's a projection feature.** Variants are declared on model-bound and fluent projections. A reducer builds the state of one read model, so it's not where this lives. If you're deciding between a projection and a reducer, the previous post and [*From event to read model*](/from-event-to-read-model/#when-attributes-cant-say-it-reducers) cover the difference.
+
+And what do you get for it? The fastest thing that can possibly work, as I like to put it. A query for the backlog reads the backlog. There's no `Status` to filter on, so there's none to index just to keep that lookup quick, and the rows you don't want aren't in the way. That's the design bet. I haven't benchmarked it for this post, so don't take it as a number. Take it as the reason the shape exists.
+
+## Wrapping up
+
+The next time you reach for a `Status` column, ask whether you're modeling a flag or a different thing. If it's a different thing, give it its own read model, name the event that makes an entity become it, and let Chronicle do the moving. That's a few attributes, or a few builder calls, and a status filter you never write.
+
+The full reference is in the docs, for both [model-bound variants](https://cratis.io/chronicle/projections/model-bound/variants/) and [fluent variants](https://cratis.io/chronicle/projections/declarative/variants/), and the [guide to choosing a read-model style](https://cratis.io/chronicle/projections/choosing-a-read-model-style/) is a good companion if you're still deciding between the ways to build one. How a read model gets queried afterwards, and how a live list learns about changes, is in [*From event to read model*](/from-event-to-read-model/).
+
+*Variants need Chronicle 19.1.0 or later, and the scenario behavior described here needs 19.57.1 or later. Tested with Cratis.Chronicle and Cratis.Chronicle.Testing 19.57.1 on .NET 10 (SDK 10.0.400), 13 October 2026. The C# samples compile and the specifications above pass. The variant behavior in both styles was also checked against a Chronicle development server, `cratis/chronicle:19.57.1-development` (digest `sha256:71bbfd0418e29aff10ea0849e1baa95d54c5899724bc43cdcde0af62df1691f8`, which reported version 19.57.1.0). The Kotlin, Java, Elixir and TypeScript tabs are the samples from cratis.io, with names shortened, and weren't run for this post.*
