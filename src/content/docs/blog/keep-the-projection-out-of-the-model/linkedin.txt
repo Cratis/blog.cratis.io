@@ -1,0 +1,19 @@
+Model-bound projections get most of the attention in Chronicle, and I get why. You put an attribute on a property and the read model says where its data comes from.
+
+But the fluent, declarative IProjectionFor<T> was the first thing we built, and I think it's undersold today.
+
+The trade-off model-bound makes is real: the read model, the events it listens to, the keys, the children and the removals all end up in the same place. Fluent keeps a plain record on one side and the mapping on the other. Same engine, same projection definition stored in the kernel. Different trade-off.
+
+And then there's the thing people mix it up with: the reducer. It's not a third spelling of the same idea. A reducer is your code, running in your application, taking an event and the current state and returning the next state.
+
+In the post I go through:
+- the same book example, written both ways, in C#, Kotlin, Java, TypeScript and Elixir
+- when fluent earns its keep (including Kotlin and Java, where it can express things the annotations can't)
+- how projections differ from reducers, and how I'd choose between the three
+- how to specify all of it with ReadModelScenario
+
+My rule of thumb: start model-bound, reach for fluent when the attributes stop being readable, and reach for a reducer when the logic reads better as code.
+
+https://blog.cratis.io/keep-the-projection-out-of-the-model/
+
+#eventsourcing #cqrs #dotnet #cratis #chronicle

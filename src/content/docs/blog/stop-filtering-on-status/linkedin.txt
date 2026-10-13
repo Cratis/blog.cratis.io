@@ -1,0 +1,19 @@
+How many of your read models have a Status column that every query has to filter on?
+
+A work item is a backlog entry, then a pull request, then closed. The usual answer is one collection with a status field, a pile of nullable properties, and a Where(status == ...) in every query. Let's face it, that's a bug waiting to happen.
+
+Chronicle projection variants let you model each stage as its own read model instead. Each variant only has the properties that stage actually has, and entering one removes the entity from the others.
+
+The part I like most: only the entering event can create a variant. Anything else you map is update-only, so a late or replayed BuildCompleted can never resurrect a pull request for an item that has moved on. You don't have to reason about event ordering to get that guarantee.
+
+In the post:
+- model-bound ([VariantOf], [EntersOn]) and fluent (.VariantOf().EntersOn()) side by side
+- sharing a mapping across all variants with [GlobalFor]
+- how an early join still lands on the variant when it's created
+- what it costs, and what I haven't benchmarked
+
+The specs in the post are compiled and run, and I checked the behavior against a running Chronicle server.
+
+https://blog.cratis.io/stop-filtering-on-status/
+
+#eventsourcing #cqrs #dotnet #cratis #chronicle
