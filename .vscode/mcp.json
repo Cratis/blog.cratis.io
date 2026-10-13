@@ -1,0 +1,14 @@
+{
+  "servers": {
+    "screenplay": {
+      "type": "stdio",
+      "command": "cratis",
+      "args": [
+        "screenplay",
+        "mcp",
+        "--project-root",
+        "${workspaceFolder}"
+      ]
+    }
+  }
+}
