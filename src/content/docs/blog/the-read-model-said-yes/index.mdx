@@ -82,9 +82,9 @@ The same holds for every other place a command can read state on its way to the 
 
 - A `CommandValidator<T>` that takes the read model runs before `Handle()` and gets a snapshot the same way.
 - A passive projection folds fresh from the events when it's read, so it doesn't lag, but it records no position either, and the append that follows isn't conditioned on it.
-- `concurrency: true` on `[EventSourceType]`, `[EventStreamType]` or `[EventStreamId]` narrows the default check by those tags. It still reads the tail after `Handle()`.
+- `concurrency: true` on `[EventSourceType]`, `[EventStreamType]` or `[EventStreamId]` narrows the default check by source type, stream type or stream id. It still reads the tail after `Handle()`.
 
-Arc's analyzer [ARCCHR0011](https://cratis.io/arc/backend/csharp/code-analysis/) points at plain reads in commands that produce events, at Info severity. More on that below.
+Arc's analyzer [ARCCHR0011](https://cratis.io/arc/backend/csharp/chronicle/code-analysis/#arcchr0011-unguarded-legacy-decision-reads) points at plain reads in commands that produce events, at Info severity. More on that below.
 
 ## Making the decision hold
 
@@ -188,7 +188,7 @@ Decision reads exist only in the .NET client.
 </TabItem>
 </Tabs>
 
-Chronicle adds a few things the DCB specification doesn't ask for. Constraints enforce uniqueness inside the append, for every writer, with no read at all. A decision read checks the projection's shape before it reads and refuses one it can't guard exactly. It retries the fold when events arrive during it, and refuses with `FoldIncomplete` if it can't settle. A conflict is mapped back to the read model and key that changed, so a command can say what changed instead of only "try again".
+Chronicle adds a few things the DCB specification doesn't ask for. Constraints enforce uniqueness inside the append, for every writer, with no read at all. A decision read checks the projection's shape before it reads and refuses one it can't guard exactly. It retries the fold when events arrive during it. If the fold is still behind the events it expected after three attempts, the read is refused with `FoldIncomplete`; if it keeps running past the position it captured, the read is returned with the older position, and the append then conflicts. A conflict is mapped back to the read model and key that changed, so a command can say what changed instead of only "try again".
 
 There are also things DCB can do that Chronicle can't. Tags are stored on events, but they take no part in consistency, so a query item can't match on an arbitrary tag. An event has exactly one event source id, so a fact about two entities is written as two events in one atomic append. Two query items for the same key are merged into one scope, which is wider than necessary and still safe. And a decision read won't fold across entities: joins, children and models keyed by a property are refused. [Chronicle's DCB page](https://cratis.io/chronicle/dynamic-consistency-boundary/chronicle/) has the full mapping.
 
@@ -275,7 +275,7 @@ A protected decision isn't the first thing I'd reach for. For a unique value, or
 | Rule | Use | Note |
 | --- | --- | --- |
 | A unique value, or created once | Constraint | Checked in the kernel for every writer; it can't count or sum |
-| State on one key (stock, status, a count) | `[ProtectedDecision]` with `DecisionRead<T>` | The model must be a flat projection keyed by the event source |
+| State on one key (stock, status, a count) | `[ProtectedDecision]` with `DecisionRead<T>` | The model must be a flat projection keyed by the event source, or by a stream id when you read one stream explicitly |
 | State on two or more keys | `DecisionRead<T>` plus `IDecisionReads`, one event per source | Guards only the keys that were read |
 | Raw events in one routed stream | Stream decision with `IStreamReads` | Every event in the stream conflicts; the whole stream is read |
 | Rich behaviour on one entity | Aggregate root, returning the result of `Commit()` | Can't be combined with `[ProtectedDecision]` reads |
@@ -315,7 +315,7 @@ ARCCHR0012 is the companion rule for immediate appends through an injected `IEve
 
 There's one more boundary to understand, and it's easy to get wrong in both directions. A guard detects every matching event appended after its boundary, whoever wrote it. If the racy `BorrowBook` above appends while the protected one is between read and commit, the protected command conflicts. But the racy command's own decision is still unguarded: if it reads first and commits last, it lends a copy that isn't there, and nothing stops it. A rule holds only when every writer that decides on it carries a guard, or when the rule is a constraint, which the kernel checks for every append.
 
-Some things no decision read covers: a `Revise` or `Redact` between read and commit, a projection definition changed by another process, other event sequences, and data outside Chronicle. Reducers, self-reducing read models, joins, children and models keyed by something other than the event source are refused. And decision reads exist only in the .NET client.
+Some things no decision read covers: a `Revise` or `Redact` between read and commit, a projection definition changed by another process, other event sequences, and data outside Chronicle. Reducers, self-reducing read models, joins and children are refused, and so is a model keyed by something other than the event source, unless it is keyed by stream id and read for one explicit stream. And decision reads exist only in the .NET client.
 
 ## Where to start
 
