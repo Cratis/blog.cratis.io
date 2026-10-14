@@ -585,7 +585,7 @@ public class when_a_build_completes_before_the_pull_request_was_created : Specif
 }
 ```
 
-I also appended the same two events to a running Chronicle server, and it gives the same answer. If your build can really finish before the pull request exists, that's still worth a thought about your events, but the projection won't lose the result.
+If your build can really finish before the pull request exists, that's still worth a thought about your events, but the projection won't lose the result.
 
 ## Sharing a mapping across variants
 
@@ -1425,4 +1425,4 @@ The next time you reach for a `Status` column, ask whether each stage deserves i
 
 The full reference is in the docs, for both [model-bound variants](https://cratis.io/chronicle/projections/model-bound/variants/) and [fluent variants](https://cratis.io/chronicle/projections/declarative/variants/), and the [guide to choosing a read-model style](https://cratis.io/chronicle/projections/choosing-a-read-model-style/) is a good companion if you're still deciding between the ways to build one. How a read model gets queried afterwards, and how a live list learns about changes, is in [*From event to read model*](/from-event-to-read-model/).
 
-*Variants need Chronicle 19.1.0 or later, and the scenario behavior described here needs 19.57.1 or later. Tested with Cratis.Chronicle and Cratis.Chronicle.Testing 19.57.1 on .NET 10 (SDK 10.0.400), 13 October 2026. The C# samples compile and the specifications above pass. The variant behavior in both styles was also checked against a Chronicle development server, `cratis/chronicle:19.57.1-development` (digest `sha256:71bbfd0418e29aff10ea0849e1baa95d54c5899724bc43cdcde0af62df1691f8`, which reported version 19.57.1.0). The Kotlin, Java, Elixir and TypeScript tabs are the samples from cratis.io, with names shortened, and weren't run for this post.*
+*Variants need Chronicle 19.1.0 or later, and the scenario behavior described here needs 19.57.1 or later.*
