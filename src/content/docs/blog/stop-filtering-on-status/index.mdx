@@ -13,12 +13,12 @@ import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 Almost every read model starts out innocent. A work item has a title, so you add a `Title`. Then it needs to know whether it's still a backlog entry or has become a pull request, so you add a `Status`. Then pull requests have a URL, and builds have a result, and suddenly you have a record where half the properties are nullable and every query begins with "first, filter on status, *then* you can trust the rest".
 
-Let's face it, that's the shape of the data fighting the shape of the model. A backlog entry and a pull request aren't the same thing with different flags. They're different things an entity is at different times, and they have different properties. I wrote about the declarative side of projections in [*Keep the projection out of the model*](/keep-the-projection-out-of-the-model/). This post is about a feature that works in both styles, and that I like a lot: **variants**.
+Let's face it, that's the shape of the data fighting the shape of the model. A backlog entry and a pull request are different things an entity is at different times, and often they have different properties. Sometimes they hardly differ at all, and the `Status` filter is still the cost you pay on every query. I wrote about the declarative side of projections in [*Keep the projection out of the model*](/keep-the-projection-out-of-the-model/). This post is about a feature that works in both styles, and that I like a lot: **variants**.
 
 ## TL;DR
 
 - A variant group is a set of read models for the *same* logical entity, where the entity is in **exactly one** of them at a time.
-- Each variant has only the properties its stage has. No `Status`, no nullable leftovers.
+- Each variant has the properties its stage needs. No `Status`, no nullable leftovers. Stages can differ a lot or hardly at all.
 - When an entity enters one variant, Chronicle removes it from the others. You don't write the removal.
 - Only the variant's **entering event** can create it. Any other event it listens to can only update an instance that already exists, so a late or replayed event can't resurrect something that has moved on.
 - It works with model-bound attributes and with the fluent builder. The fluent one has no equivalent of `[GlobalFor<T>]`.
@@ -1421,7 +1421,7 @@ And what do you get for it? The fastest thing that can possibly work, as I like 
 
 ## Wrapping up
 
-The next time you reach for a `Status` column, ask whether you're modeling a flag or a different thing. If it's a different thing, give it its own read model, name the event that makes an entity become it, and let Chronicle do the moving. That's a few attributes, or a few builder calls, and a status filter you never write.
+The next time you reach for a `Status` column, ask whether each stage deserves its own read model, either because it's a different thing or because you'd rather not filter on status for every query. If so, give it its own read model, name the event that makes an entity become it, and let Chronicle do the moving. That's a few attributes, or a few builder calls, and a status filter you never write.
 
 The full reference is in the docs, for both [model-bound variants](https://cratis.io/chronicle/projections/model-bound/variants/) and [fluent variants](https://cratis.io/chronicle/projections/declarative/variants/), and the [guide to choosing a read-model style](https://cratis.io/chronicle/projections/choosing-a-read-model-style/) is a good companion if you're still deciding between the ways to build one. How a read model gets queried afterwards, and how a live list learns about changes, is in [*From event to read model*](/from-event-to-read-model/).
 
