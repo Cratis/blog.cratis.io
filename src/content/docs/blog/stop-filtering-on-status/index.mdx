@@ -589,9 +589,12 @@ I also appended the same two events to a running Chronicle server, and it gives 
 
 ## Sharing a mapping across variants
 
-Some properties every stage wants. A title is the obvious one. Repeating the mapping on each variant gets old, so model-bound projections have `[GlobalFor<TIdentity>]`: declare the mapping once, and it's merged into every variant in the group. The other clients spell this their own way, and the [model-bound variants page](https://cratis.io/chronicle/projections/model-bound/variants/) has all five.
+Some properties every stage wants. A title is the obvious one. Repeating the mapping on each variant gets old, so model-bound projections have `[GlobalFor<TIdentity>]`: declare the mapping once, and it's merged into every variant in the group. Each client spells it its own way, and the [model-bound variants page](https://cratis.io/chronicle/projections/model-bound/variants/) has all five.
 
 {/* group:shared */}
+
+<Tabs syncKey="language">
+<TabItem label="C#">
 
 ```csharp
 using Cratis.Chronicle.Events;
@@ -601,25 +604,325 @@ using Cratis.Chronicle.Projections.ModelBound;
 [EventType]
 public record IssueCreated(string Title);
 
+
 [EventType]
-public record PullRequestCreated(string Title, string PullRequestUrl);
+public record PullRequestCreated(string PullRequestUrl);
+
 
 [EventType]
 public record TitleChanged(string Title);
 
+
 public class WorkItem;
+
 
 [VariantOf<WorkItem>]
 [EntersOn<IssueCreated>]
 public record BacklogItem([property: Key] Guid Id, string Title);
 
+
 [VariantOf<WorkItem>]
 [EntersOn<PullRequestCreated>]
-public record PullRequestItem([property: Key] Guid Id, string Title, string PullRequestUrl);
+public record PullRequestItem(
+    [property: Key] Guid Id,
+    string Title,
+    [property: SetFrom<PullRequestCreated>] string PullRequestUrl);
 
+
+/// <summary>
+/// Declares a mapping every variant of WorkItem shares. Every variant must have a
+/// Title member - one that does not is a declaration error, not a silently skipped mapping.
+/// </summary>
+/// <param name="Title">The title every variant carrying one keeps up to date.</param>
 [GlobalFor<WorkItem>]
 public record SharedHandlers([property: SetFrom<TitleChanged>] string Title);
 ```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import io.cratis.chronicle.events.EventType
+import io.cratis.chronicle.projections.EntersOn
+import io.cratis.chronicle.projections.FromEvent
+import io.cratis.chronicle.projections.FromEventSourceId
+import io.cratis.chronicle.projections.GlobalFor
+import io.cratis.chronicle.projections.SetFrom
+import io.cratis.chronicle.projections.VariantOf
+import io.cratis.chronicle.readModels.ReadModel
+
+
+@EventType
+data class IssueCreated(val title: String)
+
+
+@EventType
+data class PullRequestCreated(val pullRequestUrl: String)
+
+
+@EventType
+data class TitleChanged(val title: String)
+
+
+class WorkItem
+
+
+@ReadModel
+@VariantOf(WorkItem::class, key = "id")
+@EntersOn(IssueCreated::class)
+@FromEvent(IssueCreated::class)
+data class BacklogItem(
+    @FromEventSourceId
+    val id: String = "",
+    val title: String = ""
+)
+
+
+@ReadModel
+@VariantOf(WorkItem::class, key = "id")
+@EntersOn(PullRequestCreated::class)
+@FromEvent(PullRequestCreated::class)
+data class PullRequestItem(
+    @FromEventSourceId
+    val id: String = "",
+    val title: String = "",
+
+
+    @SetFrom("pullRequestUrl", PullRequestCreated::class)
+    val pullRequestUrl: String = ""
+)
+
+
+/**
+ * Declares a mapping every variant of WorkItem shares. Every variant must have a
+ * title member - one that does not is a declaration error, not a silently skipped mapping.
+ */
+@GlobalFor(WorkItem::class)
+@FromEvent(TitleChanged::class)
+data class SharedHandlers(
+    @SetFrom("title", TitleChanged::class)
+    val title: String = ""
+)
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+import io.cratis.chronicle.events.EventType;
+import io.cratis.chronicle.projections.EntersOn;
+import io.cratis.chronicle.projections.FromEvent;
+import io.cratis.chronicle.projections.FromEventSourceId;
+import io.cratis.chronicle.projections.GlobalFor;
+import io.cratis.chronicle.projections.SetFrom;
+import io.cratis.chronicle.projections.VariantOf;
+import io.cratis.chronicle.readModels.ReadModel;
+
+
+@EventType
+record IssueCreated(String title) {}
+
+
+@EventType
+record PullRequestCreated(String pullRequestUrl) {}
+
+
+@EventType
+record TitleChanged(String title) {}
+
+
+class WorkItem {}
+
+
+@ReadModel
+@VariantOf(identity = WorkItem.class, key = "id")
+@EntersOn(eventType = IssueCreated.class)
+@FromEvent(eventType = IssueCreated.class)
+class BacklogItem {
+    @FromEventSourceId
+    public String id = "";
+    public String title = "";
+}
+
+
+@ReadModel
+@VariantOf(identity = WorkItem.class, key = "id")
+@EntersOn(eventType = PullRequestCreated.class)
+@FromEvent(eventType = PullRequestCreated.class)
+class PullRequestItem {
+    @FromEventSourceId
+    public String id = "";
+    public String title = "";
+
+
+    @SetFrom(propertyPath = "pullRequestUrl", eventType = PullRequestCreated.class)
+    public String pullRequestUrl = "";
+}
+
+
+/**
+ * Declares a mapping every variant of WorkItem shares. Every variant must have a
+ * title member - one that does not is a declaration error, not a silently skipped mapping.
+ */
+@GlobalFor(identity = WorkItem.class)
+@FromEvent(eventType = TitleChanged.class)
+class SharedHandlers {
+    @SetFrom(propertyPath = "title", eventType = TitleChanged.class)
+    public String title = "";
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+```elixir
+defmodule MyApp.Events.IssueCreated do
+  use Chronicle.Events.EventType, id: "issue-created-v1"
+
+
+  defstruct [:title]
+end
+
+
+defmodule MyApp.Events.PullRequestCreated do
+  use Chronicle.Events.EventType, id: "pull-request-created-v1"
+
+
+  defstruct [:pull_request_url]
+end
+
+
+defmodule MyApp.Events.TitleChanged do
+  use Chronicle.Events.EventType, id: "title-changed-v1"
+
+
+  defstruct [:title]
+end
+
+
+defmodule MyApp.ReadModels.WorkItem do
+end
+
+
+defmodule MyApp.ReadModels.BacklogItem do
+  use Chronicle.ReadModels.ReadModel
+
+
+  alias MyApp.Events.IssueCreated
+  alias MyApp.ReadModels.WorkItem
+
+
+  defstruct [:id, :title]
+
+
+  variant_of WorkItem, key: :id
+  enters_on IssueCreated
+
+
+  from IssueCreated,
+    set: [id: :event_source_id]
+end
+
+
+defmodule MyApp.ReadModels.PullRequestItem do
+  use Chronicle.ReadModels.ReadModel
+
+
+  alias MyApp.Events.PullRequestCreated
+  alias MyApp.ReadModels.WorkItem
+
+
+  defstruct [:id, :title, :pull_request_url]
+
+
+  variant_of WorkItem, key: :id
+  enters_on PullRequestCreated
+
+
+  from PullRequestCreated,
+    set: [id: :event_source_id, pull_request_url: :pull_request_url]
+end
+
+
+# Declares a mapping every variant of WorkItem shares. Every variant must have a
+# title member - one that does not is a declaration error, not a silently skipped mapping. Never
+# registered as a projection on its own.
+defmodule MyApp.Projections.SharedHandlers do
+  use Chronicle.Projections.GlobalHandler, identity: MyApp.ReadModels.WorkItem
+
+
+  alias MyApp.Events.TitleChanged
+
+
+  from TitleChanged,
+    set: [title: :title]
+end
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { entersOn, eventType, fromEvent, globalFor, setFrom, variantOf } from '@cratis/chronicle';
+
+
+@eventType()
+export class IssueCreated {
+    title = '';
+}
+
+
+@eventType()
+export class PullRequestCreated {
+    pullRequestUrl = '';
+}
+
+
+@eventType()
+export class TitleChanged {
+    title = '';
+}
+
+
+export class WorkItem {}
+
+
+@variantOf(WorkItem, 'id')
+@entersOn(IssueCreated)
+@fromEvent(IssueCreated)
+export class BacklogItem {
+    id = '';
+    title = '';
+}
+
+
+@variantOf(WorkItem, 'id')
+@entersOn(PullRequestCreated)
+@fromEvent(PullRequestCreated)
+export class PullRequestItem {
+    id = '';
+    title = '';
+
+
+    @setFrom(PullRequestCreated, 'pullRequestUrl')
+    pullRequestUrl = '';
+}
+
+
+/**
+ * Declares a mapping every variant of WorkItem shares. Every variant must have a
+ * title member - one that does not is a declaration error, not a silently skipped mapping. Never
+ * registered as a projection on its own.
+ */
+@globalFor(WorkItem)
+export class SharedHandlers {
+    @setFrom(TitleChanged, 'title')
+    title = '';
+}
+```
+
+</TabItem>
+</Tabs>
 
 This block is its own small example, with a fresh set of events. `SharedHandlers` is not a read model and no variant inherits from it. It only carries the mapping, and `TitleChanged` now updates the title on whichever variant the work item is in:
 
@@ -637,7 +940,7 @@ public class when_the_title_changes_after_the_pull_request_was_created : Specifi
 
     Task Because() => _pullRequest.Given.ForEventSource(_workItemId).Events(
         new IssueCreated("Fix login"),
-        new PullRequestCreated("Fix login", "https://example.com/pull/42"),
+        new PullRequestCreated("https://example.com/pull/42"),
         new TitleChanged("Fix the login redirect"));
 
     [Fact] void should_have_the_new_title() => _pullRequest.Instance!.Title.ShouldEqual("Fix the login redirect");

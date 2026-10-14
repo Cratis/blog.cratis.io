@@ -405,6 +405,9 @@ The book is a gentle example. Here is one where the attributes start to hurt: an
 
 {/* group:order */}
 
+<Tabs syncKey="language">
+<TabItem label="C#">
+
 ```csharp
 using Cratis.Chronicle.Events;
 using Cratis.Chronicle.Keys;
@@ -447,9 +450,228 @@ public record OrderLine(
     decimal UnitPrice);
 ```
 
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import io.cratis.chronicle.events.EventType
+import io.cratis.chronicle.projections.ChildrenFrom
+import io.cratis.chronicle.projections.FromEvent
+import io.cratis.chronicle.projections.RemovedWith
+import io.cratis.chronicle.projections.SetFrom
+import io.cratis.chronicle.readModels.ReadModel
+
+
+// Events
+@EventType
+data class OrderCreated(val customerName: String)
+
+
+@EventType
+data class LineItemAdded(
+    val itemId: String,
+    val productName: String,
+    val initialQuantity: Int,
+    val unitPrice: Double
+)
+
+
+@EventType
+data class QuantityAdjusted(val itemId: String, val newQuantity: Int)
+
+
+@EventType
+data class LineItemRemoved(val itemId: String)
+
+
+// Read Models
+@ReadModel
+@FromEvent(OrderCreated::class)
+data class Order(
+    @SetFrom("customerName", OrderCreated::class)
+    val customer: String = "",
+
+
+    @ChildrenFrom(LineItemAdded::class, key = "itemId", identifiedBy = "itemId")
+    @ChildrenFrom(QuantityAdjusted::class, key = "itemId", identifiedBy = "itemId")
+    @RemovedWith(LineItemRemoved::class, key = "itemId")
+    val lines: List<OrderLine> = emptyList()
+)
+
+
+data class OrderLine(
+    val itemId: String = "",
+
+
+    @SetFrom("productName", LineItemAdded::class)
+    val product: String = "",
+
+
+    @SetFrom("initialQuantity", LineItemAdded::class)
+    @SetFrom("newQuantity", QuantityAdjusted::class)
+    val quantity: Int = 0,
+
+
+    @SetFrom("unitPrice", LineItemAdded::class)
+    val unitPrice: Double = 0.0
+)
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+import io.cratis.chronicle.events.EventType;
+import io.cratis.chronicle.projections.ChildrenFrom;
+import io.cratis.chronicle.projections.FromEvent;
+import io.cratis.chronicle.projections.RemovedWith;
+import io.cratis.chronicle.projections.SetFrom;
+import io.cratis.chronicle.readModels.ReadModel;
+
+
+import java.util.Collections;
+import java.util.List;
+
+
+// Events
+@EventType
+record OrderCreated(String customerName) {}
+
+
+@EventType
+record LineItemAdded(
+    String itemId,
+    String productName,
+    int initialQuantity,
+    double unitPrice) {}
+
+
+@EventType
+record QuantityAdjusted(String itemId, int newQuantity) {}
+
+
+@EventType
+record LineItemRemoved(String itemId) {}
+
+
+// Read Models
+@ReadModel
+@FromEvent(eventType = OrderCreated.class)
+class Order {
+    @SetFrom(propertyPath = "customerName", eventType = OrderCreated.class)
+    public String customer = "";
+
+
+    @ChildrenFrom(eventType = LineItemAdded.class, key = "itemId", identifiedBy = "itemId")
+    @ChildrenFrom(eventType = QuantityAdjusted.class, key = "itemId", identifiedBy = "itemId")
+    @RemovedWith(eventType = LineItemRemoved.class, key = "itemId")
+    public List<OrderLine> lines = Collections.emptyList();
+}
+
+
+class OrderLine {
+    public String itemId = "";
+
+
+    @SetFrom(propertyPath = "productName", eventType = LineItemAdded.class)
+    public String product = "";
+
+
+    @SetFrom(propertyPath = "initialQuantity", eventType = LineItemAdded.class)
+    @SetFrom(propertyPath = "newQuantity", eventType = QuantityAdjusted.class)
+    public int quantity = 0;
+
+
+    @SetFrom(propertyPath = "unitPrice", eventType = LineItemAdded.class)
+    public double unitPrice = 0.0;
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+> Elixir does not support this workflow yet.
+> The model-bound children attributes (`ChildrenFrom` and `RemovedWith`) have no Elixir equivalent in the documented client.
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { childrenFrom, eventType, Guid, removedWith, setFrom } from '@cratis/chronicle';
+import { field } from '@cratis/fundamentals';
+
+
+// Events
+@eventType()
+export class OrderCreated {
+    customerName = '';
+}
+
+
+@eventType()
+export class LineItemAdded {
+    itemId: Guid = Guid.empty;
+    productName = '';
+    initialQuantity = 0;
+    unitPrice = 0;
+}
+
+
+@eventType()
+export class QuantityAdjusted {
+    itemId: Guid = Guid.empty;
+    newQuantity = 0;
+}
+
+
+@eventType()
+export class LineItemRemoved {
+    itemId: Guid = Guid.empty;
+}
+
+
+// Read Models
+export class OrderLine {
+    id: Guid = Guid.empty;
+
+
+    @setFrom(LineItemAdded, 'productName')
+    product = '';
+
+
+    @setFrom(LineItemAdded, 'initialQuantity')
+    @setFrom(QuantityAdjusted, 'newQuantity')
+    quantity = 0;
+
+
+    @setFrom(LineItemAdded, 'unitPrice')
+    unitPrice = 0;
+}
+
+
+export class Order {
+    id: Guid = Guid.empty;
+
+
+    @setFrom(OrderCreated, 'customerName')
+    customer = '';
+
+
+    @childrenFrom(LineItemAdded, 'itemId')
+    @removedWith(LineItemRemoved, 'itemId')
+    @field(Array, { genericArguments: [OrderLine] }) lines: OrderLine[] = [];
+}
+```
+
+</TabItem>
+</Tabs>
+
 It works, and I'd argue it's readable as long as you already know the attribute vocabulary. But look at `Quantity`. Two different events set it, so the story of that one property is spread over two attributes. The story of the *line* is spread over an attribute on the class and attributes on its members, and the story of the removal is up on the parent. To answer "what happens when an item is removed?" you read the whole thing.
 
 Here is the same read model as a fluent projection, with a plain read model next to it:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
 
 ```csharp
 using Cratis.Chronicle.Projections;
@@ -476,6 +698,67 @@ public class OrderSummaryProjection : IProjectionFor<OrderSummary>
                 .UsingKey(e => e.ItemId)));
 }
 ```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+> Kotlin does not support this workflow yet.
+> The fluent children builder has no `removedWith`-equivalent method, so the line removal in this example can only be expressed with the model-bound `@RemovedWith` on a `@ChildrenFrom` property, as in the model-bound example above.
+
+</TabItem>
+<TabItem label="Java">
+
+> Java does not support this workflow yet.
+> The fluent children builder has no `removedWith`-equivalent method, so the line removal in this example can only be expressed with the model-bound `@RemovedWith` on a `@ChildrenFrom` property, as in the model-bound example above.
+
+</TabItem>
+<TabItem label="Elixir">
+
+> Elixir does not support this workflow yet.
+> Declarative children projections are not available in the Elixir client.
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { IProjectionBuilderFor, IProjectionFor, projection } from '@cratis/chronicle';
+
+class OrderSummaryLine {
+    id: Guid = Guid.empty;
+    product = '';
+    quantity = 0;
+    unitPrice = 0;
+}
+
+class OrderSummary {
+    id: Guid = Guid.empty;
+    customer = '';
+    lines: OrderSummaryLine[] = [];
+}
+
+@projection()
+class OrderSummaryProjection implements IProjectionFor<OrderSummary> {
+    define(builder: IProjectionBuilderFor<OrderSummary>): void {
+        builder
+            .from(OrderCreated, _ => _
+                .set(m => m.customer).to(e => e.customerName))
+            .children<OrderSummaryLine>(m => m.lines, children => children
+                .identifiedBy(l => l.id)
+                .from(LineItemAdded, _ => _
+                    .usingKey(e => e.itemId)
+                    .set(l => l.product).to(e => e.productName)
+                    .set(l => l.quantity).to(e => e.initialQuantity))
+                .from(QuantityAdjusted, _ => _
+                    .usingKey(e => e.itemId)
+                    .set(l => l.quantity).to(e => e.newQuantity))
+                .removedWith(LineItemRemoved, _ => _
+                    .usingKey(e => e.itemId)));
+    }
+}
+```
+
+</TabItem>
+</Tabs>
 
 It isn't shorter, and I won't pretend it is. What changed is the shape of the reading. The two records at the top are the read model, and you can take them in at a glance, with no Chronicle attributes on them. The projection reads top to bottom as a description of the *order's life*: created, line added, quantity adjusted, line removed. The question "what happens when an item is removed?" has one line to point at.
 
