@@ -542,7 +542,44 @@ describe('when an author is registered', () => {
 </TabItem>
 <TabItem label="Elixir">
 
-Not available in the Elixir client yet.
+```elixir
+defmodule MyApp.Events.AuthorRegistered do
+  use Chronicle.Events.EventType, id: "author-registered"
+
+  defstruct [:name]
+end
+
+defmodule MyApp.ReadModels.Author do
+  use Chronicle.ReadModels.ReadModel
+
+  alias MyApp.Events.AuthorRegistered
+
+  defstruct [:author_id, :name]
+
+  from AuthorRegistered, set: [author_id: :event_source_id, name: :name]
+end
+
+defmodule MyApp.WhenAnAuthorIsRegisteredTest do
+  use ExUnit.Case, async: true
+
+  alias MyApp.Events.AuthorRegistered
+  alias MyApp.ReadModels.Author
+
+  test "the author has the name" do
+    author_id = "author-1"
+
+    {:ok, author} =
+      Chronicle.Testing.Projections.apply_event(
+        Author,
+        nil,
+        %AuthorRegistered{name: "Jane Austen"},
+        author_id
+      )
+
+    assert author.name == "Jane Austen"
+  end
+end
+```
 
 </TabItem>
 </Tabs>
@@ -623,7 +660,46 @@ describe('when registering a taken author name', () => {
 </TabItem>
 <TabItem label="Elixir">
 
-Not available in the Elixir client yet.
+```elixir
+defmodule MyApp.Events.AuthorRegistered do
+  use Chronicle.Events.EventType, id: "author-registered"
+
+  defstruct [:name]
+
+  unique(:name, name: "UniqueAuthorName")
+end
+
+defmodule MyApp.WhenRegisteringATakenAuthorNameTest do
+  use ExUnit.Case, async: true
+
+  import Chronicle.Testing.Assertions
+
+  alias MyApp.Events.AuthorRegistered
+
+  test "a duplicate unique name reports the named constraint" do
+    {:ok, client} =
+      Chronicle.Testing.start_supervised_client(event_types: [AuthorRegistered])
+
+    on_exit(fn -> Chronicle.Testing.stop_supervised_client(client) end)
+
+    :ok =
+      Chronicle.EventSequences.EventLog.append(
+        "author-#{System.unique_integer([:positive])}",
+        %AuthorRegistered{name: "Jane Austen"},
+        client: client
+      )
+
+    result =
+      Chronicle.EventSequences.EventLog.append(
+        "author-#{System.unique_integer([:positive])}",
+        %AuthorRegistered{name: "Jane Austen"},
+        client: client
+      )
+
+    assert_constraint_violation(result, "UniqueAuthorName")
+  end
+end
+```
 
 </TabItem>
 </Tabs>
@@ -632,7 +708,7 @@ The same helper exists on a `CommandResult` and on an append result.
 
 In .NET, `ReactorScenario` delivers each event once. To check that a reactor is idempotent, deliver the same event twice yourself and look at what happened the second time.
 
-Outside .NET the scenarios are fewer. The Kotlin client has `EventScenario` and a `ReadModelScenario` for reducers. TypeScript has all three, with `ReadModelScenario` covering reducers and the projections it supports. Java tests appends and calls reducers directly, and Elixir has no scenarios. [*Beyond .NET*](/beyond-dotnet/) covers the clients themselves.
+Outside .NET the scenarios are fewer. The Kotlin client has `EventScenario` and a `ReadModelScenario` for reducers. TypeScript has all three, with `ReadModelScenario` covering reducers and the projections it supports. Java tests appends and calls reducers directly, and Elixir tests against `Chronicle.Testing`'s in-memory kernel, with `Chronicle.Testing.Projections` to evaluate a projection and assertions such as `assert_constraint_violation/2`. [*Beyond .NET*](/beyond-dotnet/) covers the clients themselves.
 
 ## Green, and proving nothing
 

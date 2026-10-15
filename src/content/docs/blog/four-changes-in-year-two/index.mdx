@@ -120,7 +120,7 @@ class BookCatalogedV1 {
 </TabItem>
 <TabItem label="Elixir">
 
-The Elixir client repeats the explicit id on every generation.
+The Elixir client does the same with `generation_for:`, which takes the id from the current generation.
 
 ```elixir
 defmodule MyApp.Events.BookCataloged do
@@ -130,7 +130,7 @@ defmodule MyApp.Events.BookCataloged do
 end
 
 defmodule MyApp.Events.BookCatalogedV1 do
-  use Chronicle.Events.EventType, id: "book-cataloged", generation: 1
+  use Chronicle.Events.EventType, generation_for: MyApp.Events.BookCataloged, generation: 1
 
   defstruct title: %MyApp.BookTitle{}
 end
@@ -139,7 +139,7 @@ end
 </TabItem>
 </Tabs>
 
-In the .NET client, the older record has no id of its own, and that's deliberate. Its event type id is resolved from the current type. A previous generation that simply leaves the id out would fall back to its CLR name and quietly become a different event type, which is the trap this shape closes. The older style, with the same explicit id string on every generation and a different `generation:` value, still works, and it's the style the other clients use. The naming rule behind that trap is covered in [*Events are facts*](/events-are-facts/).
+In the .NET and Elixir clients, the older generation has no id of its own, and that's deliberate. Its event type id is resolved from the current type. A previous generation that simply leaves the id out would fall back to its CLR name and quietly become a different event type, which is the trap this shape closes. The older style, with the same explicit id string on every generation and a different `generation:` value, still works, and it's the style the TypeScript and JVM clients use. The naming rule behind that trap is covered in [*Events are facts*](/events-are-facts/).
 
 You [declare a migration](https://cratis.io/chronicle/migrations/) between adjacent generations. `Upcast` describes how the old shape becomes the new one, and `Downcast` describes the way back:
 
