@@ -197,7 +197,7 @@ end
 </TabItem>
 </Tabs>
 
-Giving several events the same constraint name makes one rule follow the value across them, so a registered email and a changed email share one index. When a lifecycle can end in more than one way, each of those ending events gets its own `[RemoveConstraint]`. For rules that outgrow attributes there's the declarative `IConstraint` class. Its builder covers event types whose property names differ, can ignore casing and supplies messages. In C# and TypeScript it also names the constraint and declares removal, while the JVM clients name it with `@Constraint(id = ...)`. Both forms compile to the same constraint in the kernel.
+Giving several events the same constraint name makes one rule follow the value across them, so a registered email and a changed email share one index. When a lifecycle can end in more than one way, each of those ending events gets its own `[RemoveConstraint]`. For rules that outgrow attributes there's the declarative `IConstraint` class. Its builder covers event types whose property names differ, can ignore casing and supplies messages. In C#, TypeScript and Elixir it also names the constraint and declares removal, while the JVM clients name it with `@Constraint(id = ...)`. Both forms compile to the same constraint in the kernel.
 
 For a registered email and a changed email, the declarative form of the shared `UniqueEmail` rule looks like this, as a self-contained example with its own event types:
 
@@ -333,31 +333,33 @@ class UniqueEmailAcrossEvents implements IConstraint {
 </TabItem>
 <TabItem label="Elixir">
 
-The Elixir client declares the rule on the events, as in the model-bound example above, with the same name on each event:
-
 ```elixir
 defmodule MyApp.Events.UserRegistered do
-  use Chronicle.Events.EventType, id: "constraints-unique-user-registered"
-
-  unique :email, name: "UniqueEmail"
+  use Chronicle.Events.EventType, id: "user-registered"
 
   defstruct email: ""
 end
 
 defmodule MyApp.Events.UserEmailChanged do
-  use Chronicle.Events.EventType, id: "constraints-unique-user-email-changed"
-
-  unique :new_email, name: "UniqueEmail"
+  use Chronicle.Events.EventType, id: "user-email-changed"
 
   defstruct new_email: ""
 end
 
 defmodule MyApp.Events.UserRemoved do
-  use Chronicle.Events.EventType, id: "constraints-unique-user-removed"
-
-  remove_constraint "UniqueEmail"
+  use Chronicle.Events.EventType, id: "user-removed"
 
   defstruct []
+end
+
+defmodule MyApp.Constraints.UniqueEmail do
+  use Chronicle.Events.Constraint
+
+  unique name: "UniqueEmail" do
+    on MyApp.Events.UserRegistered, [:email]
+    on MyApp.Events.UserEmailChanged, [:new_email]
+    removed_with MyApp.Events.UserRemoved
+  end
 end
 ```
 
@@ -370,9 +372,9 @@ A violation comes back as a failed append. The result names the constraint and c
 
 ## When one event isn't enough
 
-Uniqueness is the easy invariant. "A member can have at most three books on loan" spans many events, and there you have choices. Chronicle [supports decisions scoped this way](https://cratis.io/chronicle/dynamic-consistency-boundary/), what the community calls a [dynamic consistency boundary](https://dcb.events/), through constraints, concurrency scopes and, in the .NET client, decision reads.
+Uniqueness is the easy invariant. "A member can have at most three books on loan" spans many events, and there you have choices. Chronicle [supports decisions scoped this way](https://cratis.io/chronicle/dynamic-consistency-boundary/), what the community calls a [dynamic consistency boundary](https://dcb.events/), through constraints, concurrency scopes and, in the .NET and Elixir clients, decision reads.
 
-**Concurrency scopes** make an append fail if matching events were appended since you read. By default, the first append into a scope isn't checked unless you opt in, per append with `ExpectingNoMatchingEvent()` in .NET (the JVM and TypeScript clients have an equivalent), or with the `CheckFirstAppendIntoAScope` setting. The Elixir client can't ask for it. The [concurrency docs](https://cratis.io/chronicle/events/concurrency/) have the details.
+**Concurrency scopes** make an append fail if matching events were appended since you read. By default, the first append into a scope isn't checked unless you opt in, per append with `ExpectingNoMatchingEvent()` in .NET (the JVM, TypeScript and Elixir clients have an equivalent), or with the `CheckFirstAppendIntoAScope` setting. The [concurrency docs](https://cratis.io/chronicle/events/concurrency/) have the details.
 
 **[Decision reads](https://cratis.io/chronicle/read-models/decision-reads/)** fold the read model you decided from and guard the append with it. In .NET, with an order as the example:
 
@@ -418,7 +420,32 @@ Not available in the TypeScript client.
 </TabItem>
 <TabItem label="Elixir">
 
-Not available in the Elixir client.
+```elixir
+defmodule MyApp.Orders do
+  alias Chronicle.EventSequences.EventLog
+  alias Chronicle.ReadModels.{DecisionConflict, DecisionReads}
+  alias MyApp.Events.OrderPlaced
+
+  def place_order(order_id, customer_id, total) do
+    decision =
+      Chronicle.decide(fn _unit_of_work ->
+        {:ok, read} = DecisionReads.get(MyApp.ReadModels.OrderEligibility, order_id)
+
+        if read.instance == nil do
+          # Decide whether creation is allowed, including the absent case.
+          EventLog.append(order_id, %OrderPlaced{customer_id: customer_id, total: total})
+        end
+      end)
+
+    case decision do
+      {:ok, _} -> :ok
+      # The decision must be read again and resubmitted; nothing was appended.
+      {:error, %DecisionConflict{}} -> :decide_again
+      {:error, reason} -> {:error, reason}
+    end
+  end
+end
+```
 
 </TabItem>
 </Tabs>
@@ -608,7 +635,36 @@ class Accounts {
 </TabItem>
 <TabItem label="Elixir">
 
-The Elixir client can't express an expectation that no event exists yet.
+```elixir
+defmodule MyApp.Accounts do
+  alias Chronicle.EventSequences.EventLog
+  alias Chronicle.Events.ConcurrencyScope
+  alias MyApp.Events.AccountOpened
+
+  def try_open_account(account_id, name, initial_balance) do
+    with {:ok, tail} <- EventLog.get_tail_sequence_number(account_id) do
+      # Expect no event for this account yet
+      scope = ConcurrencyScope.for_event_source(tail)
+
+      case Chronicle.append(
+             account_id,
+             %AccountOpened{name: name, initial_balance: initial_balance},
+             concurrency_scope: scope
+           ) do
+        :ok ->
+          true
+
+        {:error, {:concurrency_violations, _violations}} ->
+          # Another append got there first
+          false
+
+        {:error, _reason} ->
+          false
+      end
+    end
+  end
+end
+```
 
 </TabItem>
 </Tabs>
@@ -699,12 +755,30 @@ async tryOpenPartition(accountId: AccountId, name: PartitionName): Promise<boole
 </TabItem>
 <TabItem label="Elixir">
 
-The Elixir client can't ask the kernel to expect no matching event.
+```elixir
+defmodule MyApp.Partitions do
+  alias Chronicle.Events.ConcurrencyScope
+  alias MyApp.Events.PartitionOpened
+
+  def try_open_partition(account_id, name) do
+    scope =
+      ConcurrencyScope.expecting_no_matching_event(
+        event_source_id: true,
+        event_types: [PartitionOpened]
+      )
+
+    case Chronicle.append(account_id, %PartitionOpened{name: name}, concurrency_scope: scope) do
+      :ok -> true
+      {:error, _reason} -> false
+    end
+  end
+end
+```
 
 </TabItem>
 </Tabs>
 
-Opting in can reject appends that used to succeed, so be ready for violations you've never seen before. A client and kernel on mismatched versions fall back to skipping the check and say so in the log. `ExpectingNoMatchingEvent` is the .NET name. The JVM client has `withExpectsNoMatchingEvent()` on `ConcurrencyScopeBuilder`, and TypeScript takes `EventSequenceNumber.beforeFirst` as the scope's sequence number.
+Opting in can reject appends that used to succeed, so be ready for violations you've never seen before. A client and kernel on mismatched versions fall back to skipping the check and say so in the log. `ExpectingNoMatchingEvent` is the .NET name. The JVM client has `withExpectsNoMatchingEvent()` on `ConcurrencyScopeBuilder`, TypeScript takes `EventSequenceNumber.beforeFirst` as the scope's sequence number, and Elixir has `ConcurrencyScope.expecting_no_matching_event/1`.
 
 `AppendMany` takes scopes per event source, so one decision that spans several sources gets a check for each of them in one atomic append.
 
@@ -724,9 +798,9 @@ The admitted shape is narrower than "keyed by the event source". It has to be a 
 
 Each attempt costs two tail calls, a fresh projection session and a fold over the key's entire history, and a read can take up to three attempts. The first read per model type adds two calls that list definitions. The longer the history, the more a read costs.
 
-Decision reads need kernel 19.0.0 or newer and exist only in the .NET client. A strict unit-of-work lifecycle is opt-in through `UnitOfWorkLifecyclePolicy.Strict` and becomes the default in the next major release. In ASP.NET Core the middleware normally completes the unit after the response has been written, so a conflict is reported too late to change that response. An action can ask for an early commit through `IUnitOfWorkCompletionFeature`.
+Decision reads need kernel 19.0.0 or newer and exist in the .NET and Elixir clients. A strict unit-of-work lifecycle is opt-in through `UnitOfWorkLifecyclePolicy.Strict` and becomes the default in the next major release. In ASP.NET Core the middleware normally completes the unit after the response has been written, so a conflict is reported too late to change that response. An action can ask for an early commit through `IUnitOfWorkCompletionFeature`.
 
-The guard covers the event-log tail for that event source. Revisions, redactions, migration replacements, other sequences, external data and definition changes aren't guarded, and the guard assumes a single, ordered writer to the event log. In [dynamic consistency boundary](https://dcb.events/) terms, decision reads are the concrete .NET API for reading what you decide on and guarding the write with it, next to the constraints, scopes and metadata tags that [Chronicle's DCB support](https://cratis.io/chronicle/dynamic-consistency-boundary/) already rests on.
+The guard covers the event-log tail for that event source. Revisions, redactions, migration replacements, other sequences, external data and definition changes aren't guarded, and the guard assumes a single, ordered writer to the event log. In [dynamic consistency boundary](https://dcb.events/) terms, decision reads are the concrete .NET and Elixir APIs for reading what you decide on and guarding the write with it, next to the constraints, scopes and metadata tags that [Chronicle's DCB support](https://cratis.io/chronicle/dynamic-consistency-boundary/) already rests on.
 
 ## How an Arc command carries them
 
@@ -912,7 +986,25 @@ export class OpenAccount {
 </TabItem>
 <TabItem label="Elixir">
 
-Arc for Elixir doesn't exist, and the Chronicle Elixir client can't express an expectation that no event exists yet.
+Arc for Elixir doesn't exist. With the Chronicle Elixir client, the scope travels on the event:
+
+```elixir
+defmodule MyApp.OpenAccount do
+  alias Chronicle.EventSequences.{EventForEventSourceId, EventLog}
+  alias Chronicle.Events.ConcurrencyScope
+  alias MyApp.Events.AccountOpened
+
+  def open_account(account_id, name, initial_balance) do
+    EventLog.append_many_for_event_sources([
+      %EventForEventSourceId{
+        event_source_id: account_id,
+        event: %AccountOpened{name: name, initial_balance: initial_balance},
+        concurrency_scope: ConcurrencyScope.expecting_no_matching_event(event_source_id: true)
+      }
+    ])
+  end
+end
+```
 
 </TabItem>
 </Tabs>
@@ -1005,7 +1097,7 @@ Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
 </TabItem>
 </Tabs>
 
-A [`CommandValidator<T>`](https://cratis.io/arc/backend/csharp/chronicle/validation/) can take the read model Chronicle projected for the command's key and reject the command before `Handle()` runs. How fresh that read model is depends on what backs it, materialized or passive. The rule that must hold needs a constraint or, in .NET, a protected decision read, as in the decision reads above.
+A [`CommandValidator<T>`](https://cratis.io/arc/backend/csharp/chronicle/validation/) can take the read model Chronicle projected for the command's key and reject the command before `Handle()` runs. How fresh that read model is depends on what backs it, materialized or passive. The rule that must hold needs a constraint or, in .NET and Elixir, a protected decision read, as in the decision reads above.
 
 ## Aggregates up close
 
