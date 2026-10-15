@@ -673,7 +673,7 @@ The result deserves a check by the caller, which is why `PlaceOrder` returns it.
 
 ## What travels with every event
 
-An event arrives at whatever reads it together with its context. In the .NET, JVM and TypeScript clients that's `EventContext`:
+An event arrives at whatever reads it together with its context. In the .NET, JVM, TypeScript and Elixir clients that's `EventContext`:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
@@ -754,7 +754,7 @@ export interface EventContext {
 </TabItem>
 <TabItem label="Elixir">
 
-The Elixir client passes the event context to `handle/2` as a map with the keys `event_source_id`, `sequence_number`, `occurred`, `event_store` and `namespace`.
+The Elixir client passes a `Chronicle.Events.EventContext` struct to `handle/2`. It carries the same information, as snake_case fields such as `event_source_id`, `sequence_number`, `occurred`, `event_store`, `namespace`, `correlation_id`, `caused_by`, `causation`, `tags`, `hash` and `subject`.
 
 </TabItem>
 </Tabs>
