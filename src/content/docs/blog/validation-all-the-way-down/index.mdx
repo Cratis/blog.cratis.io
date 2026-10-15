@@ -395,9 +395,9 @@ end
 
 The constraints you declare come in two kinds, a unique property and one event of a type per event source, and `[RemoveConstraint]` releases a value when an author is removed. A rule that isn't about uniqueness can't be a constraint. [*Rules that hold when you write*](/rules-that-hold-when-you-write/) covers both kinds, narrower scopes and the concurrency scopes that guard the facts behind a single decision.
 
-The kernel's own message names the event type and the member and leaves the value out, because a value worth keeping unique usually identifies someone. The .NET, Kotlin, Java and TypeScript clients replace it with the declared message, and fill `{PropertyName}` and `{PropertyValue}` from the violation's details. The Elixir client accepts `message:`, and its append still returns the kernel's message, inside `{:error, {:constraint_violations, violations}}`.
+The kernel's own message names the event type and the member and leaves the value out, because a value worth keeping unique usually identifies someone. The .NET, Kotlin, Java and TypeScript clients replace it with the declared message, and fill `{PropertyName}` and `{PropertyValue}` from the violation's details. The Elixir client replaces it too, with a `message:` string or a `{Module, :function}` callback that reads the violation's details, and returns the violations inside `{:error, {:constraint_violations, violations}}`.
 
-Two more checks need nothing on the event. An append into an event stream that's been [closed](https://cratis.io/chronicle/closing-streams/) fails with a `StreamClosed` violation, and closing a stream is a call in the .NET client. An append that carries a concurrency scope fails when matching events were appended after the read it was decided on, and by default the first append into a scope isn't checked at all.
+Two more checks need nothing on the event. An append into an event stream that's been [closed](https://cratis.io/chronicle/closing-streams/) fails with a `StreamClosed` violation, and closing a stream is a call in the .NET and Elixir clients. An append that carries a concurrency scope fails when matching events were appended after the read it was decided on, and by default the first append into a scope isn't checked at all.
 
 ## Back to the field
 
