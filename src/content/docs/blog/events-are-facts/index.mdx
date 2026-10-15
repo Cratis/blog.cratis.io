@@ -973,7 +973,7 @@ Event sourcing is a choice per part of a system. A small current-state form wher
 
 Each decision sits in one place. The uniqueness rule sits on the event, `[PII]` goes on a value's type, and the tenant header is set once in Arc's configuration.
 
-The kernel contract is shared across Chronicle's clients, and some behavior around it lives in the client. Resolving `[Subject]` at append time happens only in the .NET client, and so does the default concurrency check; the Kotlin/Java, TypeScript and Elixir clients request none by default. [Where the clients differ](https://cratis.io/chronicle/clients/where-the-clients-differ/) lists the other gaps.
+The kernel contract is shared across Chronicle's clients, and some behavior around it lives in the client. Resolving `[Subject]` at append time happens in the .NET client and, as the `subject:` option of the event type, in the Elixir client, and only .NET has the default concurrency check; the Kotlin/Java, TypeScript and Elixir clients request none by default. [Where the clients differ](https://cratis.io/chronicle/clients/where-the-clients-differ/) lists the other gaps.
 
 Of all the design decisions in an event-sourced system, the events are the most expensive to change later. A projection can be fixed and replayed. An event type that merged three decisions into one field-by-field update stays in the log for as long as the log exists, and every consumer written against it inherits the guesswork.
 

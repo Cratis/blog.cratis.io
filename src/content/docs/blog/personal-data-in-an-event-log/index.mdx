@@ -165,7 +165,7 @@ Some shapes are refused outright. A polymorphic base type or a dictionary carryi
 
 ## Whose key: the subject
 
-Keys are held per [subject](https://cratis.io/chronicle/concepts/subject/). The subject defaults to the event source id, and it can be set on append, by an event property marked `[Subject]` (C# only), or from an Arc command. `ShippingAddressChanged` lives on the order's stream, but the address belongs to the customer, so the customer is the subject, and every event about that customer, from any stream, shares one key.
+Keys are held per [subject](https://cratis.io/chronicle/concepts/subject/). The subject defaults to the event source id, and it can be set on append, by an event property marked `[Subject]` (C#, and `subject:` on the event type in Elixir), or from an Arc command. `ShippingAddressChanged` lives on the order's stream, but the address belongs to the customer, so the customer is the subject, and every event about that customer, from any stream, shares one key.
 
 An Arc command sets the subject by [returning it next to the event](https://cratis.io/arc/backend/csharp/chronicle/compliance/subject/):
 
@@ -635,7 +635,7 @@ A backup has three parts: the encryption-certificate ring, the storage backend a
 
 ## The same markers in other clients
 
-The C# client validates the most. The Kotlin/Java, TypeScript and Elixir clients accept the markers without the same checks. Every client takes a subject as an append option, but only C# reads it from an event's `[Subject]` property. The other clients' subject markers only pick the key a read model is released under. Elixir can't mark a whole multi-field struct `[PII]`, and the TypeScript decorator doesn't read constructor parameters. `[Encrypted]` exists in all four. Every client can delete a subject's key, and only .NET, TypeScript and Elixir can authorize a new one afterward. [Where the clients differ](https://cratis.io/chronicle/clients/where-the-clients-differ/) has the full list.
+The C# client validates the most. The Kotlin/Java, TypeScript and Elixir clients accept the markers without the same checks. Every client takes a subject as an append option, but only C# and Elixir read it from the event itself, from a `[Subject]` property in C# and from the `subject:` option of the event type in Elixir. The other clients' subject markers only pick the key a read model is released under. Elixir can't mark a whole multi-field struct `[PII]`, and the TypeScript decorator doesn't read constructor parameters. `[Encrypted]` exists in all four. Every client can delete a subject's key, and only .NET, TypeScript and Elixir can authorize a new one afterward. [Where the clients differ](https://cratis.io/chronicle/clients/where-the-clients-differ/) has the full list.
 
 Erasing an author takes `DeleteEncryptionKeyFor` with the author's subject, once in each namespace the author appears in, and because the name is `[Unique]`, the erasure also appends a removal event so the name's hash leaves the constraint index. The name then reads as empty in the log and in the author list, `AuthorRegistered` keeps its sequence number, and whatever the application already sent elsewhere is still the application's to clean up.
 

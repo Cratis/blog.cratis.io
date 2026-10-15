@@ -287,7 +287,7 @@ The client needs Node.js 22.19 or later, because it's built on `undici`, and it 
 
 ## Chronicle in Elixir
 
-`cratis_chronicle` is on Hex, and it's written for OTP. An event is a struct that uses `Chronicle.Events.EventType` with an id. A read model uses `Chronicle.ReadModels.ReadModel` with a `from Event, set: [...]` mapping, a model-bound projection the kernel runs. Reactors, reducers and seeders follow the same pattern, there are model-bound unique and unique-event-type constraints, and identity, correlation and causation are metadata scoped to the process. The same append:
+`cratis_chronicle` is on Hex, and it's written for OTP. An event is a struct that uses `Chronicle.Events.EventType` with an id. A read model uses `Chronicle.ReadModels.ReadModel` with a `from Event, set: [...]` mapping, a model-bound projection the kernel runs. Reactors, reducers and seeders follow the same pattern, there are model-bound unique and unique-event-type constraints as well as standalone constraint modules, and identity, correlation and causation are metadata scoped to the process. The same append:
 
 ```elixir
 defmodule MyApp.Events.OrderPlaced do
@@ -305,7 +305,7 @@ case Chronicle.append(order_id, %MyApp.Events.OrderPlaced{
 end
 ```
 
-`Chronicle.append` returns `:ok` or `{:error, reason}`, so there's no sequence number to read back from a successful append. The client is a supervised child of your application, `{Chronicle.Client, connection_string: ..., event_store: ..., otp_app: ...}`. It connects and registers in the background with backoff. Until the client has a channel, calls return `{:error, :not_connected}`, and registration finishes a little later. `Lifecycle.wait_until(..., :registered)` waits for it.
+`Chronicle.append` returns `:ok` or `{:error, reason}`. When you need the sequence number, `append_with_result` returns a result that carries it. The client is a supervised child of your application, `{Chronicle.Client, connection_string: ..., event_store: ..., otp_app: ...}`. It connects and registers in the background with backoff. Until the client has a channel, calls return `{:error, :not_connected}`, and registration finishes a little later. `Lifecycle.wait_until(..., :registered)` waits for it.
 
 The client needs Elixir 1.18 or later and a kernel with contracts 19.19 or later. The Mint gRPC adapter needs `enable_push: false`, among other caveats. TLS has the same default as in TypeScript. Version 3.5.0 had defects, so take 3.5.1 or later.
 
@@ -337,12 +337,12 @@ These are the [differences between the clients](https://cratis.io/chronicle/clie
 | | .NET | Kotlin and Java | TypeScript | Elixir |
 |---|---|---|---|---|
 | Concurrency on append, by default | Reads the tail, sends the expected sequence number | `ConcurrencyScope.none` | No check | No check |
-| Expect no matching event | `ExpectingNoMatchingEvent` | `withExpectsNoMatchingEvent()` | `EventSequenceNumber.beforeFirst` as the scope's sequence number | No |
-| What an append returns | `AppendResult` | `AppendResult` | `AppendResult` | `:ok` or an error tuple |
-| Subject for personal data | Resolves `[Subject]` | The event source id | The event source id | The event source id |
-| `AllowNewEncryptionKeyFor` | Yes | No | Yes | No |
-| Reactors and replay | `[OnceOnly]`, `[Replay]` | `@OnceOnly`, `@Replay` | `@onceOnly()`, `@replay()` | Replayable, no once-only marker |
-| Delivery identity for reactors | `ReactorDelivery.Id` | Build your own key | Build your own key | Build your own key |
+| Expect no matching event | `ExpectingNoMatchingEvent` | `withExpectsNoMatchingEvent()` | `EventSequenceNumber.beforeFirst` as the scope's sequence number | `ConcurrencyScope.expecting_no_matching_event/1` |
+| What an append returns | `AppendResult` | `AppendResult` | `AppendResult` | `:ok` or an error tuple, and a result from `append_with_result` |
+| Subject for personal data | Resolves `[Subject]` | The event source id | The event source id | Resolves the `subject:` option of the event type |
+| `AllowNewEncryptionKeyFor` | Yes | No | Yes | Yes |
+| Reactors and replay | `[OnceOnly]`, `[Replay]` | `@OnceOnly`, `@Replay` | `@onceOnly()`, `@replay()` | `once_only:`, `handle_replay/2` |
+| Delivery identity for reactors | `ReactorDelivery.Id` | Build your own key | Build your own key | `delivery_id` in the event context |
 
 An explicit [concurrency scope](https://cratis.io/chronicle/events/concurrency/) looks like this on each client:
 
@@ -499,7 +499,7 @@ end
 </TabItem>
 </Tabs>
 
-An append that depends on an earlier read needs an explicit scope on every client. The .NET default only catches an append that lands between its own read of the tail and its write, and the first append into an empty scope isn't checked unless you opt in. Outside .NET, an append without a scope isn't checked at all. The subject row matters for [personal data](https://cratis.io/chronicle/concepts/subject/): outside .NET, pass the subject explicitly whenever it isn't the event source. [*Personal data in an event log*](/personal-data-in-an-event-log/) explains what the subject decides. A reactor that needs a stable key for its side effects has one on .NET, and elsewhere you build it from the event store, the namespace, the sequence, the reactor and the position, as [*Reacting to facts*](/reacting-to-facts/) describes. Seeding behaves differently per client as well, in what it targets and how it handles duplicates.
+An append that depends on an earlier read needs an explicit scope on every client. The .NET default only catches an append that lands between its own read of the tail and its write, and the first append into an empty scope isn't checked unless you opt in. Outside .NET, an append without a scope isn't checked at all. The subject row matters for [personal data](https://cratis.io/chronicle/concepts/subject/): outside .NET and Elixir, pass the subject explicitly whenever it isn't the event source, and in Elixir name the field that holds it with `subject:` on the event type. [*Personal data in an event log*](/personal-data-in-an-event-log/) explains what the subject decides. A reactor that needs a stable key for its side effects has one on .NET and in Elixir, and elsewhere you build it from the event store, the namespace, the sequence, the reactor and the position, as [*Reacting to facts*](/reacting-to-facts/) describes. Seeding behaves differently per client as well, in what it targets and how it handles duplicates.
 
 ![A diagram titled The same fact in four languages, four cards in a two-by-two grid: C#, Kotlin, TypeScript and Elixir. Each card shows the event-type declaration: [EventType] on a record AuthorRegistered in C#, @EventType on a data class TaskCreated in Kotlin, @eventType() on a class OrderPlaced in TypeScript, and use Chronicle.Events.EventType with the label defstruct with typed defaults in Elixir. Under each card a chip names the default concurrency on append: optimistic tail check for C#, none for Kotlin, TypeScript and Elixir. A band along the bottom reads: Concurrency on append, by default.](./same-fact-four-languages.png)
 
