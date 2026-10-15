@@ -159,15 +159,22 @@ Java does not support this workflow yet. Its `IConstraint` API has no `RemovedWi
 defmodule MyApp.Events.ProjectCreated do
   use Chronicle.Events.EventType, id: "project-created"
 
-  unique :name, name: "UniqueProjectName"
   defstruct name: ""
 end
 
 defmodule MyApp.Events.ProjectArchived do
   use Chronicle.Events.EventType, id: "project-archived"
 
-  remove_constraint "UniqueProjectName"
   defstruct []
+end
+
+defmodule MyApp.Constraints.UniqueProjectName do
+  use Chronicle.Events.Constraint
+
+  unique name: "UniqueProjectName" do
+    on MyApp.Events.ProjectCreated, [:name]
+    removed_with MyApp.Events.ProjectArchived
+  end
 end
 ```
 
@@ -243,7 +250,7 @@ Constraints run in the kernel and keep state. The kernel maintains an index of t
 
 The constraint types are deliberately narrow: uniqueness, and closing a stream. Chronicle doesn't evaluate arbitrary predicates at append time. For a rule like "a project may not have more than ten active milestones", which spans several events and isn't about uniqueness, constraints aren't the tool. [Part 5](/rules-that-hold-when-you-write/) covers the concurrency scopes and decision reads that are. Be a little suspicious of a rule like that in any case. Ask yourself whether it's really a write-time invariant, or a process with events of its own. And honestly, narrow is a feature here. It's what lets the check run inside the append against the store itself.
 
-The model-bound form is the one the docs prefer for most cases. The declarative form is where the clients differ: C# and TypeScript have the full API including `RemovedWith`, Kotlin and Java have a narrower one, and Elixir expresses the release with `remove_constraint` on the event. The enforcement is identical everywhere, because it lives in the kernel. The sugar differs per client, and the [constraint docs](https://cratis.io/chronicle/constraints/declarative/) are explicit about it.
+The model-bound form is the one the docs prefer for most cases. The declarative form is where the clients differ: C#, TypeScript and Elixir have the full API including `RemovedWith`, and Kotlin and Java have a narrower one. The enforcement is identical everywhere, because it lives in the kernel. The sugar differs per client, and the [constraint docs](https://cratis.io/chronicle/constraints/declarative/) are explicit about it.
 
 ## Trying it
 
