@@ -113,7 +113,7 @@ MemberLoans 'member-1' changed after BorrowBook read it. Nothing from this comma
 
 If instead another member took the last copy of the same book, the book's guard is the one that fires, and the message says `BookStock 'isbn-1' changed after BorrowBook read it.` with the same ending. The validation result's state carries `readModel` and `key` as separate values, so a client can tell which side changed without parsing the text. Arc and Chronicle do not re-run the command. The caller reads again, and if it submits again, the validator sees three loans and refuses with "The member has reached the loan limit.", an ordinary rule failure.
 
-Events that don't touch either guard leave the command alone. A borrow of a different book, or an event on member 1 that `MemberLoans` doesn't fold, commits both events as usual.
+Events that don't touch either guard leave the command alone. Another member's borrow of a different book, or an event on member 1 that `MemberLoans` doesn't fold, lets both events commit as usual. Member 1 borrowing a different book does conflict: that borrow appends `LoanTaken` to member 1.
 
 ## Each entity gets its own fact
 
@@ -228,7 +228,7 @@ public record MemberLoans(
 
 As a query model this is fine. As a decision it can't be guarded. A guard covers the events of one event source, and this model's events live on the books' event sources, one per book. A borrow of any other book by the same member changes the count, and there is no key a guard could watch to see it.
 
-Arc says so twice. The build reports [ARCCHR0024](https://cratis.io/arc/backend/csharp/chronicle/code-analysis/arcchr0024/) as a warning on the validator parameter, and under On the command is refused with a `500` and writes nothing:
+Arc says so twice. The build reports [ARCCHR0024](https://cratis.io/arc/backend/csharp/chronicle/code-analysis/arcchr0024/) as a warning on the validator parameter, and under On the command is refused with a `500` and writes nothing. In Development the response carries this message; elsewhere the client gets a generic error and the message goes to the server log:
 
 ```text
 BorrowBook reads 'loans' (MemberLoans) keyed by an event property, so read protection cannot guard it. If it is only context, mark it [Unprotected("why")]. Otherwise append a fact to the entity it is keyed by, or use a constraint.
