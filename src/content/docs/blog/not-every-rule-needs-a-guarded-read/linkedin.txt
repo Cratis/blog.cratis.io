@@ -8,8 +8,8 @@ The part I'd want to know first: several of these choices fail without an error.
 
 In the post:
 - a flowchart for picking by the shape of the rule
-- constraints, aggregates, explicit scopes, stream decisions, repairs and hints, each with what to never rely on and when it is too much
-- constraints and concurrency scopes in C#, Kotlin, Java, Elixir and TypeScript
+- constraints, aggregates, explicit scopes, stream decisions, repairs, hints and external data, each with what to never rely on and when it is too much
+- constraints, concurrency scopes and reactors in C#, Kotlin, Java, Elixir and TypeScript
 - eight mistakes that fail silently, and the fix for each
 
 https://blog.cratis.io/not-every-rule-needs-a-guarded-read/

@@ -189,7 +189,7 @@ reason:  constraintViolation
 message: A member with this email address is already registered.
 ```
 
-A constraint has its own limits, and they are different from a guard's. It is checked per event sequence and per namespace, so tenants in different namespaces can claim the same value. A value that may change, or be given up, is released with a removal event marked `[RemoveConstraint]`. And it is a fixed rule about values: it can't count, so "at most three loans" is not a constraint. [Chronicle's constraints documentation](https://cratis.io/chronicle/constraints/) covers removal, grouping and scoping, and Einar's post on [how Chronicle constraints work](/invariants-at-write-time-with-chronicle-constraints/) explains why the check lives in the kernel.
+A constraint has its own limits, and they are different from a guard's. It is checked per event sequence and per namespace, so tenants in different namespaces can claim the same value. If the index update fails after an append is already durable, Chronicle logs it, and a later duplicate can pass until the index is rebuilt. A value that may change, or be given up, is released with a removal event marked `[RemoveConstraint]`. And it is a fixed rule about values: it can't count, so "at most three loans" is not a constraint. [Chronicle's constraints documentation](https://cratis.io/chronicle/constraints/) covers removal, grouping and scoping, and Einar's post on [how Chronicle constraints work](/invariants-at-write-time-with-chronicle-constraints/) explains why the check lives in the kernel.
 
 **Never rely on** a validator that asks whether the value exists. **Too much:** read protection added only to make a value unique. It costs a fold and still doesn't do it.
 
@@ -303,7 +303,7 @@ How the client learns the revision is up to your read model and query. Whatever 
 
 Two related shapes look similar and are not. `concurrency: true` on `[EventSourceType]`, `[EventStreamType]` or `[EventStreamId]` narrows the default check, but that check reads the tail after `Handle()`, so it can never carry the revision the user saw. And if the same command also takes a read model of the document, the scope must cover what that read watches and must not be captured after it; otherwise the command is refused with `ExplicitScopeDoesNotCoverReads`, which [ARCCHR0036](https://cratis.io/arc/backend/csharp/chronicle/code-analysis/arcchr0036/) reports at build time.
 
-Without Arc, the scope goes on the append itself:
+Without Arc, the scope goes on the append itself, and your code reads the result. Chronicle's example expects no event for a new account yet:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
@@ -314,20 +314,29 @@ using Cratis.Chronicle.EventSequences;
 using Cratis.Chronicle.EventSequences.Concurrency;
 
 [EventType]
-public record ConcurrencyAccountOpened(string AccountName);
+public record ConcurrencySafeAccountOpened(string AccountName);
 
-public class ConcurrencyBankAccountService(IEventLog eventLog)
+public class ConcurrencySafeAccountService(IEventLog eventLog)
 {
-    public async Task OpenAccount(EventSourceId accountId, string accountName)
+    public async Task<bool> TryOpenAccount(EventSourceId accountId, string accountName)
     {
         var concurrencyScope = new ConcurrencyScope(
-            SequenceNumber: 42,
+            SequenceNumber: EventSequenceNumber.BeforeFirst, // Expect no event for this account yet
             EventSourceId: accountId);
 
-        await eventLog.Append(
+        var result = await eventLog.Append(
             accountId,
-            new ConcurrencyAccountOpened(accountName),
+            new ConcurrencySafeAccountOpened(accountName),
             concurrencyScope: concurrencyScope);
+
+        if (result.HasConcurrencyViolations)
+        {
+            // result.ConcurrencyViolation describes the expected vs actual sequence number
+            return false;
+        }
+
+        // False would mean nothing was compared against the event store
+        return result.IsSuccess && result.ConcurrencyCheckPerformed;
     }
 }
 ```
@@ -337,29 +346,37 @@ public class ConcurrencyBankAccountService(IEventLog eventLog)
 
 ```kotlin
 import io.cratis.chronicle.IEventStore
+import io.cratis.chronicle.events.EventType
 import io.cratis.chronicle.eventSequences.AppendOptions
 import io.cratis.chronicle.eventSequences.EventSequenceNumber
 import io.cratis.chronicle.eventSequences.concurrency.ConcurrencyScopeBuilder
-import io.cratis.chronicle.events.EventType
 
 @EventType
-data class ConcurrencyStockReserved(val sku: String = "", val quantity: Int = 0)
+data class ConcurrencySafeAccountOpened(val accountName: String = "")
 
 /**
- * Appends only if the event source is still at the expected sequence number — the kernel
- * rejects the append with a concurrency violation if another writer got there first.
+ * Handles a concurrency violation reported on [io.cratis.chronicle.eventSequences.AppendResult.concurrencyViolation]
+ * by comparing the expected and actual sequence numbers the kernel found.
  */
-suspend fun reserveStockIfUnchanged(store: IEventStore, sku: String, expectedSequenceNumber: Long) {
-    val scope = ConcurrencyScopeBuilder()
-        .withSequenceNumber(EventSequenceNumber(expectedSequenceNumber))
+suspend fun tryOpenAccount(store: IEventStore, accountId: String, accountName: String): Boolean {
+    val concurrencyScope = ConcurrencyScopeBuilder()
         .withEventSourceId()
+        .withSequenceNumber(EventSequenceNumber.first)
         .build()
 
-    val result = store.eventLog.append(sku, ConcurrencyStockReserved(sku, 1), AppendOptions(concurrencyScope = scope))
+    val result = store.eventLog.append(
+        accountId,
+        ConcurrencySafeAccountOpened(accountName),
+        AppendOptions(concurrencyScope = concurrencyScope)
+    )
+
     val violation = result.concurrencyViolation
-    if (!result.isSuccess && violation != null) {
-        println("Concurrency violation: expected ${violation.expectedSequenceNumber}, actual ${violation.actualSequenceNumber}")
+    if (violation != null) {
+        println("Expected sequence ${violation.expectedSequenceNumber.value}, actual was ${violation.actualSequenceNumber.value}")
+        return false
     }
+
+    return result.isSuccess
 }
 ```
 
@@ -375,28 +392,33 @@ import io.cratis.chronicle.eventSequences.concurrency.ConcurrencyScope;
 import io.cratis.chronicle.eventSequences.concurrency.ConcurrencyScopeBuilder;
 import io.cratis.chronicle.eventSequences.concurrency.ConcurrencyViolation;
 
+import io.cratis.chronicle.java.AppendOptionsBuilder;
 import io.cratis.chronicle.java.ConcurrencyScopeBuilderJavaBridge;
 import io.cratis.chronicle.java.EventLogJavaBridge;
 
 @EventType
-record ConcurrencyStockReserved(String sku, int quantity) {}
+record ConcurrencySafeAccountOpened(String accountName) {}
 
-class EventsConcurrencyBasic {
-    // Appends only if the event source is still at the expected sequence number — the kernel
-    // rejects the append with a concurrency violation if another writer got there first.
-    void reserveStockIfUnchanged(EventStore store, String sku, long expectedSequenceNumber) {
-        ConcurrencyScope scope = ConcurrencyScopeBuilderJavaBridge
-            .withSequenceNumber(new ConcurrencyScopeBuilder(), expectedSequenceNumber)
+class EventsConcurrencyHandlingViolations {
+    // Handles a concurrency violation reported on AppendResult.getConcurrencyViolation() - the
+    // event source id it was reported for is enough to tell which account lost the race.
+    boolean tryOpenAccount(EventStore store, String accountId, String accountName) {
+        ConcurrencyScope concurrencyScope = ConcurrencyScopeBuilderJavaBridge
+            .withSequenceNumber(new ConcurrencyScopeBuilder(), 0)
             .withEventSourceId()
             .build();
 
+        AppendOptions options = new AppendOptionsBuilder().concurrencyScope(concurrencyScope).build();
         AppendResult result = EventLogJavaBridge.append(
-            store.getEventLog(), sku, new ConcurrencyStockReserved(sku, 1), new AppendOptions(null, scope));
+            store.getEventLog(), accountId, new ConcurrencySafeAccountOpened(accountName), options);
 
         ConcurrencyViolation violation = result.getConcurrencyViolation();
-        if (!result.isSuccess() && violation != null) {
-            System.out.println("Concurrency violation for event source: " + violation.getEventSourceId());
+        if (violation != null) {
+            System.out.println("Concurrency violation for event source " + violation.getEventSourceId());
+            return false;
         }
+
+        return result.isSuccess();
     }
 }
 ```
@@ -405,22 +427,39 @@ class EventsConcurrencyBasic {
 <TabItem label="Elixir">
 
 ```elixir
-defmodule MyApp.Events.ConcurrencyAccountOpened do
-  use Chronicle.Events.EventType, id: "concurrency-account-opened"
+defmodule MyApp.Events.ConcurrencySafeAccountOpened do
+  use Chronicle.Events.EventType, id: "concurrency-safe-account-opened"
 
-  defstruct [:account_name]
+  defstruct account_name: ""
 end
 
-defmodule MyApp.ConcurrencyBankAccountService do
+defmodule MyApp.ConcurrencySafeAccountService do
+  alias Chronicle.EventSequences.EventLog
   alias Chronicle.Events.ConcurrencyScope
-  alias MyApp.Events.ConcurrencyAccountOpened
+  alias MyApp.Events.ConcurrencySafeAccountOpened
 
-  def open_account(account_id, account_name) do
-    scope = ConcurrencyScope.for_event_source(42)
+  def try_open_account(account_id, account_name) do
+    with {:ok, tail} <- EventLog.get_tail_sequence_number(account_id) do
+      # Expect no event for this account yet
+      scope = ConcurrencyScope.for_event_source(tail)
 
-    Chronicle.append(account_id, %ConcurrencyAccountOpened{account_name: account_name},
-      concurrency_scope: scope
-    )
+      case Chronicle.append(
+             account_id,
+             %ConcurrencySafeAccountOpened{account_name: account_name},
+             concurrency_scope: scope
+           ) do
+        :ok ->
+          true
+
+        {:error, {:concurrency_violations, _violations}} ->
+          # Another append got there first — retry against the state the winner
+          # produced, or surface the conflict.
+          false
+
+        {:error, _reason} ->
+          false
+      end
+    end
   end
 end
 ```
@@ -429,11 +468,11 @@ end
 <TabItem label="TypeScript">
 
 ```typescript
-import { eventType, IEventStore } from '@cratis/chronicle';
+import { eventType, EventSequenceNumber, IEventStore } from '@cratis/chronicle';
 import { field } from '@cratis/fundamentals';
 
 @eventType()
-class ConcurrencyAccountOpened {
+class ConcurrencySafeAccountOpened {
     @field(String) readonly accountName: string;
 
     constructor(accountName: string) {
@@ -441,16 +480,24 @@ class ConcurrencyAccountOpened {
     }
 }
 
-class ConcurrencyBankAccountService {
+class ConcurrencyViolationHandler {
     constructor(private readonly store: IEventStore) {}
 
-    async openAccount(accountId: string, accountName: string): Promise<void> {
-        await this.store.eventLog.append(accountId, new ConcurrencyAccountOpened(accountName), {
+    async tryOpenAccount(accountId: string, accountName: string): Promise<boolean> {
+        const result = await this.store.eventLog.append(accountId, new ConcurrencySafeAccountOpened(accountName), {
             concurrencyScope: {
-                sequenceNumber: 42n,
+                sequenceNumber: EventSequenceNumber.beforeFirst.value,
                 eventSourceId: true
             }
         });
+
+        const violation = result.concurrencyViolation;
+        if (violation) {
+            console.log(`Expected sequence ${violation.expectedSequenceNumber.value}, actual was ${violation.actualSequenceNumber.value}`);
+            return false;
+        }
+
+        return result.isSuccess;
     }
 }
 ```
@@ -458,7 +505,7 @@ class ConcurrencyBankAccountService {
 </TabItem>
 </Tabs>
 
-In .NET, `Append` returns a violation in its `AppendResult` instead of throwing, so code that calls it directly checks `IsSuccess`; the Kotlin and Java versions above show that check. Chronicle's [concurrency page](https://cratis.io/chronicle/events/concurrency/) covers narrowing by event type, stream and source type.
+In .NET, `Append` returns a violation in its `AppendResult` instead of throwing, and the other clients report it in their result too, so code that appends directly has to check it. Chronicle's [concurrency page](https://cratis.io/chronicle/events/concurrency/) covers narrowing by event type, stream and source type.
 
 **Never rely on** `concurrency: true` as the guard for a decision, or on a client-supplied revision for a rule that protects someone else. **Too much:** a read model that folds the document to detect what a revision number already tells you.
 
@@ -470,7 +517,176 @@ In .NET, `Append` returns a violation in its `AppendResult` instead of throwing,
 
 ## A rare violation you can repair
 
-Some rules can be broken for a while. An airline may let a flight be briefly overbooked and cancel the extra reservations afterwards. Then the command needs no guard: it appends with the default check, and a reactor appends a correcting event when it sees the violation:
+Some rules can be broken for a while. An airline may let a flight be briefly overbooked and cancel the extra reservations afterwards. Then the command needs no guard: it appends with the default check, and a reactor appends a correcting event when it sees the violation.
+
+A reactor that returns an event has Chronicle append it, to the event source of the event it handled. The shape in each client:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.Reactors;
+
+[EventType]
+public record CopyReserved(string Isbn);
+
+[EventType]
+public record StockDecreased(string Isbn, int Quantity);
+
+public class WarehouseReactor : IReactor
+{
+    [OnceOnly]
+    public StockDecreased CopyReserved(CopyReserved @event, EventContext context) =>
+        new(@event.Isbn, 1);
+
+    [OnceOnly]
+    public async Task<StockDecreased> CopyReservedAsync(CopyReserved @event, EventContext context)
+    {
+        var available = await FetchCurrentStockAsync(@event.Isbn);
+        return new StockDecreased(@event.Isbn, available);
+    }
+
+    Task<int> FetchCurrentStockAsync(string isbn) => Task.FromResult(0);
+}
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import io.cratis.chronicle.events.EventContext
+import io.cratis.chronicle.events.EventType
+import io.cratis.chronicle.observation.Reactor
+
+@EventType
+data class CopyReserved(val isbn: String)
+
+@EventType
+data class StockCheckRequested(val isbn: String)
+
+@EventType
+data class StockDecreased(val isbn: String, val quantity: Int)
+
+@Reactor
+class WarehouseReactor {
+    // Return the event directly - it is appended to the event log using the EventSourceId from
+    // the incoming event.
+    fun copyReserved(event: CopyReserved, context: EventContext) =
+        StockDecreased(event.isbn, 1)
+
+    // A handler may suspend before returning its side-effect event.
+    suspend fun stockCheckRequested(event: StockCheckRequested, context: EventContext): StockDecreased {
+        val available = fetchCurrentStock(event.isbn)
+        return StockDecreased(event.isbn, available)
+    }
+
+    private suspend fun fetchCurrentStock(isbn: String): Int = 0
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+import io.cratis.chronicle.events.EventContext;
+import io.cratis.chronicle.events.EventType;
+import io.cratis.chronicle.observation.Reactor;
+
+@EventType
+record CopyReserved(String isbn) {}
+
+@EventType
+record StockCheckRequested(String isbn) {}
+
+@EventType
+record StockDecreased(String isbn, int quantity) {}
+
+@Reactor
+class WarehouseReactor {
+    // Return the event directly - it is appended to the event log using the EventSourceId from
+    // the incoming event.
+    StockDecreased copyReserved(CopyReserved event, EventContext context) {
+        return new StockDecreased(event.isbn(), 1);
+    }
+
+    StockDecreased stockCheckRequested(StockCheckRequested event, EventContext context) {
+        int available = fetchCurrentStock(event.isbn());
+        return new StockDecreased(event.isbn(), available);
+    }
+
+    private int fetchCurrentStock(String isbn) {
+        return 0;
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+```elixir
+defmodule MyApp.Events.OrderConfirmationQueued do
+  use Chronicle.Events.EventType, id: "order-confirmation-queued"
+
+  defstruct [:customer_id]
+end
+
+defmodule MyApp.Reactors.OrderNotifier do
+  use Chronicle.Reactors.Reactor
+
+  alias MyApp.Events.{OrderConfirmationQueued, OrderPlaced}
+
+  @handles OrderPlaced
+
+  @impl true
+  def handle(%OrderPlaced{} = event, _context) do
+    {:ok, %OrderConfirmationQueued{customer_id: event.customer_id}}
+  end
+end
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { EventContext, eventType, onceOnly, reactor } from '@cratis/chronicle';
+import { field } from '@cratis/fundamentals';
+
+@eventType()
+class CopyReserved {
+    @field(String) readonly isbn: string;
+
+    constructor(isbn: string = '') {
+        this.isbn = isbn;
+    }
+}
+
+@eventType()
+class StockDecreased {
+    @field(String) readonly isbn: string;
+    @field(Number) readonly quantity: number;
+
+    constructor(isbn: string = '', quantity: number = 0) {
+        this.isbn = isbn;
+        this.quantity = quantity;
+    }
+}
+
+@reactor()
+class WarehouseReactor {
+    // Returning an event from a handler appends it for you, targeting the triggering
+    // event's own event source id, stream, and subject.
+    @onceOnly()
+    async copyReserved(event: CopyReserved, context: EventContext): Promise<StockDecreased> {
+        return new StockDecreased(event.isbn, 1);
+    }
+}
+```
+
+</TabItem>
+</Tabs>
+
+The repair itself, in C#:
 
 ```csharp
 using Cratis.Chronicle;
@@ -494,17 +710,22 @@ public class OverbookingRepair(IEventStore eventStore) : IReactor
         var events = await eventStore.EventLog.GetFromSequenceNumber(
             EventSequenceNumber.First,
             context.EventSourceId);
-        var reservedUpToThis = events.Count(_ =>
-            _.Context.SequenceNumber <= context.SequenceNumber && _.Content is SeatReserved);
+        if (events.Any(_ => _.Content is ReservationCancelled cancelled && cancelled.ReservationId == @event.ReservationId))
+        {
+            return null;
+        }
 
-        return reservedUpToThis > Capacity
+        var upToThis = events.Where(_ => _.Context.SequenceNumber <= context.SequenceNumber).ToList();
+        var active = upToThis.Count(_ => _.Content is SeatReserved) - upToThis.Count(_ => _.Content is ReservationCancelled);
+
+        return active > Capacity
             ? new ReservationCancelled(@event.ReservationId, "The flight was overbooked.")
             : null;
     }
 }
 ```
 
-The reactor counts the reservations on the flight up to and including the one it is handling, and cancels that one if it is over the capacity. Returning `null` records nothing. `[OnceOnly]` keeps the repair out of replays, but it doesn't make delivery exactly-once, so the correction has to be safe to run twice. A reactor is not a command, so read protection doesn't apply to it. Reactors exist in every Chronicle client; [the reactors page](https://cratis.io/chronicle/reactors/) has them side by side.
+The reactor skips a reservation it has already cancelled, then counts the active reservations on the flight up to and including the one it is handling: reservations minus cancellations, so a seat a passenger gave up earlier doesn't count against a later reservation. It cancels this reservation if the flight is over capacity. Returning `null` records nothing. `[OnceOnly]` keeps the repair out of replays, but it doesn't make delivery exactly-once, which is why the reactor checks for its own earlier cancellation first. A reactor is not a command, so read protection doesn't apply to it.
 
 What you give up is time. Between the violation and the repair the data is wrong, and anything that acted on it in between acted on wrong data. A repair can append a correcting event; it can't take back an email that was sent or a boarding pass that was printed.
 
@@ -552,6 +773,57 @@ public class ReserveBookValidator : CommandValidator<ReserveBook>
 
 **Never rely on** the hint as the rule. **Too much:** a guarded read to display a message.
 
+## External data
+
+Some decisions use a value that isn't in the event log at all: a price from a price list, a tax rate, an exchange rate. A command that sells a copy only while one is in stock, at the current price:
+
+```csharp
+using Cratis.Arc.Commands;
+using Cratis.Arc.Commands.ModelBound;
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.Projections.ModelBound;
+using FluentValidation;
+
+public interface IPriceList
+{
+    Task<decimal> PriceOf(EventSourceId bookId);
+}
+
+public record QuotedPrice(decimal Amount);
+
+public record BookId(string Value) : EventSourceId(Value);
+
+[EventType]
+public record CopyStocked();
+
+[EventType]
+public record CopySold(decimal Price);
+
+public record CopiesInStock(
+    EventSourceId Id,
+    [Increment<CopyStocked>, Decrement<CopySold>] int Available);
+
+[Command]
+public record SellCopy(BookId Book)
+{
+    public async Task<QuotedPrice> Provide(IPriceList prices) => new(await prices.PriceOf(Book));
+
+    public CopySold Handle(QuotedPrice price) => new(price.Amount);
+}
+
+public class SellCopyValidator : CommandValidator<SellCopy>
+{
+    public SellCopyValidator(CopiesInStock? stock) =>
+        RuleFor(command => command.Book)
+            .Must(_ => stock is { Available: > 0 })
+            .WithMessage("No copies are left.");
+}
+```
+
+`Provide()` fetches the price from the service before `Handle()` runs, and `Handle()` puts the amount into `CopySold`. The `CopiesInStock` parameter is guarded as usual: if another `CopySold` for the book lands between the read and the commit, the command is refused with `CopiesInStock 'book-1' changed after SellCopy read it.` and nothing is written. The price is not guarded. Read protection can't see what `IPriceList` does, and a price that changes a millisecond after `Provide()` read it doesn't stop the command. What you get instead is a record: the event carries the price the decision used, so nobody has to reconstruct it later from a service that has moved on.
+
+**Never rely on** the external value being guarded. **Too much:** guarding state you don't decide from.
+
 ## What fails silently
 
 Most mistakes with these mechanisms produce an error: a refused read, a `500` that names the problem, an analyzer warning. These eight don't. The command succeeds, the tests pass one request at a time, and the rule is broken in production.
@@ -580,6 +852,7 @@ The last row is the easiest to miss. A guard detects any matching event appended
 | Rich behaviour on one entity | An aggregate root that returns `Commit()` | Ignoring the result of `Commit()` | A read model for each invariant |
 | A rare, repairable violation | The default append and a reactor | The repair running before the harm | Any guard |
 | A hint ("too many reservations") | A query, or `[Unprotected("why")]` | The hint as the rule | A guarded read |
+| External data (a price, a tax rate) | `Provide()` fetches it, the event records it, a read-model parameter guards your own state | Assuming the external value is guarded | Guarding state you don't decide from |
 :::
 
 The [scenarios](https://cratis.io/arc/backend/csharp/chronicle/consistency/scenarios/) in the Arc docs have each shape written out, including [unique and once](https://cratis.io/arc/backend/csharp/chronicle/consistency/scenarios/unique-and-once/), [the aggregate](https://cratis.io/arc/backend/csharp/chronicle/consistency/scenarios/aggregate/), [the editing conflict](https://cratis.io/arc/backend/csharp/chronicle/consistency/scenarios/editing-conflict/) and [rules that need no guard](https://cratis.io/arc/backend/csharp/chronicle/consistency/scenarios/no-guard/). [Script to stage, Part 5](/rules-that-hold-when-you-write/) goes deeper into constraints, scopes and aggregates in one application. The next part leaves Arc and builds the same guard with Chronicle's decision reads and append conditions directly.
