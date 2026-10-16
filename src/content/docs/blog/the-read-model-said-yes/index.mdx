@@ -109,11 +109,11 @@ The value is compiled into the assembly, so analyzers and tests see the mode tha
 
 The command and the validator above don't change. What changes is when the position is taken and what the commit checks against it:
 
-1. Arc starts the command's unit of work, claims ownership of it, and turns on read protection for the whole invocation, before any filter or validator runs.
+1. Arc starts a unit of work for the command and turns on read protection for the whole invocation, before any filter or validator runs. The unit of work collects the command's events and its guards, and only Arc's command pipeline may commit it: code inside the command can't commit it early or roll it back.
 2. Arc builds the validator inside that unit. For its `BookStock` parameter, Chronicle first captures the position of the event log, and only then folds `BookStock` from the book's own events, in a fresh session straight from the event log. The materialized copy isn't used.
 3. The read is enrolled in the unit of work as a guard: no event of the types `BookStock` is built from, on this book, after that position.
 4. The validator decides from that instance, and `Handle()` returns `BookBorrowed`. If `Handle()` took `BookStock` too, it would get the same instance under the same guard.
-5. Arc commits as the owner. The kernel rejects the append if anything matching the guard arrived after the position, and nothing from the command is written.
+5. Arc commits the unit of work, which sends the command's events and the guards to the kernel in one append. The kernel rejects the append if anything matching a guard arrived after the position, and nothing from the command is written.
 
 Taking the position before the fold is what makes the guard sound. An event that lands during the fold, or after it, is after the position, so it's detected. If events keep arriving while it folds, Chronicle folds again; the read makes up to three attempts.
 
@@ -151,7 +151,7 @@ The filter is the key and the model's event types, nothing more. A borrow of the
 
 Nothing is locked. Two borrowers of the same book both run to the commit, and the commit is where one of them may be refused.
 
-Under `On`, Arc builds a fresh validator for every command so that its read-model parameters belong to that command's unit. That's why the validator has to be registered by convention, as a transient, which is what Arc does when you don't register it yourself. A validator registered by hand as scoped, singleton, a factory or an instance is refused. Part 5 has the refusals and their fixes.
+Under `On`, Arc builds a fresh validator for every command so that its read-model parameters are guards in that command's unit of work. That's why the validator has to be registered by convention, as a transient, which is what Arc does when you don't register it yourself. A validator registered by hand as scoped, singleton, a factory or an instance is refused. Part 5 has the refusals and their fixes.
 
 If you have commands marked `[ProtectedDecision]` that read through `DecisionRead<T>`: under `On` you don't need `[ProtectedDecision]` or `DecisionRead<T>`; they keep working.
 
