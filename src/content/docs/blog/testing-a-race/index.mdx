@@ -58,7 +58,7 @@ public class when_borrowing_a_book
 }
 ```
 
-Both are worth having. The second asserts the reason, not just that the command failed. `ShouldHaveValidationErrors()` passes for any rejection: a rule, a constraint, a race, a validator that threw, a dependency that couldn't be resolved. `ShouldHaveValidationErrorBecauseOf(ValidationResultReason.Rule)` passes only when the validator's rule said no.
+Both are worth having. The second asserts the reason, not just that the command failed. `ShouldHaveValidationErrors()` passes for almost any rejection: a rule, a constraint, a race, a validator that threw. It fails on purpose when the only results are dependencies that couldn't be resolved, because then no rule ran at all: a validator whose read model the test forgot to seed is never built, and the test would keep passing with the rule deleted. `ShouldHaveValidationErrorBecauseOf(ValidationResultReason.Rule)` passes only when the validator's rule said no.
 
 Neither test says anything about a race. Both pass with read protection `Off`, where the validator's read is a plain snapshot that guards nothing. A test that never puts another writer between the read and the commit can't tell a guarded read from an unguarded one.
 
