@@ -1,0 +1,257 @@
+---
+title: "Testing a decision against a race · Decisions that hold, Part 9"
+description: "A command scenario can put a competing write between a command's read and its commit. How to write the test that shows a rule still holds when someone else writes first, what the scenario sets up for you under read protection, and what a green race test does not show."
+date: 2026-11-11T09:00:00Z
+authors: sindre
+excerpt: "A test that runs one command at a time passes with a plain read too. One line in an Arc command scenario puts a competing write between the read and the commit, and turns 'it works' into 'it still holds when someone else is faster'."
+tags:
+  - arc
+  - chronicle
+  - concurrency
+  - event-sourcing
+  - validation
+---
+
+*[Decisions that hold](/the-bug-you-never-see/) · Part 09 of 11*
+
+[Part 1](/the-bug-you-never-see/) said the race is invisible in the tests most of us write, because they run one request at a time. Parts 2 to 8 showed how Arc and Chronicle guard a decision. This part is about the test that shows the guard is there: the command reads, someone else writes, and the command must not commit.
+
+The examples assume read protection is On, as in new Cratis applications (see [Part 2](/the-read-model-said-yes/)). They use the library from Part 2: `BookStock` folded from `CopyAdded`, `BookBorrowed` and `BookReturned`, and `BorrowBook` with a validator that takes `BookStock?`. Command scenarios and read protection are part of Arc for .NET. The general tour of command scenarios is in [*Testing with Arc and Chronicle*](/testing-with-arc-and-chronicle/); this post assumes it.
+
+## A test that passes once
+
+These are the tests I'd write first for `BorrowBook`: one where a copy is on the shelf, and one where it isn't.
+
+```csharp
+using Cratis.Arc.Chronicle.Testing.Commands;
+using Cratis.Arc.Testing.Commands;
+using Cratis.Arc.Validation;
+using Xunit;
+
+public class when_borrowing_a_book
+{
+    [Fact]
+    public async Task with_a_copy_on_the_shelf_it_is_lent()
+    {
+        await using var scenario = new CommandScenario<BorrowBook>();
+        var isbn = new Isbn("isbn-1");
+        scenario.Given.ForEventSource(isbn).Events(new CopyAdded());
+
+        var result = await scenario.Execute(new BorrowBook(isbn, new MemberId(Guid.NewGuid())));
+
+        result.ShouldBeSuccessful();
+        await scenario.ShouldHaveAppendedEvent<BorrowBook, BookBorrowed>(isbn);
+    }
+
+    [Fact]
+    public async Task with_no_copy_on_the_shelf_it_is_refused()
+    {
+        await using var scenario = new CommandScenario<BorrowBook>();
+        var isbn = new Isbn("isbn-1");
+        scenario.Given.ForEventSource(isbn).Events(new CopyAdded(), new BookBorrowed(new MemberId(Guid.NewGuid())));
+
+        var result = await scenario.Execute(new BorrowBook(isbn, new MemberId(Guid.NewGuid())));
+
+        result.ShouldHaveValidationErrorBecauseOf(ValidationResultReason.Rule);
+        Assert.Empty(scenario.AppendedEvents);
+    }
+}
+```
+
+Both are worth having. The second asserts the reason, not just that the command failed. `ShouldHaveValidationErrors()` passes for any rejection: a rule, a constraint, a race, a validator that threw, a dependency that couldn't be resolved. `ShouldHaveValidationErrorBecauseOf(ValidationResultReason.Rule)` passes only when the validator's rule said no.
+
+Neither test says anything about a race. Both pass with read protection `Off`, where the validator's read is a plain snapshot that guards nothing. A test that never puts another writer between the read and the commit can't tell a guarded read from an unguarded one.
+
+## A competitor between the read and the commit
+
+This is the race from Part 2 as a test. One copy is on the shelf, another member borrows it after our command has read the stock, and our command must not commit:
+
+```csharp
+using Cratis.Arc.Chronicle.Testing.Commands;
+using Cratis.Arc.Testing.Commands;
+using Cratis.Arc.Validation;
+using Xunit;
+
+public class when_another_member_borrows_the_last_copy_first
+{
+    [Fact]
+    public async Task it_is_refused_and_nothing_is_written()
+    {
+        await using var scenario = new CommandScenario<BorrowBook>();
+        var isbn = new Isbn("isbn-1");
+        scenario.Given.ForEventSource(isbn).Events(new CopyAdded());
+        scenario.AppendConcurrently(isbn, new BookBorrowed(new MemberId(Guid.NewGuid())));
+
+        var result = await scenario.Execute(new BorrowBook(isbn, new MemberId(Guid.NewGuid())));
+
+        result.ShouldHaveValidationErrorBecauseOf(ValidationResultReason.ConcurrencyViolation);
+        Assert.Equal("ReadChanged", Assert.Single(result.ValidationResults).ReasonDetail);
+        Assert.Empty(scenario.AppendedEvents);
+    }
+}
+```
+
+Line by line:
+
+- `Given.ForEventSource(isbn).Events(new CopyAdded())` seeds the book's history into the scenario's event log. The validator's `BookStock` is folded from that log, so it sees one copy and the rule passes.
+- `AppendConcurrently(isbn, ...)` queues a competing event. The scenario doesn't append it now. It appends it while the command runs: after the validator has read and `Handle()` has returned, and before the command's unit of work commits. That's the window two real requests race in.
+- `Execute` runs the command through the same pipeline as production. The commit finds a `BookBorrowed` for this book after the position the read took, and refuses the append.
+- The assertions check the reason (`ConcurrencyViolation`), the detail (`ReadChanged`, which tells a changed read from one that couldn't be read completely), and that nothing from the command was written. `AppendedEvents` holds the command's own appends that succeeded. The competitor's event stays in the log, but it isn't in that list.
+
+The validation result carries the same message a caller gets:
+
+```text
+BookStock 'isbn-1' changed after BorrowBook read it. Nothing from this command was written; submit it again.
+```
+
+![A diagram titled Where the competitor lands. Inside a frame labeled One command, as in production, four cards run left to right: Read, BookStock at p; Decide, validator and Handle; Commit, guarded by p; and a red card, 400 ReadChanged. Below, a card labeled Given, CopyAdded, seeded first, points to Read. A card labeled Competitor, BookBorrowed for isbn-1, appended after the read, points to Commit. A band reads The competitor lands after p. The commit sees it.](./where-the-competitor-lands.png)
+
+*The seeded events are there before the read. The competitor lands between the read and the commit.*
+
+This is the test that changes when the mode changes. Compile the same command with read protection `Off` and run the same test: the command succeeds, its `BookBorrowed` is appended next to the competitor's, and the assertion on `ConcurrencyViolation` fails. That failure is the test doing its job. It says the rule isn't guarded.
+
+## What the scenario sets up for you
+
+There's no setup in that test beyond `new CommandScenario<BorrowBook>()`. The scenario looks at the command first. When it runs under read protection `On` or `Measure`, is marked `[ProtectedDecision]`, or takes a decision dependency (`DecisionRead<T>`, `IDecisionReads`, `IStreamReads`, `StreamDecision`, or a per-stream read model), the scenario uses one real in-process Chronicle event log for everything: the seeded events, the guarded reads, the competitor and the command's commit. The read and the commit see the same history, which is what makes the race real.
+
+Older tests may call `UseDecisionReads()` to get that log. It isn't needed anymore. It's hidden from IntelliSense and kept so those tests compile.
+
+The mode comes from the assembly that declares the command, or from `[ReadProtection(...)]` on the command, as in production. The test project doesn't set anything. If the command's project says `On`, the test runs under `On`.
+
+Two things change in that mode:
+
+- `scenario.EventScenario` throws `EventScenarioUnavailableInDecisionMode`. It belongs to a separate log that the command's reads would never see. Seed with `Given.ForEventSource(...).Events(...)`. `scenario.EventLog` points at the shared log, and it holds everything: seeds, competitors and commits.
+- Seeding on a route, `Given.ForEventSource(...).OnRoute(route).Events(...)`, needs this log. Outside it, routed seeding throws.
+
+`Measure` selects the same log, but it doesn't add a guard. A command under `Measure` returns what it would return under `Off`, so the race test fails under `Measure` just as it does under `Off`. Measure reports what `On` would do; it doesn't do it. Test the command in the mode it runs in.
+
+## Seed events, not read models
+
+Command scenarios can also pin a read model instead of deriving it from events:
+
+```csharp
+scenario.Given.ForEventSource(isbn).ReadModel(new BookStock(isbn, 1));
+```
+
+Under `On` that doesn't do what it looks like. A guarded read always folds the event log, as it does in production, and never sees a pinned instance. With that pin and no events, the validator gets `null` and the command is refused with "No copies of this book are available." A pinned instance serves only the reads that don't guard the decision, such as a read marked `[Unprotected]`. For a `[ProtectedDecision]` command that takes the model as a `DecisionRead<T>`, pinning it throws `PinnedReadModelCannotProvideDecisionToken`.
+
+So seed the events that produce the state. For a guarded read they're the only way to supply it, and they test the projection as well.
+
+## Two keys
+
+Part 3's `BorrowBook` reads two models, `BookStock` for the book and `MemberLoans` for the member, and appends one event to each in one batch. Each read guards its own key, so a competing write on either key must refuse the whole borrow. This test competes on the member: two loans are taken, a third arrives after the read, and the borrow would have been the fourth.
+
+```csharp
+using Cratis.Arc.Chronicle.Testing.Commands;
+using Cratis.Arc.Testing.Commands;
+using Cratis.Arc.Validation;
+using Xunit;
+
+public class when_the_member_takes_another_loan_first
+{
+    [Fact]
+    public async Task the_whole_borrow_is_refused()
+    {
+        await using var scenario = new CommandScenario<BorrowBook>();
+        var isbn = new Isbn("isbn-1");
+        var member = new MemberId("member-1");
+        scenario.Given.ForEventSource(isbn).Events(new CopyAdded());
+        scenario.Given.ForEventSource(member).Events(new LoanTaken(new Isbn("isbn-2")), new LoanTaken(new Isbn("isbn-3")));
+        scenario.AppendConcurrently(member, new LoanTaken(new Isbn("isbn-4")));
+
+        var result = await scenario.Execute(new BorrowBook(isbn, member));
+
+        result.ShouldHaveValidationErrorBecauseOf(ValidationResultReason.ConcurrencyViolation);
+        Assert.Empty(scenario.AppendedEvents);
+    }
+}
+```
+
+The message names the model and the key that changed:
+
+```text
+MemberLoans 'member-1' changed after BorrowBook read it. Nothing from this command was written; submit it again.
+```
+
+Neither the book's `BookBorrowed` nor the member's `LoanTaken` is written. Write the same test with the competitor on the book, a `BookBorrowed` for `isbn-1`, and it's refused too. One test per key you read is the way to find a key that isn't guarded, for example a model that is read through a key other than the one you expected.
+
+## One month
+
+Part 4's withdrawal limit reads `MonthlyWithdrawals` from one month's stream. The competitor has to land on the same route for the test to mean anything, so seed and compete on the route, not just the account:
+
+```csharp
+using Cratis.Arc.Chronicle.Testing.Commands;
+using Cratis.Arc.Testing.Commands;
+using Cratis.Arc.Validation;
+using Xunit;
+
+public class when_another_withdrawal_lands_while_withdrawing
+{
+    [Fact]
+    public async Task in_the_same_month_it_is_refused()
+    {
+        await using var scenario = new CommandScenario<Withdraw>();
+        var account = new AccountId("account-1");
+        var october = scenario.EventRoutes.For<BankAccountEventSource>("Transactions").WithStreamId("2026-10");
+        scenario.Given.ForEventSource(account).OnRoute(october).Events(new MoneyWithdrawn(4000m));
+        scenario.AppendConcurrently(account, october, new MoneyWithdrawn(500m));
+
+        var result = await scenario.Execute(new Withdraw(account, "2026-10", 500m));
+
+        result.ShouldHaveValidationErrorBecauseOf(ValidationResultReason.ConcurrencyViolation);
+        Assert.Empty(scenario.AppendedEvents);
+    }
+
+    [Fact]
+    public async Task in_another_month_it_goes_through()
+    {
+        await using var scenario = new CommandScenario<Withdraw>();
+        var account = new AccountId("account-1");
+        var transactions = scenario.EventRoutes.For<BankAccountEventSource>("Transactions");
+        scenario.Given.ForEventSource(account).OnRoute(transactions.WithStreamId("2026-10")).Events(new MoneyWithdrawn(4000m));
+        scenario.AppendConcurrently(account, transactions.WithStreamId("2026-11"), new MoneyWithdrawn(500m));
+
+        var result = await scenario.Execute(new Withdraw(account, "2026-10", 500m));
+
+        result.ShouldBeSuccessful();
+        await scenario.ShouldHaveAppendedEvent<Withdraw, MoneyWithdrawn>(account);
+    }
+}
+```
+
+`scenario.EventRoutes` resolves a route from the event source definitions the scenario discovered, so `For<BankAccountEventSource>("Transactions")` is the same stream type the command is routed to, and `WithStreamId("2026-10")` is the month. `OnRoute` seeds there, and the `AppendConcurrently` overload that takes a route makes the competitor land there.
+
+The second test is the one people skip. It checks that the guard isn't wider than the rule: a withdrawal in November doesn't touch October's total, so it mustn't refuse an October withdrawal. Part 4 showed how a whole-account read next to the monthly one widens the guard to every month. A test like this is how you'd notice. The same goes for the library: a borrow of another book, or a `BookRenamed` on the same book, which `BookStock` doesn't fold, should leave the command alone.
+
+## Without Arc
+
+When you call Chronicle directly, as in Part 8, the race test has the same shape without a scenario: take the decision read, append a competing event, then do the guarded append and check that it was refused. Chronicle's [Test the race](https://cratis.io/chronicle/dynamic-consistency-boundary/scenarios/#test-the-race) scenario shows it in C# and Elixir.
+
+If the code runs in a unit of work with read protection enforced, you can also check what was guarded. After the commit, `unitOfWork.GetAppendConditions()` (namespace `Cratis.Chronicle.Transactions`) returns one `AppendCondition` per guarded source, with its event types, stream values, position and the origins behind it. Assert on the origins and the number of conditions rather than on their text. [See what a commit guarded](https://cratis.io/chronicle/dynamic-consistency-boundary/how-guards-are-derived/#see-what-a-commit-guarded) in Chronicle's docs has the example. Part 10 is about how those conditions are built.
+
+## What a green race test does not show
+
+A race test checks one interleaving: one competitor, at one point, after the read and before the commit. It shows the guard covers that event on that key. It doesn't show:
+
+- **Timing or load.** The log is Chronicle's in-process store for tests, not a Chronicle server or its storage. A green test says nothing about how the guard behaves under contention or what it costs.
+- **Writers that don't guard their own decision.** Your command detects a matching event from any writer. A command elsewhere that reads plainly, under `Off`, through `[Unprotected]` or with an immediate append, can still break the rule with its own decision.
+- **What's outside every guard.** `Revise` and `Redact`, projection definitions changed by another process, services, other databases and other event sequences.
+- **The mode in production.** The test runs in the mode compiled into the command's assembly. A runtime cap, `ReadProtection:MaximumMode`, can lower it on a host. Part 6 covers that.
+
+:::tip[What to do when]
+- **The command runs under `On`:** a plain `new CommandScenario<T>()`, events seeded with `Given.ForEventSource(...).Events(...)`, a competitor with `AppendConcurrently`, and `ShouldHaveValidationErrorBecauseOf(ValidationResultReason.ConcurrencyViolation)` plus an empty `AppendedEvents`.
+- **The test pins read models with `.ReadModel(...)`:** seed the events instead. A guarded read never sees a pinned instance.
+- **An old test seeds through `scenario.EventScenario`:** move the seeding to `Given.ForEventSource(...).Events(...)`. `EventScenario` throws under `On` and `Measure`.
+- **The command reads two keys:** one race test per key. Each must refuse the whole command.
+- **The read is per stream:** seed and compete on the same route, and add a test where a competitor on another stream id goes through.
+- **The command runs under `Off` or `Measure`:** the race test fails, because nothing is guarded. That's the answer the test is there to give.
+- **The code calls Chronicle directly:** read, compete, append with the guard; under enforced read protection, assert on `GetAppendConditions()` after the commit.
+:::
+
+The reference is Arc's [Test the race](https://cratis.io/arc/backend/csharp/chronicle/consistency/scenarios/testing/), and [Testing Chronicle commands](https://cratis.io/arc/backend/csharp/testing/chronicle/#protected-decision-scenarios) covers the scenario's decision mode in full, including how reads that don't guard the decision are resolved.
+
+*The examples need Arc ARC_MIN_VERSION or later and Chronicle 19.71.0 or later.*
+
+---
+
+- Previous: [Part 08 — The same guard without Arc: decision reads and append conditions](/decision-reads-without-arc/)
