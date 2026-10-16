@@ -17,7 +17,7 @@ tags:
 
 ## Why On is not a flag you flip
 
-Read protection is `Off` by default, and there are three reasons it stays that way for existing code:
+Read protection is `Off` by default today. Making `On` the default is planned for a future major version of Arc ([Cratis/Arc#3255](https://github.com/Cratis/Arc/issues/3255)), so an explicit `<CratisReadProtection>` setting also keeps the mode from changing under you when you upgrade. There are three reasons not to jump straight to `On` in existing code:
 
 - A protected command fails closed. It refuses a read it can't guard, an immediate append and a read outside a parameter. Commands that work today would start returning `500`s.
 - Moving a read from `Handle()` into a parameter or a validator changes where a rule lives and what it decides from. That's a code change per command, not a setting.
@@ -32,7 +32,7 @@ So Arc has a third mode between the two.
 | 1 | `Off` | Update the packages | Nothing changes |
 | 2 | `Measure` | Set the mode, run the application and its tests | Nothing changes. Arc records what `On` would do |
 | 3 | `Measure` | Read the report. Fix each refused read and immediate append, or mark a read advisory | The fixes are ordinary code changes |
-| 4 | `On`, one project at a time | Switch the project and run its tests | Reads are guarded, and reads Arc can't guard fail the command |
+| 4 | `On`, one project at a time | Switch the project and run its tests | Reads are guarded, reads Arc can't guard fail the command, and validation errors block whatever severity the caller allows |
 
 `Measure` is set the same way as `On`, in the project that contains the commands or in a `Directory.Build.props` that covers several:
 
@@ -105,7 +105,7 @@ These are the categories you'll meet most:
 | `refused_read` | `On` would refuse this read. `reason` names the cause or the API | Fix it, or mark it advisory |
 | `advisory_read` | The read is marked `[Unprotected]`. `reason` is your text | Check the reason still holds |
 | `immediate_append` | The command appended through `IEventLog` at once, and `On` would refuse it | Return the event from `Handle()` |
-| `unknown_dependency` | A service Arc can't see into | Nothing. Whatever it reads is outside the guard |
+| `unknown_dependency` | A service Arc can't see into | Check what the service reads. A Chronicle read inside it is still refused under `On` |
 | `redirect` | `On` would look the model up by a different key than today | Say which key you mean with `[LookUpBy]` |
 | `matching_events_since_start` | Someone else wrote an event matching the read while the command ran. `On` might have returned `400` | A real race. These commands gain the most from `On` |
 | `scope_refusal` | `On` would refuse the command's explicit concurrency scope as narrower than the read, captured after it, or incomplete | Widen the scope or remove it |
@@ -278,7 +278,7 @@ An `[Unprotected]` read is a stored read that guards nothing, on purpose. Measur
 
 - `redirect`: under `Off` and `Measure`, Arc looks up a read-model parameter by the command's event source id. Under `On`, it uses the one command property whose type is the model's `Id` type, when there is one. A `redirect` means those two disagree for this command, so `On` would read a different instance. Put `[LookUpBy(nameof(Property))]` (namespace `Cratis.Arc.Commands`) on the parameter, naming the command property that holds the key you mean. It applies in every mode, so the lookup no longer changes when the project moves to `On`.
 - `refused_read` with other reasons: a reducer with an event filter or constructor dependencies, children, a key taken from an event property, Pinned generation delivery. Part 5 has the table of reasons and fixes.
-- `unknown_dependency`: nothing to fix. A service that calls an HTTP API or another database is outside the guard under `On` too.
+- `unknown_dependency`: look inside the service. If it calls an HTTP API or another database, there's nothing to fix, and that read stays outside the guard under `On` too. If it reads Chronicle, through `IReadModels` for example, Measure records only the service, but `On` still refuses the read when the command runs. Move that read into a parameter of the command, as with `PlaceHold`.
 
 ## Switching a project to On
 
@@ -288,6 +288,8 @@ When a project's report shows only `protected_read`, `advisory_read` with reason
 2. Build, and fix ARCCHR0024 (a read model shape that can't be protected), ARCCHR0028 (a Chronicle read that isn't proven protected) and ARCCHR0033 (an aggregate and a read of the same source). Raise them to errors in projects you've moved.
 3. Run the project's tests. Arc's `CommandScenario` picks the in-process event log that supports guarded reads from the command's mode, so the scenarios run the commands under `On`. Part 9 is about testing the race itself.
 4. Exercise every command at least once. Refusals happen when a command runs, not at startup, and a command nobody ran under `Measure` has no report.
+
+From Arc ARC_MIN_VERSION, a command declared `On` also blocks on `Error` and `Unknown` validation results whatever `X-Allowed-Severity` the caller sends ([Part 5](/when-arc-says-no/) explains why). Measure has no category for this, so look for clients that send an allowed severity before you switch.
 
 Under `On`, a validator with read-model parameters has to be registered by convention, so Arc can build a fresh one per command. A validator registered by hand as scoped, singleton, a factory or an instance is refused.
 
@@ -317,7 +319,7 @@ The cap only lowers. It never raises a mode that wasn't compiled in, so a missin
 Read protection for Library.PlaceHold is lowered from On to Measure by ReadProtection:MaximumMode.
 ```
 
-Measure reports `mode_lowered` for those commands too. With the cap set, the commands run unguarded, so use it to get through an incident while you fix the code, and then remove it. `Measure` and a lowered cap both leave an application that looks protected and isn't. Check that production configuration has no cap you didn't set on purpose.
+Measure reports `mode_lowered` for those commands too. The cap lowers the guard, not the severity floor: that follows the declared mode, so a command declared `On` keeps blocking on `Error` under any cap. Only changing the declared mode to `Off` or `Measure` gives callers their threshold back. There, callers filter as before, so declare `[BlockOnValidationSeverity(ValidationResultSeverity.Error)]` on a command whose validators must not be skipped. With the cap set, the commands run unguarded, so use it to get through an incident while you fix the code, and then remove it. `Measure` and a lowered cap both leave an application that looks protected and isn't. Check that production configuration has no cap you didn't set on purpose.
 
 :::tip[What to do when]
 - **New code:** start with `On`, as the Cratis templates do (Part 2).
