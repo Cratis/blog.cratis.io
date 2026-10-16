@@ -1,0 +1,213 @@
+---
+title: "The read model said yes · Decisions that hold, Part 2"
+description: "A command that checks a read model and then appends can lend the last copy twice. With Arc's read protection On, the same validator's read is folded fresh and guards the append, and the loser gets a 400 that says nothing was written."
+date: 2026-10-22T09:00:00Z
+authors: sindre
+excerpt: "A command that reads a read model and then appends can approve the same last copy twice. One project setting turns that read into a guard: the same command, the same validator, and the loser of the race gets a 400 that says nothing was written."
+tags:
+  - arc
+  - chronicle
+  - concurrency
+  - event-sourcing
+  - validation
+---
+
+*[Decisions that hold](/the-bug-you-never-see/) · Part 02 of 11*
+
+[Part 1](/the-bug-you-never-see/) was about the check that passes twice: a rule reads state, decides, and writes, and two requests can both pass the check before either writes. This part is that bug in an event-sourced application, written the way most of us write the command first, and the one project setting that makes Arc and Chronicle guard it.
+
+A library lends a book only while a copy is on the shelf. In an event-sourced system the stock is a fold over the book's events, and Chronicle can keep it as a read model:
+
+```csharp
+using Cratis.Arc.Queries.ModelBound;
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.Projections.ModelBound;
+using Cratis.Concepts;
+
+public record Isbn(string Value) : EventSourceId(Value);
+
+public record MemberId(Guid Value) : ConceptAs<Guid>(Value);
+
+[EventType]
+public record CopyAdded();
+
+[EventType]
+public record BookBorrowed(MemberId Member);
+
+[EventType]
+public record BookReturned(MemberId Member);
+
+[ReadModel]
+public record BookStock(
+    Isbn Id,
+    [Increment<CopyAdded>, Decrement<BookBorrowed>, Increment<BookReturned>] int Available);
+```
+
+The command most of us write first takes that read model and checks it. The check belongs in a validator, because "may this command proceed" is what validators are for:
+
+```csharp
+using Cratis.Arc.Commands;
+using Cratis.Arc.Commands.ModelBound;
+using FluentValidation;
+
+[Command]
+public record BorrowBook(Isbn Isbn, MemberId Member)
+{
+    public BookBorrowed Handle() => new(Member);
+}
+
+public class BorrowBookValidator : CommandValidator<BorrowBook>
+{
+    public BorrowBookValidator(BookStock? stock) =>
+        RuleFor(command => command.Isbn)
+            .Must(_ => stock is { Available: > 0 })
+            .WithMessage("No copies of this book are available.");
+}
+```
+
+`Isbn` derives from `EventSourceId`, so it's the command's event source id and the key Arc reads `BookStock` by. `MemberId` is a `ConceptAs<Guid>`: it refers to the member, and this command doesn't append to the member. `BookStock?` is nullable because a book with no events has no read model yet. A non-nullable parameter fails the command with `ReadModelDoesNotExistForCommand` instead.
+
+Arc looks up `BookStock` by the book's key, builds the validator with it, and runs the rule. `Handle()` returns an event, and when the command succeeds Arc commits that event to Chronicle. Nothing in this path connects the commit to the value of `Available` that the validator looked at.
+
+## Two requests for the last copy
+
+Take a book with one copy left and two members who press **Borrow** at about the same time:
+
+```text
+request A                                  request B
+read BookStock: Available = 1
+                                           read BookStock: Available = 1
+validate: 1 > 0, Handle: BookBorrowed
+commit: read tail, append, success
+                                           validate: 1 > 0, Handle: BookBorrowed
+                                           commit: read tail, append, success
+
+BookStock.Available is now -1
+```
+
+Both commands succeed, both `BookBorrowed` events are in the log, and the stock folds to -1.
+
+Arc does run a concurrency check when it commits to an event source that already has events. By default the .NET client reads the event source's tail when the events are appended and sends that position along, so the kernel rejects the append if another event landed between that tail read and the write. That window opens after the validator and `Handle()` have decided. It catches two commits that overlap, so when both requests arrive at exactly the same moment it can reject one of them. With request B a few milliseconds behind A, as above, B reads the tail after A's event is already there, and the check passes.
+
+It doesn't even take concurrency. `BookStock` here is a materialized read model, which Chronicle updates after the append returns, not with it. A second request sent after the first one has completed can still read `Available = 1` and be approved.
+
+The same holds for the other places a command can read state on its way to the append. A read-model parameter on `Handle()` gets the same snapshot as the validator. A passive projection folds fresh from the events when it's read, so it doesn't lag, but it records no position either, and the append that follows isn't conditioned on it.
+
+None of this is new. [*Rules that hold when you write*](/rules-that-hold-when-you-write/) and [*Validation all the way down*](/validation-all-the-way-down/) described the snapshot, and the per-command opt-in with `[ProtectedDecision]` and `DecisionRead<T>`. What's new is that the fix no longer needs a different command.
+
+## Turning the read into a guard
+
+Arc has a mode for this, called read protection. It's `Off` by default, and under `Off` an injected read model is a plain read, as above. Set it to `On` in the project that contains your commands, or in a `Directory.Build.props` that covers several:
+
+```xml
+<PropertyGroup>
+    <CratisReadProtection>On</CratisReadProtection>
+</PropertyGroup>
+```
+
+The value is compiled into the assembly, so analyzers and tests see the mode that runs in production. It must be `Off`, `Measure` or `On`. Anything else fails the build with `CratisReadProtection must be Off, Measure, or On.` To turn it on for one command instead, put `[ReadProtection(ReadProtectionMode.On)]` (namespace `Cratis.Arc.Commands`) on the command; a command-level value overrides the assembly's.
+
+The command and the validator above don't change. What changes is when the position is taken and what the commit checks against it:
+
+1. Arc starts the command's unit of work, claims ownership of it, and turns on read protection for the whole invocation, before any filter or validator runs.
+2. Arc builds the validator inside that unit. For its `BookStock` parameter, Chronicle first captures the position of the event log, and only then folds `BookStock` from the book's own events, in a fresh session straight from the event log. The materialized copy isn't used.
+3. The read is enrolled in the unit of work as a guard: no event of the types `BookStock` is built from, on this book, after that position.
+4. The validator decides from that instance, and `Handle()` returns `BookBorrowed`. If `Handle()` took `BookStock` too, it would get the same instance under the same guard.
+5. Arc commits as the owner. The kernel rejects the append if anything matching the guard arrived after the position, and nothing from the command is written.
+
+Taking the position before the fold is what makes the guard sound. An event that lands during the fold, or after it, is after the position, so it's detected. If events keep arriving while it folds, Chronicle folds again; the read makes up to three attempts.
+
+![A diagram titled One copy, two borrowers, in two frames. Under Read protection Off, request A and request B both read Available = 1 and both commit, and the stock folds to minus one with two BookBorrowed events for one copy. Under Read protection On, request A reads Available = 1 and commits, request B is refused with 400 ReadChanged and nothing is written, and the stock ends at zero with one BookBorrowed event. A band reads Same command, same validator, one project setting.](./last-copy-twice.png)
+
+*The same two requests under each mode.*
+
+In the interleaving above, request B now loses:
+
+```text
+request A                                  request B
+position p, fold BookStock: Available = 1
+                                           position p, fold BookStock: Available = 1
+validate: 1 > 0, Handle: BookBorrowed
+commit: nothing after p, success
+                                           validate: 1 > 0, Handle: BookBorrowed
+                                           commit: BookBorrowed after p, refused
+
+BookStock.Available is now 0
+```
+
+If B starts late enough to fold A's event, it gets the business rejection instead, "No copies of this book are available." Either way the book has one `BookBorrowed` event and the stock ends at zero.
+
+The Arc docs write a guard as one line. It's a notation, not an API:
+
+```text
+guard isbn-1: types=[CopyAdded, BookBorrowed, BookReturned], after <position before the read>
+```
+
+The filter is the key and the model's event types, nothing more. A borrow of the same book conflicts. An event on the same book that `BookStock` doesn't fold, a rename for example, doesn't. A borrow of another book doesn't either. A model that doesn't exist yet is guarded too: the parameter is `null`, and a first event of the model's types that arrives after the read conflicts. That's how "only if it doesn't exist yet" holds.
+
+![A diagram titled What the guard watches. At the top, a card labeled Guard for BookStock isbn-1 lists CopyAdded, BookBorrowed and BookReturned, after the position taken before the read. Below, three events each point to a result. BookBorrowed arriving for isbn-1: conflict, nothing written. BookRenamed arriving for isbn-1: no conflict, BookStock does not fold it. BookBorrowed arriving for isbn-2: no conflict, another key. A band reads The model's event types, on the key it read.](./what-the-guard-watches.png)
+
+*Which concurrent events make the command fail.*
+
+Nothing is locked. Two borrowers of the same book both run to the commit, and the commit is where one of them may be refused.
+
+Under `On`, Arc builds a fresh validator for every command so that its read-model parameters belong to that command's unit. That's why the validator has to be registered by convention, as a transient, which is what Arc does when you don't register it yourself. A validator registered by hand as scoped, singleton, a factory or an instance is refused. Part 5 has the refusals and their fixes.
+
+If you have commands marked `[ProtectedDecision]` that read through `DecisionRead<T>`: under `On` you don't need `[ProtectedDecision]` or `DecisionRead<T>`; they keep working.
+
+Read protection is part of Arc for .NET.
+
+## What the caller sees
+
+The refused command returns a `400`. Its validation result has the reason `concurrencyViolation` (`ValidationResultReason.ConcurrencyViolation` in .NET), the detail `ReadChanged`, a state object with the model and the key (`{"readModel":"BookStock","key":"isbn-1"}`), and this message:
+
+```text
+BookStock 'isbn-1' changed after BorrowBook read it. Nothing from this command was written; submit it again.
+```
+
+Arc and Chronicle don't re-run the command. The read itself makes up to three attempts at the fold, but once the validator and `Handle()` have decided, a conflict ends the command. The state the decision rested on has changed, and deciding again from new state is the caller's call: read again, show the user, and submit again if it still makes sense. Resubmitting blindly in a loop would undo the point of the guard. The message doesn't say which event caused the conflict.
+
+A rejection by the validator itself is a different result. "No copies of this book are available." is an ordinary rule failure, not a `concurrencyViolation`. It writes nothing, so it needs no guard.
+
+Part 5 goes through every refusal, the `500`s that mean the code can't be guarded, and how a UI tells a changed read from a field error. If you want to see the race in a test now, Arc's [Test the race](https://cratis.io/arc/backend/csharp/chronicle/consistency/scenarios/testing/) page puts a competing append between the read and the commit. Part 9 is about that.
+
+## Where the guard stops
+
+A guard covers one key's history, for the event types the model folds, from the position taken before the read. Some things are outside it:
+
+- `Revise` and `Redact` between the read and the commit aren't detected, because they don't move the tail. Chronicle refuses them inside a protected invocation.
+- Services, HTTP calls, other databases and other event sequences aren't guarded.
+- A read marked `[Unprotected("why")]` is a stored read that guards nothing, on purpose.
+- A projection definition changed by another process isn't detected until this client registers it again.
+- A writer that decides without a guard can still break the rule. If another command appends `BookBorrowed` with read protection `Off`, the protected command detects that event. The unprotected command's own decision is still unguarded: if it reads first and commits last, it lends a copy that isn't there.
+- Uniqueness across keys is a constraint, not this. Two members registering the same email are two different keys, and no read of one key can see the other.
+
+Under `On`, Arc also refuses reads it can't guard instead of running them unguarded: `IReadModels`, raw event-log reads, an `IMongoCollection<T>` of a Chronicle-backed model, immediate appends through `IEventLog.Append`, and read models with joins, children or keys taken from an event property. So under `On` every read Arc can see is guarded, marked advisory or refused. That's also why turning it on in an application that already runs is a project of its own.
+
+## What it costs
+
+A guarded read is a fresh fold of the key's history every time. Chronicle doesn't use the materialized state, because that can lag and has no position, and nothing caches the result between commands. Each read makes two tail reads and a fold of the key's events of the model's types, and the read makes up to three attempts at the fold if events arrive during it. The first read of a model type in a process also checks the projection definition. Identical reads inside one command share one fold.
+
+In the kernel, those folds go through one projection per model type, shared by every key of that type and every tenant, so heavy use of one model type queues across keys. No benchmark for read protection is published, and the [costs section](https://cratis.io/arc/backend/csharp/chronicle/consistency/#costs) of Arc's docs gives the shape of the cost without figures. Keep guarded models flat and keys short-lived: a key per book, order, booking or period rather than one for the life of the library.
+
+## Where to start
+
+For new code, set `On` in the project and put each "may this proceed" rule in a validator that takes the read model. For an application that already runs, I wouldn't flip it blind. `Measure` runs every command as before and reports what `On` would guard, refuse or reject. Part 6 is about that path.
+
+The next part takes the same command to two entities: a member may hold three loans and a book has one copy left, with two read models in one validator and one atomic append.
+
+:::tip[What to do when]
+- **A rule depends on stored state of one entity** (stock, status, a count): set `<CratisReadProtection>On</CratisReadProtection>` and take the read model as a `CommandValidator<T>` constructor parameter.
+- **You only want a hint on screen:** a query, or `[Unprotected("why")]` on the read. It guards nothing (Parts 5 and 7).
+- **The rule is uniqueness:** a Chronicle [constraint](https://cratis.io/chronicle/constraints/), not a guarded read (Part 7).
+- **Your application already runs with plain reads:** `Measure` first, then `On` (Part 6).
+- **A command comes back with `concurrencyViolation` and `ReadChanged`:** read again and let the caller decide whether to submit again.
+:::
+
+The full walkthrough is Arc's [Getting started with read protection](https://cratis.io/arc/backend/csharp/chronicle/consistency/getting-started/), and [Validators and read protection](https://cratis.io/arc/backend/csharp/chronicle/consistency/validators/) covers what a validator may take. [How read protection works](https://cratis.io/arc/backend/csharp/chronicle/consistency/how-it-works/) explains how guards are derived and merged, and [Choosing how a command's rule holds](https://cratis.io/arc/backend/csharp/chronicle/consistency/) compares read protection with constraints, aggregates, stream decisions and explicit scopes.
+
+*Read protection as described here needs Arc ARC_MIN_VERSION or later and Chronicle 19.68.0 or later.*
+
+---
+
+- Previous: [Part 01 — The bug you never see](/the-bug-you-never-see/)
