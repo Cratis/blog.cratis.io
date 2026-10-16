@@ -1,0 +1,16 @@
+Ten posts on keeping a decision true at the moment it's written, and one page that tells you which mechanism a rule needs and where it's explained.
+
+The question I'd ask first about any rule is not "which tool?" but "what shape is it?". A unique email is a constraint, because no read of one key can see another key. A document two people edit needs the revision the user saw, not a fresh read at save time. A rule you'd rather repair later needs no guard at all. State on a key you read is where Arc's read protection fits.
+
+For each shape the guide names what to use, what to never rely on, and what is too much. "Never rely on" is the column that matters: those are the choices where the command succeeds, the tests pass one request at a time, and the rule is broken in production.
+
+In the post:
+- a decision guide from rule shape to mechanism to the part that explains it
+- 22 short answers: retries, refusals, what a guard doesn't cover, the caller's severity threshold, Measure, cost, other languages, DCB, testing
+- the full series index and the docs to go to next
+
+Part 11 of Decisions that hold.
+
+https://blog.cratis.io/decisions-that-hold-faq/
+
+#eventsourcing #cqrs #dotnet #cratis #concurrency
