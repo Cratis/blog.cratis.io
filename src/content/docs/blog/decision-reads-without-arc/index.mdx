@@ -244,7 +244,7 @@ public static class LoanEndpoints
 
 Chronicle's ASP.NET Core middleware begins a unit of work for each request, and `Get<T>` needs that ambient unit. `Transactional.Append` stages the event in it. The line that is easy to leave out is the commit. Left alone, the middleware commits the unit after the endpoint has returned, when the response is already on its way, and it reports no concurrency violation to the caller. The caller would see a 200 for a write that was rejected. `IUnitOfWorkCompletionFeature.CommitAsync()` asks the middleware's owner to commit now, so the endpoint can answer with the outcome, and the middleware does not commit that unit again.
 
-When another loan for the same member lands between the read and the commit, this endpoint answers 409, and the member's log has the competing loan and not this one. A member who already holds three gets the 422 before anything is staged. The conflict check comes before `IsSuccess` because `IsSuccess` is also `false` for a constraint violation. And the 409 carries a message, not the conflicts themselves: a `DecisionConflict` holds the read model's `Type`, which System.Text.Json refuses to serialize, so `Results.Conflict(unit.GetDecisionConflicts())` fails while it writes the response, on exactly the path you wanted to report.
+When another loan for the same member lands between the read and the commit, this endpoint answers 409, and the member's log has the competing loan and not this one. A member who already holds three gets the 422 before anything is staged. The conflict check comes before `IsSuccess` because `IsSuccess` is also `false` for a constraint violation. And the 409 carries a message, not the conflicts themselves: in Chronicle 19.73 and earlier, a `DecisionConflict` holds the read model's `Type`, which System.Text.Json refuses to serialize, so `Results.Conflict(unit.GetDecisionConflicts())` fails while it writes the response, on exactly the path you wanted to report. Map conflicts to your own response shape.
 
 One mistake undoes it quietly: a plain `eventLog.Append(...)` in the same request is written immediately and bypasses the guard. A controller action uses the same calls, with `HttpContext.Features` instead of the `http` parameter; Arc's [Chronicle used directly](https://cratis.io/arc/backend/csharp/chronicle/consistency/scenarios/chronicle-direct/) page has both. In Elixir, `Chronicle.decide` commits when its function returns, so the outcome is known while you can still choose the response.
 
@@ -321,8 +321,8 @@ Outside an Arc command, nothing reads the result for you, and every failure on t
 
 - `Append` returns an `AppendResult` and `AppendMany` an `AppendManyResult`. A concurrency or constraint violation sets `IsSuccess` to `false` and throws nothing, so code that ignores the result reports success whatever happened.
 - `GetDecisionConflicts` tells a lost race from a constraint violation and names the read model and key. It does not name the event that conflicted.
-- A scope with neither a sequence number nor `ExpectingNoMatchingEvent()` is not a guard. The kernel skips it and the append succeeds with `ConcurrencyCheckPerformed` set to `false`. A skipped check does not look like a failed one.
-- The first event into a new event source or stream has no tail to compare against, and by default Chronicle skips that check. A decision read of an absent model already expects no matching event. For your own scopes, use `ExpectingNoMatchingEvent()`, as `Withdraw` does.
+- A scope you build yourself without a position fails closed. If it narrows by event source, stream, source type or event types, the client turns it into "no matching event may exist", so the append is rejected if anything matching is already in the log. Only a scope that narrows nothing is sent unchecked, with a client warning, and `ConcurrencyCheckPerformed` on the result says whether a scope was compared at all, so a skipped check does not look like a passing one. `ConcurrencyOptions.SkipIncompleteExplicitScopes = true` brings back the older skip. Give a scope the tail you noted, or say `ExpectingNoMatchingEvent()` when that is what you mean, as `Withdraw` does.
+- The first-append skip belongs to the default check. When Chronicle's concurrency strategy issues the scope and nothing matching has been appended yet, there is no tail to compare against, and the check is skipped unless `CheckFirstAppendIntoAScope` is on. A decision read of an absent model already expects no matching event.
 
 ## Limits
 
@@ -348,7 +348,7 @@ Everything here is opt-in, append by append. That is the trade: code that calls 
 
 Chronicle's [decision reads](https://cratis.io/chronicle/read-models/decision-reads/) page covers the unit-of-work lifecycle, stream-scoped reads and admitted shapes in full. [Choosing how a rule holds](https://cratis.io/chronicle/dynamic-consistency-boundary/choosing/) compares decision reads with constraints and scopes, and Arc's [pitfalls](https://cratis.io/arc/backend/csharp/chronicle/consistency/pitfalls/#results-you-must-check-when-you-use-chronicle-directly) page lists the results to check when you call Chronicle directly.
 
-*Decision reads need a Chronicle server of 19.0.0 or later.*
+*The .NET examples need Cratis.Chronicle and Cratis.Chronicle.AspNetCore 19.68.0 or later (decision reads themselves arrived in 19.9.0; the scope behaviour described here in 19.68.0), and the Elixir example needs the Elixir client 3.13.0 or later. Decision reads need a Chronicle server of 19.0.0 or later; on servers older than 19.40.1, an append renumbered after a duplicate-sequence collision is not checked again.*
 
 ---
 
