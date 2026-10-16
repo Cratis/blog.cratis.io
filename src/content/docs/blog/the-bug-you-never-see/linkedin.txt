@@ -11,7 +11,7 @@ In the post:
 - what each default isolation level does with it, with links to the vendor docs
 - write skew: the "at most three loans" rule that snapshot isolation lets through
 - unique constraints, conditional updates, concurrency tokens, FOR UPDATE and SERIALIZABLE, and where each one stops
-- why event sourcing and CQRS make it more common, not less
+- why commands that check a read model make it more common, not less
 - a checklist for finding these decisions in your own code
 
 It's Part 1 of Decisions that hold, a series on making decisions still true when they're written.

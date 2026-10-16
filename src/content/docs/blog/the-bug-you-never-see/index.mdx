@@ -12,8 +12,6 @@ tags:
   - sql-server
 ---
 
-import { Aside } from '@astrojs/starlight/components';
-
 *[Decisions that hold](/the-bug-you-never-see/) · Part 01 of 11*
 
 Is there a copy left? Is this user name free? Is the balance enough for the withdrawal? Is the 10:30 slot still open? Has this customer already used the welcome discount?
@@ -99,7 +97,7 @@ The gap is small, often a few milliseconds, and almost everything about how we b
 - **The result looks like bad data.** A negative balance, a member with four loans when the limit is three, two bookings for one room. Someone fixes the row by hand, and nobody connects it to the code.
 - **It surfaces late.** Support hears about it from a customer, or finance finds it in a reconciliation weeks later, long after the logs that would explain it have rotated.
 
-So the bug survives code review, testing and staging, and shows up in production only under load, on the busiest day, where it's hardest to reproduce.
+So the bug survives code review, testing and staging, and shows up in production, most often under load on the busiest day or when a retry lands in the gap, where it's hardest to reproduce.
 
 ## Doesn't the database handle this?
 
@@ -141,7 +139,7 @@ COMMIT;
 
 Both requests see two loans, both insert, and the member now holds four. Neither transaction updated a row the other one touched, so there is no update conflict to detect and no unique key to collide. This is **write skew**: each transaction decides from data the other one is changing. The [PostgreSQL wiki](https://wiki.postgresql.org/wiki/SSI) defines it as two concurrent transactions that "each determine what they are writing based on reading a data set which overlaps what the other is writing".
 
-Snapshot isolation allows it. PostgreSQL's `REPEATABLE READ` is implemented as snapshot isolation, and its [documentation](https://www.postgresql.org/docs/current/transaction-iso.html#XACT-REPEATABLE-READ) shows the same shape with two sums and two inserts, where "if either transaction were running at the Repeatable Read isolation level, both would be allowed to commit." It also says plainly that "attempts to enforce business rules by transactions running at this isolation level are not likely to work correctly without careful use of explicit locks." SQL Server's `SNAPSHOT` [checks for conflicts](https://learn.microsoft.com/en-us/sql/relational-databases/sql-server-transaction-locking-and-row-versioning-guide) on the rows a transaction modifies, and the two loan inserts modify different rows, so both commit there as well.
+Snapshot isolation allows it. PostgreSQL's `REPEATABLE READ` is implemented as snapshot isolation, and its [documentation](https://www.postgresql.org/docs/current/transaction-iso.html#XACT-SERIALIZABLE) shows the same shape with two sums and two inserts, where "if either transaction were running at the Repeatable Read isolation level, both would be allowed to commit." Its [Repeatable Read section](https://www.postgresql.org/docs/current/transaction-iso.html#XACT-REPEATABLE-READ) also says plainly that "attempts to enforce business rules by transactions running at this isolation level are not likely to work correctly without careful use of explicit locks." SQL Server's `SNAPSHOT` [checks for conflicts](https://learn.microsoft.com/en-us/sql/relational-databases/sql-server-transaction-locking-and-row-versioning-guide) on the rows a transaction modifies, and the two loan inserts modify different rows, so both commit there as well.
 
 Write skew is the general shape of most check-then-act rules: a limit counted over rows, an overlap between bookings, "at least one person on call", "only one active subscription", "no more than 5000 withdrawn this month". The check reads a set and the act adds to it.
 
@@ -185,19 +183,19 @@ public class PlaceOrderConditionally(ShopContext db)
 
 That is `UPDATE products SET stock = stock - @quantity WHERE id = @id AND stock >= @quantity`, and `ExecuteUpdateAsync` [returns the number of rows affected](https://learn.microsoft.com/en-us/ef/core/saving/execute-insert-update-delete#concurrency-control-and-rows-affected). Under PostgreSQL's `READ COMMITTED`, a second update that waited for the first sees the new row, and "the search condition of the command (the `WHERE` clause) is re-evaluated", so it matches nothing. It works as long as the whole rule fits in the `WHERE` clause of one row. Under `REPEATABLE READ` the same statement fails with a serialization error and you retry.
 
-**A concurrency token** is EF Core's [optimistic concurrency](https://learn.microsoft.com/en-us/ef/core/saving/concurrency). Mark a property with `[ConcurrencyCheck]`, or map a SQL Server `rowversion` with `[Timestamp]`, and EF Core adds its original value to the `WHERE` clause of the update, so the update "only modifies the row if the `Version` column hasn't changed since the moment we queried it." A conflict throws `DbUpdateConcurrencyException`, and resolving it, including any retry, is your code. It fixes the lost update in `PlaceOrder`. It covers only rows you update or delete: the docs note the exception "is generally never thrown when adding entities", so it does nothing for the loan count, or for anything else that inserts.
+**A concurrency token** is EF Core's [optimistic concurrency](https://learn.microsoft.com/en-us/ef/core/saving/concurrency). Mark a property with `[ConcurrencyCheck]`, or map a SQL Server `rowversion` with `[Timestamp]`, and EF Core adds its original value to the `WHERE` clause of the update, so the update "only modifies the row if the `Version` column hasn't changed since the moment we queried it." A conflict throws `DbUpdateConcurrencyException`, and resolving it, including any retry, is your code. It fixes the lost update in `PlaceOrder`. It covers only rows you update or delete: the docs note the exception "is generally never thrown when adding entities", so a token on the rows you insert does nothing for the loan count. A version on the parent row does work, if every writer that adds a loan also bumps the member's version: two concurrent inserts then both update the member row, and the second one gets the exception. It's the optimistic form of the parent-row lock below, with the same every-writer condition.
 
-**A locking read**, `SELECT ... FOR UPDATE`, holds the rows it returns until the transaction ends. In [PostgreSQL](https://www.postgresql.org/docs/current/explicit-locking.html#LOCKING-ROWS) it "causes the rows retrieved by the `SELECT` statement to be locked as though for update." A row that doesn't exist yet isn't returned, so it isn't locked. MySQL's `REPEATABLE READ` adds gap locks over the index range a locking read scans, which do block inserts into it, and PostgreSQL doesn't. The common pattern for a rule over many rows is to lock a parent row, the member, as a mutex. That holds only while every code path that can break the rule takes the same lock first, and it costs waiting and the occasional deadlock.
+**A locking read**, `SELECT ... FOR UPDATE`, holds the rows it returns until the transaction ends. In [PostgreSQL](https://www.postgresql.org/docs/current/explicit-locking.html#LOCKING-ROWS) it "causes the rows retrieved by the `SELECT` statement to be locked as though for update." A row that doesn't exist yet isn't returned, so it isn't locked. MySQL's `REPEATABLE READ` adds gap locks over the index range a locking read scans, which do block inserts into it, and PostgreSQL doesn't. The common pattern for a rule over many rows is to lock a parent row, the member, as a mutex. That holds only while every code path that can break the rule takes the same lock first and checks the rule after it, and it costs waiting and the occasional deadlock. Under PostgreSQL's `REPEATABLE READ` even that isn't enough: the snapshot is fixed when the transaction's first query starts, and the [docs](https://www.postgresql.org/docs/current/applevel-consistency.html) warn that "if the snapshot seen by the transaction predates obtaining the lock, it might predate some now-committed changes in the table". The count after the lock can still miss the other request's loan, so take the lock at `READ COMMITTED`.
 
 **Serializable transactions** handle write skew in PostgreSQL. Its `SERIALIZABLE` level monitors read/write dependencies and rolls one transaction back with SQLSTATE `40001`. The [docs](https://www.postgresql.org/docs/current/applevel-consistency.html) set the conditions: it works "if the Serializable transaction isolation level is used for all writes and for all reads which need a consistent view of the data", and the application needs a framework that retries transactions rolled back with a serialization failure. SQL Server and MySQL implement `SERIALIZABLE` with locks, so the same pattern tends to block or deadlock instead, and the losing transaction still has to be retried.
 
-Put together: a constraint when the rule is uniqueness or exclusion, a conditional write when the rule fits in one row, a token when the danger is overwriting a row someone else changed. For rules that span rows or tables, and rules over history ("once per customer", "per month"), you're left with locks or serializable transactions, and both depend on every writer following the same protocol. None of them is the default, and none of them is visible in the `PlaceOrder` code above.
+Put together: a constraint when the rule is uniqueness or exclusion, a conditional write when the rule fits in one row, a token when the danger is overwriting a row someone else changed. For rules that span rows or tables, and rules over history ("three in any 30 days", "5000 per month"), you're left with locks, a version on a parent row, or serializable transactions, and all of them depend on every writer following the same protocol. None of them is the default, and none of them is visible in the `PlaceOrder` code above.
 
 ## Event sourcing doesn't make it go away
 
 You might expect event sourcing and CQRS to sidestep this. They make it more common.
 
-In CQRS, the side that decides usually asks a read model: a projection built from the events. Read models are built after the fact. Chronicle's [documentation](https://cratis.io/chronicle/projections/eventual-consistency/) says it directly: "read models are updated asynchronously as events are processed", and the append returns before the projection has run. So a command that checks a read model and then appends has the same gap as `PlaceOrder`, plus the projection's lag. Two requests don't even have to overlap. A request that arrives after the first one has completed can still read the old stock and be approved.
+In many CQRS codebases, including the Arc style this series uses, the side that decides asks a read model: a projection built from the events. Read models are built after the fact. Chronicle's [documentation](https://cratis.io/chronicle/projections/eventual-consistency/) says it directly: "read models are updated asynchronously as events are processed", and the append returns before the projection has run. So a command that checks a read model and then appends has the same gap as `PlaceOrder`, plus the projection's lag. Two requests don't even have to overlap. A request that arrives after the first one has completed can still read the old stock and be approved.
 
 Folding the state fresh from the events doesn't close it either. A fresh read is a correct snapshot of the moment it was taken, and an append that follows it is not conditioned on it. A stream's expected version helps when the rule lives entirely in the one stream you append to. It says nothing about a read model built from other events, or about a second entity the rule depends on.
 
@@ -205,7 +203,7 @@ Arc is no exception. With read protection Off, [which is the default](https://cr
 
 What event sourcing does give you is a way to say what the decision depended on. An event log is ordered, and every event has a position. A decision can note the position before it reads, fold the events it needs, and append with a condition: only if no event that would have changed what I read has arrived since. That's not a lock. Nothing waits, and a conflict is an answer: the state changed, read again and decide again. The condition can be as narrow as the rule: the event types that build this read model, for this key. The rest of the series is about that condition, how to get one, and where it stops.
 
-<Aside type="tip" title="How to spot it in your own code">
+:::tip[How to spot it in your own code]
 
 Look for any rule that reads state before it writes:
 
@@ -220,11 +218,11 @@ For each one, ask what happens if two of them run at the same moment, and what t
 
 - Uniqueness → a unique constraint or index; the check in front is only the message.
 - One row's state → a conditional `UPDATE ... WHERE` and a rows-affected check, or a concurrency token.
-- Many rows or tables → a lock every writer takes, or serializable transactions with retries.
+- Many rows or tables → a lock every writer takes before it checks (at `READ COMMITTED` in PostgreSQL), a version on a parent row every writer bumps, or serializable transactions with retries.
 - A read model before an append → the append needs a condition on what was read; Part 2 covers how Arc and Chronicle express one, and where it stops.
 - Nothing ties them → you have the bug. It just hasn't been reported yet.
 
-</Aside>
+:::
 
 ## The series
 
