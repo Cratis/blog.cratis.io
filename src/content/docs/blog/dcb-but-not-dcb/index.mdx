@@ -32,7 +32,7 @@ That's the reason for this post. I'm not asking anyone to stop reading about DCB
 
 *Three things worth naming. None of them needs the acronym.*
 
-This post takes them in turn, shows what Chronicle and Arc give you for each, and ends with where the Decider pattern fits and where it doesn't. The mechanisms themselves, constraints, scopes, decision reads and aggregates, are covered in depth in [Part 5 of the series](/rules-that-hold-when-you-write/). This one is about how they fit together and why.
+This post takes them in turn, shows what Chronicle and Arc give you for each, and ends with where the Decider pattern fits and where it doesn't. The mechanisms themselves, constraints, scopes, decision reads and aggregates, are covered in depth in [Part 5 of the Script to stage series](/rules-that-hold-when-you-write/), and the [Decisions that hold](/the-bug-you-never-see/) series takes read protection one rule at a time. This one is about how they fit together and why.
 
 ## Flexibility in modeling
 
@@ -155,7 +155,7 @@ end
 </TabItem>
 </Tabs>
 
-A deposit in April and a deposit in May don't contend. The guard is asymmetric, though: a deposit doesn't look at onboarding events, but an onboarding append is checked against every event of the account, deposits included. The first deposit into a brand-new month has nothing to compare against, so by default it isn't checked at all; you opt in with `CheckFirstAppendIntoAScope` or `ExpectingNoMatchingEvent()`. Nobody had to restructure an aggregate to get this shape, and you can change which dimensions guard an append by editing the declaration. Events that are already stored keep the stream names they were written with. The [event source docs](https://cratis.io/chronicle/event-sources/concurrency/) show the full conflict table.
+A deposit in April and a deposit in May don't contend. The guard is asymmetric, though: a deposit doesn't look at onboarding events, but an onboarding append is checked against every event of the account, deposits included. The first deposit into a brand-new month has nothing to compare against, so by default it isn't checked at all; you opt in with `CheckFirstAppendIntoAScope` or `ExpectingNoMatchingEvent()` (`withExpectsNoMatchingEvent()` in Kotlin and Java, `EventSequenceNumber.beforeFirst` in TypeScript, `check_first_append` or `ConcurrencyScope.expecting_no_matching_event/1` in Elixir). Nobody had to restructure an aggregate to get this shape, and you can change which dimensions guard an append by editing the declaration. Events that are already stored keep the stream names they were written with. The [event source docs](https://cratis.io/chronicle/event-sources/concurrency/) show the full conflict table.
 
 ![A diagram titled One source, several streams. A card labeled Account 42, one event source, leads to three streams: Onboarding, Transactions 2026-04 and Transactions 2026-05. A line underneath reads: A stream's guard covers what its dimensions say.](./one-source-many-streams.png)
 
@@ -266,15 +266,24 @@ class EventsConcurrencyBuilder {
 
 ```typescript
 import { eventType, getEventTypeFor, IEventLog } from '@cratis/chronicle';
+import { field } from '@cratis/fundamentals';
 
 @eventType()
 class ConcurrencyMoneyDeposited {
-    constructor(readonly amount: number) {}
+    @field(Number) readonly amount: number;
+
+    constructor(amount: number) {
+        this.amount = amount;
+    }
 }
 
 @eventType()
 class ConcurrencyMoneyWithdrawn {
-    constructor(readonly amount: number) {}
+    @field(Number) readonly amount: number;
+
+    constructor(amount: number) {
+        this.amount = amount;
+    }
 }
 
 class ConcurrencyAccountTransactionService {
@@ -331,7 +340,7 @@ end
 </TabItem>
 </Tabs>
 
-The default differs by client, and that matters more than the syntax. The .NET client checks the window between its tail read and the write unless you say otherwise. The Kotlin, Java, TypeScript and Elixir clients send no check unless you give the append a scope. The [client differences page](https://cratis.io/chronicle/clients/where-the-clients-differ/) has the details. Even in .NET, that default only covers the short window at commit. It doesn't bind a decision to the state you read before it, which is the whole subject of the third section.
+The default differs by client, and that matters more than the syntax. The .NET client checks the window between its tail read and the write unless you say otherwise. The Kotlin, Java, TypeScript and Elixir clients send no check unless you give the append a scope. In .NET, a scope you build yourself from a stream that had no events yet, so there was no position to capture, is checked as "no matching event yet" since Chronicle 19.68 instead of being skipped; `ConcurrencyOptions.SkipIncompleteExplicitScopes` restores the old skip. The [client differences page](https://cratis.io/chronicle/clients/where-the-clients-differ/) has the details. Even in .NET, that default only covers the short window at commit. It doesn't bind a decision to the state you read before it, which is the whole subject of the third section.
 
 ## One clear owner for every event
 
@@ -452,11 +461,11 @@ end)
 </TabItem>
 </Tabs>
 
-If two members race for the last copy, the second one gets a validation result with the reason `concurrencyViolation`. Nothing is appended, and Arc doesn't retry the command. The caller reads again and resubmits. That cost is real: a decision read folds the key's whole history on every attempt, and the docs advise keeping keys short-lived (a key per period, per order, per booking) and flat. It guards the event log for the keys it reads. Revisions, redactions, other event sequences and data from outside Chronicle aren't covered. When the rule is about one routed stream of raw events, Arc's [stream decisions](https://cratis.io/arc/backend/csharp/chronicle/commands/stream-decisions/) do the same job without folding a projection.
+If two members race for the last copy, the second one gets a validation result with the reason `concurrencyViolation`. Nothing is appended, and Arc and Chronicle don't re-run the command. The caller reads again and resubmits. That cost is real: a decision read folds the key's whole history on every attempt, and the docs advise keeping keys short-lived (a key per period, per order, per booking) and flat. It guards the event log for the keys it reads. Revisions, redactions, other event sequences and data from outside Chronicle aren't covered. When the rule is about one routed stream of raw events, Arc's [stream decisions](https://cratis.io/arc/backend/csharp/chronicle/commands/stream-decisions/) do the same job without folding a projection.
 
 #### Read protection: the same guard, without the ceremony
 
-Arc 22.106 added a second way to get the same guard, and for most commands it's the one I'd reach for first. With read protection switched on, a read model you take as a parameter of a command or its validator is read the way a decision read is: fresh, with the log position noted first. If anything it read changed before the commit, nothing is written and the caller gets the same `concurrencyViolation` and a message saying which read model changed. It needs Chronicle 19.71 or later, and it's off by default, so nothing changes until you ask. You turn it on for the whole assembly with `<CratisReadProtection>On</CratisReadProtection>`, or for one command with `[ReadProtection(ReadProtectionMode.On)]`. There's a `Measure` mode that changes no behavior and reports what `On` would guard or refuse, which is how I'd adopt it in an existing application.
+Arc 22.106 added a second way to get the same guard, and for most commands it's the one I'd reach for first. With read protection switched on, a read model you take as a parameter of a command or its validator is read the way a decision read is: fresh, with the log position noted first. If anything it read changed before the commit, nothing is written and the caller gets a 400 with the same `concurrencyViolation`, the detail `ReadChanged`, and a message saying which read model changed: "BookStock 'isbn-1' changed after BorrowBook read it. Nothing from this command was written; submit it again." It needs Chronicle 19.71 or later, and it's off by default, so nothing changes until you ask. New applications from the Cratis templates start with it `On`. You turn it on for the whole assembly with `<CratisReadProtection>On</CratisReadProtection>`, or for one command with `[ReadProtection(ReadProtectionMode.On)]`. There's a `Measure` mode that changes no behavior and reports what `On` would guard or refuse, which is how I'd adopt it in an existing application.
 
 The practical difference is where the rule lives. With a protected decision it's in `Handle()`. With read protection the rule can sit in an ordinary `CommandValidator<T>`, the read model arrives as a constructor parameter, and `Handle()` only says what happens:
 
@@ -502,9 +511,11 @@ public class BorrowBookValidator : CommandValidator<BorrowBook>
 }
 ```
 
-That's the March pattern, and under `On` it holds. The same code under the default `Off` is a plain read again, which is why I'd rather the mode be visible on the command than hidden in a build property you forget about. When a read is meant as a hint, `[Unprotected("why")]` says so, and under `On` reads Arc can't protect, such as a raw event log read, are refused with a message that says why. The same page also notes that a command declared `On` blocks on validation errors whatever severity the caller asks to allow.
+`BookStock?` is nullable because a book with no events has no read model yet; a non-nullable parameter refuses the command before any rule runs. Let convention discovery register the validator, because under `On` one you register by hand is refused.
 
-It's .NET only, like `[ProtectedDecision]`. The [Arc getting started guide](https://cratis.io/arc/backend/csharp/chronicle/consistency/getting-started/) walks through it and [adopting read protection](https://cratis.io/arc/backend/csharp/chronicle/consistency/adopting/) covers `Measure`. The cost is the one decision reads have: the read folds the history it covers on every attempt, and there's no automatic retry.
+That's the March pattern, and under `On` it holds. The same code under the default `Off` is a plain read again, which is why I'd rather the mode be visible on the command than hidden in a build property you forget about. When a read is meant as a hint, `[Unprotected("why")]` says so, and under `On` reads Arc can't protect, such as a raw event log read, are refused with a message that says why. From Arc 22.108, a command declared `On` also blocks on validator errors whatever severity the caller asks to allow with `X-Allowed-Severity`; under `Off` and `Measure` a caller can drop them unless the command declares `[BlockOnValidationSeverity(ValidationResultSeverity.Error)]`. `[ProtectedDecision]` and `DecisionRead<T>` keep working, but under `On` you don't need them.
+
+It's .NET only, like `[ProtectedDecision]`. The [Arc getting started guide](https://cratis.io/arc/backend/csharp/chronicle/consistency/getting-started/) walks through it and [adopting read protection](https://cratis.io/arc/backend/csharp/chronicle/consistency/adopting/) covers `Measure`. The cost is the one decision reads have: the read folds the history it covers on every attempt, and nothing re-runs the command for you.
 
 Chronicle 19.71 also fixed the cost problem I mentioned for long histories. A read model can declare the one stream that defines its state with `[EventStream<TSource>(stream)]`, say a month of withdrawals. Taken as a plain parameter, it's read from the stream the command's route points to, so October's withdrawals don't make November's command conflict. That's the "key per period" advice, without inventing a key. Arc's [one stream](https://cratis.io/arc/backend/csharp/chronicle/consistency/scenarios/per-stream/) scenario has the monthly-limit example.
 
@@ -595,7 +606,7 @@ Arc for Elixir doesn't exist.
 </TabItem>
 </Tabs>
 
-A validator can take a read model as a constructor dependency, and it'll run. Whether it guards anything depends on the mode. Under read protection `On` it does, as above. Under the default `Off` it doesn't, and a `[ProtectedDecision]` command only accepts validators with a single parameterless constructor, refusing the rest when the command runs. So the split is clean for a protected decision: the validator says whether the input is well formed, `Provide()` fetches data, and `Handle()` decides, returning events or a `Result<TEvent, ValidationResult>` that declines. With read protection you can instead put the state-dependent rule in the validator. The Arc page on [validators and consistency](https://cratis.io/arc/backend/csharp/chronicle/consistency/validators/) has the full table.
+A validator can take a read model as a constructor dependency, and it'll run. Whether it guards anything depends on the mode. Under read protection `On` it does, as above. Under the default `Off`, and under `Measure`, it doesn't, and outside `On` a `[ProtectedDecision]` command only accepts validators with a single parameterless constructor, refusing the rest when the command runs. So the split is clean for a protected decision: the validator says whether the input is well formed, `Provide()` fetches data, and `Handle()` decides, returning events or a `Result<TEvent, ValidationResult>` that declines whatever severity the caller allows. With read protection you can instead put the state-dependent rule in the validator. The Arc page on [validators and consistency](https://cratis.io/arc/backend/csharp/chronicle/consistency/validators/) has the full table.
 
 ### Aggregates are one owner with its own state
 
@@ -651,7 +662,7 @@ public class Order : AggregateRoot
 public record ItemAdded(ProductId ProductId, Quantity Quantity);
 ```
 
-Arc takes the stream's position when it rehydrates and guards the commit with a scope built from it, so an aggregate rests on scopes, not on decision reads. It's a good fit when the rules belong together on one key. It's more than you need when one counter rule would do, and the docs say as much. They also say you can't mix an aggregate with `[ProtectedDecision]` on the same command.
+Arc takes the stream's position when it rehydrates and guards the commit with a scope built from it, so an aggregate rests on scopes, not on decision reads. It's a good fit when the rules belong together on one key. It's more than you need when one counter rule would do, and the docs say as much. They also say you can't mix an aggregate with `[ProtectedDecision]` on the same command. Under read protection `On`, a command can take an aggregate and a read model of a different source; a read of the aggregate's own source is refused.
 
 ## Where the Decider fits
 
@@ -663,7 +674,7 @@ If you know Jérémie Chassaing's [Decider pattern](https://thinkbeforecoding.co
 
 `decide` is `Handle()`, with the state coming in as `DecisionRead<T>` and the events going out as the return value. With read protection it can also be a validator over a read-model parameter plus a `Handle()` that says what happens, which is a looser fit. `evolve` is the projection that builds the state, or an aggregate's `On` methods. The initial state is the absent model: `Instance` is null, and an absent model is guarded too. The nearest thing to a terminal state is [closing a stream](https://cratis.io/chronicle/closing-streams/), which the kernel enforces as a constraint.
 
-The differences matter. A decider composes: you can combine two and map over them. Chronicle doesn't offer that, and a decision read refuses projections that join entities, so a rule over two keys is two decision reads and one or two events in one `AppendMany`. The guard lives in the store as the append condition and not in the decider's type. Uniqueness, which a decider can't express without the whole set of values as its state, sits outside it entirely as a constraint. And a decision read folds the key's history from the log on every attempt, where a decider's state is just whatever you carried forward. So if "decider" helps you design a command, use it. I wouldn't promise anyone the whole pattern.
+The differences matter. A decider composes: you can combine two and map over them. Chronicle doesn't offer that, and a decision read refuses projections that join entities, so a rule over two keys is two decision reads (with read protection, two read-model parameters with `[LookUpBy]`) and one or two events in one `AppendMany`. The guard lives in the store as the append condition and not in the decider's type. Uniqueness, which a decider can't express without the whole set of values as its state, sits outside it entirely as a constraint. And a decision read folds the key's history from the log on every attempt, where a decider's state is just whatever you carried forward. So if "decider" helps you design a command, use it. I wouldn't promise anyone the whole pattern.
 
 ## What each client has
 
