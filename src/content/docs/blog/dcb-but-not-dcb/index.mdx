@@ -511,7 +511,7 @@ public class BorrowBookValidator : CommandValidator<BorrowBook>
 }
 ```
 
-`BookStock?` is nullable because a book with no events has no read model yet; a non-nullable parameter refuses the command before any rule runs. Let convention discovery register the validator, because under `On` one you register by hand is refused.
+`BookStock?` is nullable because a book with no events has no read model yet; a non-nullable parameter refuses the command before any rule runs. Let convention discovery register the validator: under `On`, one you register by hand as scoped, as a singleton, through a factory or as an instance is refused.
 
 That's the March pattern, and under `On` it holds. The same code under the default `Off` is a plain read again, which is why I'd rather the mode be visible on the command than hidden in a build property you forget about. When a read is meant as a hint, `[Unprotected("why")]` says so, and under `On` reads Arc can't protect, such as a raw event log read, are refused with a message that says why. From Arc 22.108, a command declared `On` also blocks on validator errors whatever severity the caller asks to allow with `X-Allowed-Severity`; under `Off` and `Measure` a caller can drop them unless the command declares `[BlockOnValidationSeverity(ValidationResultSeverity.Error)]`. `[ProtectedDecision]` and `DecisionRead<T>` keep working, but under `On` you don't need them.
 
