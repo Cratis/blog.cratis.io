@@ -1,0 +1,197 @@
+---
+title: "A limit for one account and one month · Decisions that hold, Part 4"
+description: "A monthly withdrawal limit depends on one month of one account. Declare that stream on the read model, route the command to it, and Arc guards that month only, so last month's activity doesn't conflict with today's withdrawal."
+date: 2026-10-28T09:00:00Z
+authors: sindre
+excerpt: "A monthly withdrawal limit depends on one month of one account. Declare that stream on the read model and route the command to it, and the guard covers that month only: a withdrawal in October conflicts, one in November doesn't."
+tags:
+  - arc
+  - chronicle
+  - concurrency
+  - event-sourcing
+  - validation
+---
+
+*[Decisions that hold](/the-bug-you-never-see/) · Part 04 of 11*
+
+The previous two parts guarded a read model keyed by an entity: a book, a member. The guard watched that entity's whole history for the event types the model folds. That's the right boundary when the rule is about the whole entity. Many rules aren't. A bank account may allow at most 5000 in withdrawals per calendar month. The rule depends on this account and this month, and nothing else.
+
+Neither of the obvious read models fits it. A model keyed by the account folds every month into one total, and a guard on the account's withdrawals makes every withdrawal conflict with any concurrent one, whatever month it's in. A model keyed by the month collides across accounts. What the rule needs is the account as the key, with the fold limited to one month.
+
+Chronicle has a place for that already. An event source definition can declare named streams, and an event appended to an account can carry a stream type (`Transactions`) and a stream id (`2026-10`). A read model can be declared on one such stream. Arc then reads it for the stream the command is routed to, and the guard it builds covers that stream only.
+
+## Declare the stream on the read model
+
+The examples assume read protection is On, as in new Cratis applications (see [Part 2](/the-read-model-said-yes/)). Read protection is part of Arc for .NET. The definition, the event and the read model:
+
+```csharp
+using Cratis.Arc.Queries.ModelBound;
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.EventSources;
+using Cratis.Chronicle.Projections.ModelBound;
+using Cratis.Chronicle.ReadModels;
+
+[EventSource("BankAccount")]
+[EventStream("Transactions")]
+public class BankAccountEventSource : IEventSource;
+
+public record AccountId(string Value) : EventSourceId(Value);
+
+[EventType]
+public record MoneyWithdrawn(decimal Amount);
+
+[ReadModel, EventStream<BankAccountEventSource>("Transactions")]
+public record MonthlyWithdrawals(
+    AccountId Id,
+    [AddFrom<MoneyWithdrawn>(nameof(MoneyWithdrawn.Amount))] decimal Total)
+{
+    public static async Task<MonthlyWithdrawals?> ForMonth(AccountId account, EventStreamId month, IReadModels models)
+    {
+        var instance = await models.GetInstanceById<MonthlyWithdrawals>(account, month);
+        return instance is null ? null : await models.Release(instance);
+    }
+}
+```
+
+There are two attributes with the same name here, and they do different things. `[EventStream("Transactions")]` on `BankAccountEventSource` declares that bank accounts have a `Transactions` stream. `[EventStream<BankAccountEventSource>("Transactions")]` on the read model, from `Cratis.Chronicle.ReadModels`, says that `MonthlyWithdrawals` is folded from that one stream of that definition.
+
+The model keeps the account as its `Id`. The month isn't part of the key; it selects which stream the fold reads. Declaring the stream also makes the model passive: Chronicle doesn't keep a stored instance per account that could accumulate several months, and folds the requested stream when it's read. `ForMonth` is a query for screens, and I'll come back to it below.
+
+## Route the command to the month
+
+The command and the validator:
+
+```csharp
+using Cratis.Arc.Chronicle.Commands;
+using Cratis.Arc.Commands;
+using Cratis.Arc.Commands.ModelBound;
+using Cratis.Chronicle.Events;
+using FluentValidation;
+
+[Command]
+[EventSource<BankAccountEventSource>("Transactions")]
+[EventStreamId("{Month}")]
+public record Withdraw(AccountId Account, string Month, decimal Amount)
+{
+    public MoneyWithdrawn Handle() => new(Amount);
+}
+
+public class WithdrawValidator : CommandValidator<Withdraw>
+{
+    public WithdrawValidator(MonthlyWithdrawals? month) =>
+        RuleFor(command => command.Amount)
+            .Must(amount => (month?.Total ?? 0m) + amount <= 5000m)
+            .WithMessage("The monthly withdrawal limit is 5000.");
+}
+```
+
+`[EventSource<BankAccountEventSource>("Transactions")]` routes the command's events to the definition's `Transactions` stream, and `[EventStreamId("{Month}")]` takes the stream id from the command's `Month` property. `AccountId` derives from `EventSourceId`, so it's the event source. `MoneyWithdrawn` from `Handle()` is appended to `BankAccount / Transactions / 2026-10` for that account.
+
+The validator takes `MonthlyWithdrawals` as a plain parameter, the same way the book's validator took `BookStock`. There's no `[LookUpBy]` and no month argument. Arc sees that the model is declared on a stream, takes the source and the stream from the command's route, and reads the model for that account in that month. Arc resolves `{Month}` before it builds the validator: a missing or blank `Month` comes back as a `400` with a rule failure on `Month` ("'Month' is required to read MonthlyWithdrawals"), and nothing is read.
+
+The rule lives in the validator, as before, and `Handle()` only returns the event. With 4800 already withdrawn in October, a withdrawal of 500 in October fails with "The monthly withdrawal limit is 5000." With 4800 withdrawn in September, the same withdrawal in October succeeds, because September's events aren't in October's fold.
+
+## What it guards
+
+The guard now has the stream in it. Written in the notation the Arc docs use (it's not an API):
+
+```text
+guard account: types=[MoneyWithdrawn], sourceType=BankAccount, streamType=Transactions, streamId=2026-10, after <position before the read>
+```
+
+Compared to the book's guard, three dimensions are added: the event source type, the stream type and the stream id. A `MoneyWithdrawn` for this account that arrives in `2026-10` after the read conflicts. The command comes back with the same `400` as in Part 2, reason `concurrencyViolation`, detail `ReadChanged`, and nothing from it is written:
+
+```text
+MonthlyWithdrawals 'account-1' changed after Withdraw read it. Nothing from this command was written; submit it again.
+```
+
+The message names the model and the account, not the month. A `MoneyWithdrawn` for this account in `2026-11` doesn't conflict, and the command commits.
+
+![A diagram titled One month, one guard. At the top, a card labeled Guard for MonthlyWithdrawals account-1 reads MoneyWithdrawn in Transactions 2026-10, after the position taken before the read. Below, three events each point to a result. MoneyWithdrawn arriving in 2026-10: conflict, nothing written. MoneyWithdrawn arriving in 2026-11: no conflict, another month. MoneyWithdrawn in 2026-10 written without the source type: not seen, neither folded nor guarded. A band reads Only the month the command is routed to.](./one-month-one-guard.png)
+
+*Which concurrent withdrawals make an October withdrawal fail.*
+
+If `Handle()` also took `MonthlyWithdrawals`, it would get the same instance as the validator, from the same fold, under the same guard.
+
+Under `Off` and `Measure`, the same parameter still folds only that month, but it's a plain read and guards nothing.
+
+## Keep the route exact
+
+The guard is only as narrow and as complete as the route, so a few things are worth checking.
+
+The command has to be routed to the same definition and stream as the model, with an explicit stream id. A command routed to another definition or stream, to all streams, or with no stream id, can't read the model for its own month. Arc refuses that in every mode, `Off` included, with `ReadModelStreamNotOnCommandRoute`, before anything is read. The [ARCCHR0037](https://cratis.io/arc/backend/csharp/chronicle/code-analysis/arcchr0037/) analyzer reports it as a build error when the mismatch is visible in the source. `[LookUpBy]` on a per-stream parameter is refused too: the source always comes from the command's route. To read another account or another month, use the stream overloads of `IDecisionReads` in `Provide()`.
+
+The event source type is part of both the fold and the guard. A `MoneyWithdrawn` written to `Transactions/2026-10` without the `BankAccount` source type isn't folded into October's total, and the guard doesn't see it. Every writer that takes part in the rule has to use the definition's route, and decide through a guard of its own. Routing commands with `[EventSource<BankAccountEventSource>("Transactions")]` rather than repeating the strings keeps them aligned.
+
+The guard can also get wider than one month. Chronicle merges the reads a command makes on one event source into one guard, and keeps only the dimensions they agree on. If the validator also took a whole-source model of the same account, a count of all its withdrawals for example, the merged guard covers every month, and a November withdrawal makes the October command fail. Both reads come back as `ReadChanged`. Reading two months of the same stream drops the stream id. A `Concurrency` policy declared on the definition that includes the event source id but not both stream dimensions widens it the same way. [ARCCHR0038](https://cratis.io/arc/backend/csharp/chronicle/code-analysis/arcchr0038/) reports the combinations it can see, as information.
+
+![A diagram titled When the guard widens, in two frames. Under Per-stream read only, the guard covers 2026-10 only for this account; a MoneyWithdrawn arriving in 2026-11 causes no conflict and the command commits. Under Plus a whole-source read, the guard covers every month for this account; the same MoneyWithdrawn arriving in 2026-11 makes the command fail with 400 ReadChanged and nothing written. A band reads A wider guard adds conflicts.](./when-the-guard-widens.png)
+
+*The same November withdrawal, with and without a whole-source read beside the monthly one.*
+
+A wider guard rejects commands that would have been fine. It still includes everything the narrower guard watched, so it adds conflicts and doesn't drop any. If you need only this month's state, take only the per-stream model. If you need the whole balance as well, keep both reads and accept the wider guard.
+
+The rest of the limits from Part 2 apply. `Revise` and `Redact` between the read and the commit aren't detected. Other event sequences, services and data outside Chronicle aren't guarded. `EventStreamId.Default` doesn't narrow a fold to one id: in Chronicle it folds every id of the stream type, and Arc refuses it as a command route for a per-stream model.
+
+## Querying one month
+
+`ForMonth` on the model is a model-bound query for the screen that shows how much is left this month. It calls the stream overload of `IReadModels.GetInstanceById`, which takes the source and stream types from the declaration and the month from its argument. It returns October's total for that account, or `null` if nothing was withdrawn in October.
+
+It's a plain read. It guards nothing, and nothing it returns should decide a withdrawal; the validator does that. Chronicle refuses the reads that have no stream to fold: a key-only `GetInstanceById`, collections and snapshots, and `Watch`. A per-stream model has no stored instance per account, so there is nothing for those to return. Chronicle's analyzer [CHR0064](https://cratis.io/chronicle/code-analysis/chr0064/) reports such reads when it can see them.
+
+If you call Chronicle without Arc, the same per-stream read model can be read as a decision read and guard an append directly. [Chronicle's page on per-stream read models](https://cratis.io/chronicle/read-models/per-stream/) has that example, and Part 8 covers decision reads without Arc.
+
+## Or no model at all: a stream decision
+
+Some rules over a short stream don't need folded state. "Has this report been approved this month?" is a question about whether one event exists. Arc's stream decisions answer it from the raw events of the command's stream:
+
+```csharp
+using Cratis.Arc.Chronicle.Commands;
+using Cratis.Arc.Chronicle.Streams;
+using Cratis.Arc.Commands.ModelBound;
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.EventSequences;
+using Cratis.Chronicle.EventSources;
+
+[EventSource("Report")]
+[EventStream("Approval", Concurrency = ConcurrencyDimensions.EventSourceId | ConcurrencyDimensions.EventStreamType | ConcurrencyDimensions.EventStreamId)]
+public class ReportEventSource : IEventSource;
+
+public record ReportId(string Value) : EventSourceId(Value);
+
+[EventType]
+public record ReportApproved;
+
+[Command]
+[EventSource<ReportEventSource>("Approval")]
+[EventStreamId("{Owner}:{Month}")]
+public record ApproveReport(ReportId Report, string Owner, string Month)
+{
+    public Task<StreamDecision> Provide(IStreamReads reads) => reads.ForCommand();
+
+    public EventsWithConcurrencyScopes Handle(StreamDecision decision) =>
+        decision.Has<ReportApproved>()
+            ? decision.Append([])
+            : decision.Append(new ReportApproved());
+}
+```
+
+`reads.ForCommand()` reads the events of this report in `Approval/owner-1:2026-10` and notes the position. `decision.Append` returns the events with a concurrency scope for that stream, and any event in that stream after the read refuses the append, of any type, including the first one. The refusal is a `concurrencyViolation` too, with a message about the event source instead of a read model. Another month doesn't conflict. If the report is already approved, `Append([])` writes nothing, so a second approval is an identical retry rather than a second fact.
+
+The whole stream crosses the wire for the decision, so keep it short. When the rule needs a count or a folded status rather than "has it happened", use a per-stream model. Choose one of the two for a command, not both: the validator reads before `Provide()` runs, and a stream decision's scope, captured later, may not cover that read. Arc refuses it with `ExplicitScopeDoesNotCoverReads`, and [ARCCHR0036](https://cratis.io/arc/backend/csharp/chronicle/code-analysis/arcchr0036/) warns about it at build time. Part 7 puts stream decisions next to the other mechanisms that aren't guarded reads.
+
+:::tip[What to do when]
+- **A rule depends on folded state of one stream on the command's route** (a month, a period, a process): declare `[EventStream<TSource>("…")]` on the read model, route the command with `[EventSource<TSource>("…")]` and `[EventStreamId("{…}")]`, and take the model in the validator.
+- **The rule is "has X happened in this short stream?":** a stream decision, without a model.
+- **The rule depends on the entity's whole history**, a balance for example: a whole-source model. Combining it with a per-stream model gives a whole-source guard.
+- **You need another month or another account:** the stream overloads of `IDecisionReads` in `Provide()`, not `[LookUpBy]`.
+- **Another month's activity makes your command fail:** look for a second read on the same source or a declared `Concurrency` without both stream dimensions (ARCCHR0038).
+:::
+
+The [one-stream scenario](https://cratis.io/arc/backend/csharp/chronicle/consistency/scenarios/per-stream/) in the Arc docs has both examples, [stream decisions](https://cratis.io/arc/backend/csharp/chronicle/commands/stream-decisions/) covers `IStreamReads` and testing on a route, and [How read protection works](https://cratis.io/arc/backend/csharp/chronicle/consistency/how-it-works/) explains how guards from several reads merge. The next part is about the other side of a guard: what Arc says when it refuses a command, and what to do with each answer.
+
+*The examples need Arc ARC_MIN_VERSION or later and Chronicle 19.68.0 or later.*
+
+---
+
+- Previous: [Part 03 — One rule, two entities, one append](/one-rule-two-entities/)

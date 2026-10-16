@@ -1,0 +1,17 @@
+A bank account may withdraw at most 5000 a month. Which history does that rule depend on?
+
+Not the account's. One month of it. A read model keyed by the account folds every month together, and a guard on it makes every withdrawal conflict with any concurrent one, October or November. Keying the model by the month collides across accounts.
+
+In Arc, I declare the stream on the read model instead: [EventStream<BankAccountEventSource>("Transactions")]. The command is routed to the month with [EventStreamId("{Month}")], and the validator takes the model as a plain parameter. With read protection On, the read folds only that month, and the guard covers only that month. A withdrawal in October after the read means nothing is written. One in November doesn't conflict.
+
+The part I'd check first in a real application: the guard is only as narrow as the reads beside it. Add a whole-source read of the same account, and the guard covers every month again. It adds conflicts; it doesn't drop any. And a writer that appends to the month without the account's source type is neither folded nor guarded.
+
+In the post:
+- the monthly limit as a per-stream read model and a validator
+- what the guard covers, and what makes it wider
+- querying one month for a screen, as a plain read
+- a stream decision for "has this happened this month?"
+
+https://blog.cratis.io/a-limit-for-one-month/
+
+#eventsourcing #cqrs #dotnet #cratis #arc
