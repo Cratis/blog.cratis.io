@@ -1,0 +1,263 @@
+---
+title: "One rule, two entities, one append · Decisions that hold, Part 3"
+description: "A rule over two entities in Arc: two read models in one validator, each picked by its own key, one event for each entity in one atomic append, and what happens when either side changes first."
+date: 2026-10-26T09:00:00Z
+authors: sindre
+excerpt: "A member may hold three loans, and a book has one copy left. Two read models in one validator, one fact for each entity, one atomic append, and if either side changed after the read, nothing is written."
+tags:
+  - arc
+  - chronicle
+  - concurrency
+  - event-sourcing
+  - validation
+---
+
+*[Decisions that hold](/the-bug-you-never-see/) · Part 03 of 11*
+
+The previous part ended with one book and one guard. `BorrowBook` takes a `BookStock` read model in its validator, and with read protection On that read is folded fresh and guards the append: if a `BookBorrowed` for the same book lands between the read and the commit, nothing is written.
+
+Now add a rule the library already has on paper: a member may hold at most three loans. Member 1 has two books out, opens two tabs, and borrows a different book in each. If both requests read the member's loan count before either commits, both see two loans and both approve a third. The guard from the previous part doesn't help: it watches the book, and the competing borrow is of another book. The rule depends on two entities, so the decision has to hold for both.
+
+## A member and a book
+
+The rule needs a fact on the member to count, so the command writes one event to each entity, and the validator reads one model of each:
+
+```csharp
+using Cratis.Arc.Commands;
+using Cratis.Arc.Commands.ModelBound;
+using Cratis.Arc.Queries.ModelBound;
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.EventSequences;
+using Cratis.Chronicle.Projections.ModelBound;
+using FluentValidation;
+
+public record Isbn(string Value) : EventSourceId(Value);
+
+public record MemberId(string Value) : EventSourceId(Value);
+
+[EventType]
+public record CopyAdded();
+
+[EventType]
+public record BookBorrowed(MemberId Member);
+
+[EventType]
+public record BookReturned(MemberId Member);
+
+[EventType]
+public record LoanTaken(Isbn Book);
+
+[EventType]
+public record LoanReturned(Isbn Book);
+
+[ReadModel]
+public record BookStock(
+    Isbn Id,
+    [Increment<CopyAdded>, Decrement<BookBorrowed>, Increment<BookReturned>] int Available);
+
+[ReadModel]
+public record MemberLoans(
+    MemberId Id,
+    [Increment<LoanTaken>, Decrement<LoanReturned>] int Active);
+
+[Command]
+public record BorrowBook(Isbn Isbn, MemberId Member)
+{
+    public IEnumerable<EventForEventSourceId> Handle() =>
+    [
+        new(Isbn, new BookBorrowed(Member)),
+        new(Member, new LoanTaken(Isbn))
+    ];
+}
+
+public class BorrowBookValidator : CommandValidator<BorrowBook>
+{
+    public BorrowBookValidator(
+        [LookUpBy(nameof(BorrowBook.Isbn))] BookStock? stock,
+        [LookUpBy(nameof(BorrowBook.Member))] MemberLoans? loans)
+    {
+        RuleFor(command => command.Isbn)
+            .Must(_ => stock is { Available: > 0 })
+            .WithMessage("No copies of this book are available.");
+        RuleFor(command => command.Member)
+            .Must(_ => loans is null || loans.Active < 3)
+            .WithMessage("The member has reached the loan limit.");
+    }
+}
+```
+
+Read protection is part of Arc for .NET, and the project still has `<CratisReadProtection>On</CratisReadProtection>` from the previous part. Three things changed from the one-book version:
+
+- `MemberId` derives from `EventSourceId` now. Before, the command only mentioned the member, so a plain concept was enough. Now it appends to the member, so the member is an event source with its own history.
+- `Handle()` returns `EventForEventSourceId` values. Each one names the event source it goes to, so the command doesn't need a single event source id, and Arc doesn't need `ICanProvideEventSourceId` to pick one.
+- The validator takes two read models, and `[LookUpBy]` names the command property that supplies each key. `BookStock` is read for `Isbn`, and `MemberLoans` for `Member`.
+
+Under On, each read-model parameter is its own decision read. Chronicle notes the log's position, folds that one key's history, and enrolls a guard before the validator sees the value. Two reads give two guards, one per key:
+
+```text
+guard isbn-1:   types=[CopyAdded, BookBorrowed, BookReturned], after <tail before the BookStock read>
+guard member-1: types=[LoanTaken, LoanReturned], after <tail before the MemberLoans read>
+```
+
+That is notation, not output: one line per guard, with the key, the event types the model folds, and the position captured before the fold. Arc commits both events as one atomic append, and the kernel checks both guards with it. If either one is violated, neither event is written.
+
+![Two guard cards at the top: on isbn-1 for BookStock with CopyAdded, BookBorrowed and BookReturned, and on member-1 for MemberLoans with LoanTaken and LoanReturned. Each points down to the event appended to that key, BookBorrowed to isbn-1 and LoanTaken to member-1, inside one box labelled one atomic append, both events or neither. Below, a green card reads neither key changed, both events are written, and a red card reads either key changed, nothing is written.](./two-facts-one-append.png)
+
+*Each read guards its own key. Both guards are checked with the one append.*
+
+Back to the two tabs. Both requests read `MemberLoans` with `Active = 2`, and both pass the validator. The first to commit appends `BookBorrowed` to its book and `LoanTaken` to member 1. The second commit carries a guard on member 1 that says "no `LoanTaken` or `LoanReturned` after the position I read", and the first request just broke it. The kernel rejects the second append, and its book keeps its copy. The caller gets a `400` with the reason `concurrencyViolation`, the detail `ReadChanged`, and a message that names the model and key that moved:
+
+```text
+MemberLoans 'member-1' changed after BorrowBook read it. Nothing from this command was written; submit it again.
+```
+
+If instead another member took the last copy of the same book, the book's guard is the one that fires, and the message says `BookStock 'isbn-1' changed after BorrowBook read it.` with the same ending. The validation result's state carries `readModel` and `key` as separate values, so a client can tell which side changed without parsing the text. Arc and Chronicle do not re-run the command. The caller reads again, and if it submits again, the validator sees three loans and refuses with "The member has reached the loan limit.", an ordinary rule failure.
+
+Events that don't touch either guard leave the command alone. Another member's borrow of a different book, or an event on member 1 that `MemberLoans` doesn't fold, lets both events commit as usual. Member 1 borrowing a different book does conflict: that borrow appends `LoanTaken` to member 1.
+
+## Each entity gets its own fact
+
+`BookBorrowed` goes to the book and `LoanTaken` goes to the member. It is tempting to write `BookBorrowed` to both and have `MemberLoans` count it. Don't. A model-bound projection folds an event into the instance keyed by the event source it was appended to, so every model that counts `BookBorrowed` would see both copies. A `BookBorrowed` appended to member 1 gives member 1 a `BookStock` of its own, with `Available` at -1. Two event types keep each model to its own entity's events.
+
+They are also two different facts. "A copy left the shelf" belongs in the book's history, and "the member took a loan" belongs in the member's. Returning a book appends `BookReturned` to the book and `LoanReturned` to the member, the same way.
+
+If you know the [dynamic consistency boundary](https://dcb.events/examples/course-subscriptions/), this is where Chronicle differs from it. In DCB, one event can carry a tag for each entity it concerns, and one query reads both. In Chronicle every event belongs to exactly one event source, so a fact about two entities is two events in one atomic append, and each read model reads its own entity's events. Chronicle's [DCB page](https://cratis.io/chronicle/dynamic-consistency-boundary/chronicle/#when-one-fact-becomes-two-events) says when two events for one fact are the right answer, and when to look for a form with one event instead.
+
+## Choosing the key
+
+A read-model parameter reads the instance whose `Id` equals a key taken from the command. Under On, Arc picks that key in this order:
+
+1. The command property named by `[LookUpBy(nameof(...))]` on the parameter.
+2. Without it, the one command property whose type equals the model's `Id` type.
+3. If several properties match, the command fails with `AmbiguousReadModelLookup`.
+4. If none matches, the command's event source id.
+
+`BookStock` has an `Isbn Id` and `MemberLoans` a `MemberId Id`, and `BorrowBook` has exactly one property of each type, so under On the second rule would find both keys on its own. I still write `[LookUpBy]`, for two reasons. It works the same in every mode, while under Off and Measure a parameter without it reads the command's event source id. And it survives the next property: add a `MemberId ReservedFor` to the command, and the type rule no longer has a single answer. A command with two properties of the model's `Id` type and no `[LookUpBy]` fails with `AmbiguousReadModelLookup`, a `500` whose message names both properties and asks you to select one with `[LookUpBy]`.
+
+`[LookUpBy]` goes on the parameter, also on a validator constructor, and names a property of the command. The property's type doesn't have to match the model's `Id` type: Arc converts the value to the key, so an `Isbn` property can select a model with an `EventSourceId Id`. When the second key isn't on the command at all, because it's computed or looked up, read it with `IDecisionReads.Get` in `Provide()`. That read is guarded in the same way. The [reads page](https://cratis.io/arc/backend/csharp/chronicle/consistency/reads/#choose-the-key-with-lookupby) has the conversion rules.
+
+## A course and a student
+
+The canonical example for a rule across two entities is [course subscription](https://dcb.events/examples/course-subscriptions/): a course has a fixed number of seats, and a student can join at most three courses. In Arc it's the same shape as the library:
+
+```csharp
+using Cratis.Arc.Commands;
+using Cratis.Arc.Commands.ModelBound;
+using Cratis.Arc.Queries.ModelBound;
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.EventSequences;
+using Cratis.Chronicle.Projections.ModelBound;
+using FluentValidation;
+
+public record CourseId(string Value) : EventSourceId(Value);
+
+public record StudentId(string Value) : EventSourceId(Value);
+
+[EventType]
+public record CourseDefined(int Capacity);
+
+[EventType]
+public record SeatTaken(StudentId Student);
+
+[EventType]
+public record CourseJoined(CourseId Course);
+
+[ReadModel]
+[FromEvent<CourseDefined>]
+public record CourseSeats(
+    CourseId Id,
+    int Capacity,
+    [Increment<SeatTaken>] int Taken);
+
+[ReadModel]
+public record StudentCourses(
+    StudentId Id,
+    [Increment<CourseJoined>] int Count);
+
+[Command]
+public record SubscribeToCourse(CourseId Course, StudentId Student)
+{
+    public IEnumerable<EventForEventSourceId> Handle() =>
+    [
+        new(Course, new SeatTaken(Student)),
+        new(Student, new CourseJoined(Course))
+    ];
+}
+
+public class SubscribeToCourseValidator : CommandValidator<SubscribeToCourse>
+{
+    public SubscribeToCourseValidator(
+        [LookUpBy(nameof(SubscribeToCourse.Course))] CourseSeats? course,
+        [LookUpBy(nameof(SubscribeToCourse.Student))] StudentCourses? student)
+    {
+        RuleFor(command => command.Course)
+            .Must(_ => course is not null)
+            .WithMessage("The course does not exist.")
+            .Must(_ => course is null || course.Taken < course.Capacity)
+            .WithMessage("The course is full.");
+        RuleFor(command => command.Student)
+            .Must(_ => student is null || student.Count < 3)
+            .WithMessage("The student is already in three courses.");
+    }
+}
+```
+
+```text
+guard course-1:  types=[CourseDefined, SeatTaken], after <tail before the CourseSeats read>
+guard student-1: types=[CourseJoined], after <tail before the StudentCourses read>
+```
+
+`[FromEvent<CourseDefined>]` sets `Capacity` from the event with the same property name. A `SeatTaken` on the course after the read rejects the command with `CourseSeats 'course-1' changed…`, and a `CourseJoined` on the student, from the same student subscribing to another course, rejects it with `StudentCourses 'student-1' changed…`. Neither case writes anything.
+
+A decision guards each key it reads, whether or not it writes there. A command that reads a member's standing and appends only to the book is still rejected if the member is suspended between its read and its commit. The guard is built from the read, not from the append.
+
+## The trap: a model keyed by an event property
+
+There is a shorter way to count loans that looks right. `BookBorrowed` already names the member, so a model can fold the book's events and key them by that property:
+
+```csharp
+using Cratis.Arc.Queries.ModelBound;
+using Cratis.Chronicle.Projections.ModelBound;
+
+[ReadModel]
+[FromEvent<BookBorrowed>(key: nameof(BookBorrowed.Member))]
+public record MemberLoans(
+    MemberId Id,
+    [Increment<BookBorrowed>] int Active);
+```
+
+As a query model this is fine. As a decision it can't be guarded. A guard covers the events of one event source, and this model's events live on the books' event sources, one per book. A borrow of any other book by the same member changes the count, and there is no key a guard could watch to see it.
+
+Arc says so twice. The build reports [ARCCHR0024](https://cratis.io/arc/backend/csharp/chronicle/code-analysis/arcchr0024/) as a warning on the validator parameter, and under On the command is refused with a `500` and writes nothing. In Development the response carries this message; elsewhere the client gets a generic error and the message goes to the server log:
+
+```text
+BorrowBook reads 'loans' (MemberLoans) keyed by an event property, so read protection cannot guard it. If it is only context, mark it [Unprotected("why")]. Otherwise append a fact to the entity it is keyed by, or use a constraint.
+```
+
+The fix is the first example: append `LoanTaken` to the member, and key the model by the member's own events. Marking the read `[Unprotected("why")]` would let the command run, with the loan count as an unguarded snapshot. That is right only if the count is context, not the rule.
+
+## What this does not cover
+
+The guards cover exactly the keys the command read. That has two consequences worth checking in your own rules.
+
+If the set of keys a rule counts over can grow, the new keys are outside every guard. Say each loan were its own event source, and the limit counted open loans across them. A loan created after the read is on a key nobody read, so no guard sees it. Put such a limit on one key that receives every relevant fact, which is what `MemberLoans` on the member does.
+
+A rule also holds only as far as every writer that decides on it reads through a guard. An import job that appends `LoanTaken` to a member without reading `MemberLoans` doesn't check the limit. If its event lands inside our command's window, our guard on the member detects it and our command is the one rejected. If it lands after our commit, nothing checks it at all.
+
+The rest of the limits from the previous part apply to each read here: a `Revise` or `Redact` between read and commit is not detected, other event sequences and data outside Chronicle are not guarded, and with read protection Off, the default, both reads are plain snapshots that guard nothing.
+
+:::tip[What to do when]
+- **A rule reads two entities and writes to both:** two read-model parameters on the validator, each with `[LookUpBy]`, and `Handle()` returning one `EventForEventSourceId` per entity.
+- **The second key isn't on the command:** read it with `IDecisionReads.Get` in `Provide()`; it is guarded the same way.
+- **You want one event type for both entities:** use two. A model folds every event of its types, keyed by the source it was appended to.
+- **A model is keyed by a property inside another entity's events:** append a fact to that entity instead. Under On the read is refused, and `[Unprotected("why")]` only turns it back into a snapshot.
+- **The set of keys can grow:** move the count onto one key that receives every fact, or the new keys are not guarded.
+:::
+
+The [two-entities scenario](https://cratis.io/arc/backend/csharp/chronicle/consistency/scenarios/two-entities/) in the Arc docs has both examples, and [refusals](https://cratis.io/arc/backend/csharp/chronicle/consistency/refusals/) lists the 500s with their fixes. A rule over one account and one month, read from a single stream, is the next shape.
+
+*The examples need Arc 22.108.0 or later and Chronicle 19.68.0 or later.*
+
+---
+
+- Previous: [Part 02 — The read model said yes](/the-read-model-said-yes/)
