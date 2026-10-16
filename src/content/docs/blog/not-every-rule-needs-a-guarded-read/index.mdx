@@ -303,40 +303,44 @@ How the client learns the revision is up to your read model and query. Whatever 
 
 Two related shapes look similar and are not. `concurrency: true` on `[EventSourceType]`, `[EventStreamType]` or `[EventStreamId]` narrows the default check, but that check reads the tail after `Handle()`, so it can never carry the revision the user saw. And if the same command also takes a read model of the document, the scope must cover what that read watches and must not be captured after it; otherwise the command is refused with `ExplicitScopeDoesNotCoverReads`, which [ARCCHR0036](https://cratis.io/arc/backend/csharp/chronicle/code-analysis/arcchr0036/) reports at build time.
 
-Without Arc, the scope goes on the append itself, and your code reads the result. Chronicle's example expects no event for a new account yet:
+Without Arc, the scope goes on the append itself, and your code reads the result. Chronicle's own example is the other common scope: opening an account, where the append must fail if the account already exists. Each client asks the kernel for that as an explicit expectation that no matching event exists, not as a sequence number:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
 
 ```csharp
+using Cratis.Chronicle;
 using Cratis.Chronicle.Events;
 using Cratis.Chronicle.EventSequences;
 using Cratis.Chronicle.EventSequences.Concurrency;
 
-[EventType]
-public record ConcurrencySafeAccountOpened(string AccountName);
-
-public class ConcurrencySafeAccountService(IEventLog eventLog)
+public static class ConcurrencyFirstAppendCheckSetup
 {
-    public async Task<bool> TryOpenAccount(EventSourceId accountId, string accountName)
+    // Application-wide: every first append into a scope the optimistic strategy resolves is checked.
+    public static void ConfigureChronicle(ChronicleOptions options) =>
+        options.ConcurrencyOptions.CheckFirstAppendIntoAScope = true;
+}
+
+[EventType]
+public record ConcurrencyFirstAppendPartitionOpened(string Name);
+
+public class ConcurrencyFirstAppendPartitionService(IEventLog eventLog)
+{
+    // Per append: ask for the same check on one behavior, without turning it on everywhere.
+    public async Task<bool> TryOpenPartition(EventSourceId accountId, string name)
     {
-        var concurrencyScope = new ConcurrencyScope(
-            SequenceNumber: EventSequenceNumber.BeforeFirst, // Expect no event for this account yet
-            EventSourceId: accountId);
+        var concurrencyScope = new ConcurrencyScopeBuilder()
+            .ExpectingNoMatchingEvent()
+            .WithEventSourceId(accountId)
+            .WithEventType<ConcurrencyFirstAppendPartitionOpened>()
+            .Build();
 
         var result = await eventLog.Append(
             accountId,
-            new ConcurrencySafeAccountOpened(accountName),
+            new ConcurrencyFirstAppendPartitionOpened(name),
             concurrencyScope: concurrencyScope);
 
-        if (result.HasConcurrencyViolations)
-        {
-            // result.ConcurrencyViolation describes the expected vs actual sequence number
-            return false;
-        }
-
-        // False would mean nothing was compared against the event store
-        return result.IsSuccess && result.ConcurrencyCheckPerformed;
+        return result.IsSuccess;
     }
 }
 ```
@@ -348,33 +352,27 @@ public class ConcurrencySafeAccountService(IEventLog eventLog)
 import io.cratis.chronicle.IEventStore
 import io.cratis.chronicle.events.EventType
 import io.cratis.chronicle.eventSequences.AppendOptions
-import io.cratis.chronicle.eventSequences.EventSequenceNumber
 import io.cratis.chronicle.eventSequences.concurrency.ConcurrencyScopeBuilder
 
 @EventType
-data class ConcurrencySafeAccountOpened(val accountName: String = "")
+data class ConcurrencyFirstAccountOpened(val accountName: String = "")
 
 /**
- * Handles a concurrency violation reported on [io.cratis.chronicle.eventSequences.AppendResult.concurrencyViolation]
- * by comparing the expected and actual sequence numbers the kernel found.
+ * Opts in to the first-append check with [ConcurrencyScopeBuilder.withExpectsNoMatchingEvent].
+ * The kernel rejects the append with a concurrency violation if an event already exists for
+ * this event source, so two concurrent "open account" appends cannot both succeed.
  */
-suspend fun tryOpenAccount(store: IEventStore, accountId: String, accountName: String): Boolean {
+suspend fun openAccountOnce(store: IEventStore, accountId: String, accountName: String): Boolean {
     val concurrencyScope = ConcurrencyScopeBuilder()
         .withEventSourceId()
-        .withSequenceNumber(EventSequenceNumber.first)
+        .withExpectsNoMatchingEvent()
         .build()
 
     val result = store.eventLog.append(
         accountId,
-        ConcurrencySafeAccountOpened(accountName),
+        ConcurrencyFirstAccountOpened(accountName),
         AppendOptions(concurrencyScope = concurrencyScope)
     )
-
-    val violation = result.concurrencyViolation
-    if (violation != null) {
-        println("Expected sequence ${violation.expectedSequenceNumber.value}, actual was ${violation.actualSequenceNumber.value}")
-        return false
-    }
 
     return result.isSuccess
 }
@@ -390,33 +388,24 @@ import io.cratis.chronicle.eventSequences.AppendOptions;
 import io.cratis.chronicle.eventSequences.AppendResult;
 import io.cratis.chronicle.eventSequences.concurrency.ConcurrencyScope;
 import io.cratis.chronicle.eventSequences.concurrency.ConcurrencyScopeBuilder;
-import io.cratis.chronicle.eventSequences.concurrency.ConcurrencyViolation;
 
-import io.cratis.chronicle.java.AppendOptionsBuilder;
-import io.cratis.chronicle.java.ConcurrencyScopeBuilderJavaBridge;
 import io.cratis.chronicle.java.EventLogJavaBridge;
 
 @EventType
-record ConcurrencySafeAccountOpened(String accountName) {}
+record ConcurrencyFirstAccountOpened(String accountName) {}
 
-class EventsConcurrencyHandlingViolations {
-    // Handles a concurrency violation reported on AppendResult.getConcurrencyViolation() - the
-    // event source id it was reported for is enough to tell which account lost the race.
-    boolean tryOpenAccount(EventStore store, String accountId, String accountName) {
-        ConcurrencyScope concurrencyScope = ConcurrencyScopeBuilderJavaBridge
-            .withSequenceNumber(new ConcurrencyScopeBuilder(), 0)
+class EventsConcurrencyFirstAppendCheck {
+    // Opts in to the first-append check with withExpectsNoMatchingEvent(). The kernel rejects the
+    // append with a concurrency violation if an event already exists for this event source, so
+    // two concurrent "open account" appends cannot both succeed.
+    boolean openAccountOnce(EventStore store, String accountId, String accountName) {
+        ConcurrencyScope scope = new ConcurrencyScopeBuilder()
             .withEventSourceId()
+            .withExpectsNoMatchingEvent()
             .build();
 
-        AppendOptions options = new AppendOptionsBuilder().concurrencyScope(concurrencyScope).build();
         AppendResult result = EventLogJavaBridge.append(
-            store.getEventLog(), accountId, new ConcurrencySafeAccountOpened(accountName), options);
-
-        ConcurrencyViolation violation = result.getConcurrencyViolation();
-        if (violation != null) {
-            System.out.println("Concurrency violation for event source " + violation.getEventSourceId());
-            return false;
-        }
+            store.getEventLog(), accountId, new ConcurrencyFirstAccountOpened(accountName), new AppendOptions(null, scope));
 
         return result.isSuccess();
     }
@@ -427,41 +416,35 @@ class EventsConcurrencyHandlingViolations {
 <TabItem label="Elixir">
 
 ```elixir
-defmodule MyApp.Events.ConcurrencySafeAccountOpened do
-  use Chronicle.Events.EventType, id: "concurrency-safe-account-opened"
+defmodule MyApp.Events.ConcurrencyFirstAppendAccountOpened do
+  use Chronicle.Events.EventType, id: "concurrency-first-append-account-opened"
 
   defstruct account_name: ""
 end
 
-defmodule MyApp.ConcurrencySafeAccountService do
-  alias Chronicle.EventSequences.EventLog
+defmodule MyApp.ConcurrencyFirstAppendAccountService do
   alias Chronicle.Events.ConcurrencyScope
-  alias MyApp.Events.ConcurrencySafeAccountOpened
+  alias MyApp.Events.ConcurrencyFirstAppendAccountOpened
 
-  def try_open_account(account_id, account_name) do
-    with {:ok, tail} <- EventLog.get_tail_sequence_number(account_id) do
-      # Expect no event for this account yet
-      scope = ConcurrencyScope.for_event_source(tail)
+  # Per append: ask for the check on one behavior without changing the client's default.
+  def open_account(account_id, account_name) do
+    scope =
+      ConcurrencyScope.expecting_no_matching_event(
+        event_source_id: true,
+        event_types: [ConcurrencyFirstAppendAccountOpened]
+      )
 
-      case Chronicle.append(
-             account_id,
-             %ConcurrencySafeAccountOpened{account_name: account_name},
-             concurrency_scope: scope
-           ) do
-        :ok ->
-          true
-
-        {:error, {:concurrency_violations, _violations}} ->
-          # Another append got there first — retry against the state the winner
-          # produced, or surface the conflict.
-          false
-
-        {:error, _reason} ->
-          false
-      end
-    end
+    Chronicle.append(
+      account_id,
+      %ConcurrencyFirstAppendAccountOpened{account_name: account_name},
+      concurrency_scope: scope
+    )
   end
 end
+{Chronicle.Client,
+  connection_string: "chronicle://localhost:35000",
+  event_store: "my-store",
+  concurrency: [default: :optimistic, check_first_append: true]}
 ```
 
 </TabItem>
@@ -472,7 +455,7 @@ import { eventType, EventSequenceNumber, IEventStore } from '@cratis/chronicle';
 import { field } from '@cratis/fundamentals';
 
 @eventType()
-class ConcurrencySafeAccountOpened {
+class ConcurrencyFirstAccountOpened {
     @field(String) readonly accountName: string;
 
     constructor(accountName: string) {
@@ -480,24 +463,21 @@ class ConcurrencySafeAccountOpened {
     }
 }
 
-class ConcurrencyViolationHandler {
+class ConcurrencyFirstAppendService {
     constructor(private readonly store: IEventStore) {}
 
-    async tryOpenAccount(accountId: string, accountName: string): Promise<boolean> {
-        const result = await this.store.eventLog.append(accountId, new ConcurrencySafeAccountOpened(accountName), {
+    async openAccount(accountId: string, accountName: string): Promise<void> {
+        // EventSequenceNumber.beforeFirst expects that no event matching the scope exists yet.
+        // The client sends it as the kernel's ExpectsNoMatchingEvent condition.
+        const result = await this.store.eventLog.append(accountId, new ConcurrencyFirstAccountOpened(accountName), {
             concurrencyScope: {
                 sequenceNumber: EventSequenceNumber.beforeFirst.value,
                 eventSourceId: true
             }
         });
-
-        const violation = result.concurrencyViolation;
-        if (violation) {
-            console.log(`Expected sequence ${violation.expectedSequenceNumber.value}, actual was ${violation.actualSequenceNumber.value}`);
-            return false;
+        if (!result.isSuccess) {
+            throw new Error('The account already has events');
         }
-
-        return result.isSuccess;
     }
 }
 ```
@@ -505,7 +485,7 @@ class ConcurrencyViolationHandler {
 </TabItem>
 </Tabs>
 
-In .NET, `Append` returns a violation in its `AppendResult` instead of throwing, and the other clients report it in their result too, so code that appends directly has to check it. Chronicle's [concurrency page](https://cratis.io/chronicle/events/concurrency/) covers narrowing by event type, stream and source type.
+The C# and Elixir versions narrow the expectation to the opening event type, so other events on the account don't count; the Kotlin, Java and TypeScript versions expect no event at all for the account. TypeScript writes it as `EventSequenceNumber.beforeFirst`, which the client sends as the same no-matching-event condition. The C# and Elixir versions also show the application-wide switch, `CheckFirstAppendIntoAScope` and `check_first_append: true`. An expected sequence number is not the same thing: the kernel rejects such an append only when a matching event sits after that position in the log, so expecting 0 lets an append through for an account whose one event is at position 0. In .NET, `Append` returns a violation in its `AppendResult` instead of throwing, and the other clients report it in their result too, so code that appends directly has to check it. Chronicle's [concurrency page](https://cratis.io/chronicle/events/concurrency/) covers narrowing by event type, stream and source type.
 
 **Never rely on** `concurrency: true` as the guard for a decision, or on a client-supplied revision for a rule that protects someone else. **Too much:** a read model that folds the document to detect what a revision number already tells you.
 
@@ -532,6 +512,9 @@ using Cratis.Chronicle.Reactors;
 public record CopyReserved(string Isbn);
 
 [EventType]
+public record StockCheckRequested(string Isbn);
+
+[EventType]
 public record StockDecreased(string Isbn, int Quantity);
 
 public class WarehouseReactor : IReactor
@@ -541,7 +524,7 @@ public class WarehouseReactor : IReactor
         new(@event.Isbn, 1);
 
     [OnceOnly]
-    public async Task<StockDecreased> CopyReservedAsync(CopyReserved @event, EventContext context)
+    public async Task<StockDecreased> StockCheckRequested(StockCheckRequested @event, EventContext context)
     {
         var available = await FetchCurrentStockAsync(@event.Isbn);
         return new StockDecreased(@event.Isbn, available);
@@ -625,22 +608,28 @@ class WarehouseReactor {
 <TabItem label="Elixir">
 
 ```elixir
-defmodule MyApp.Events.OrderConfirmationQueued do
-  use Chronicle.Events.EventType, id: "order-confirmation-queued"
+defmodule MyApp.Events.CopyReserved do
+  use Chronicle.Events.EventType, id: "copy-reserved"
 
-  defstruct [:customer_id]
+  defstruct [:isbn]
 end
 
-defmodule MyApp.Reactors.OrderNotifier do
+defmodule MyApp.Events.StockDecreased do
+  use Chronicle.Events.EventType, id: "stock-decreased"
+
+  defstruct [:isbn, :quantity]
+end
+
+defmodule MyApp.Reactors.WarehouseReactor do
   use Chronicle.Reactors.Reactor
 
-  alias MyApp.Events.{OrderConfirmationQueued, OrderPlaced}
+  alias MyApp.Events.{CopyReserved, StockDecreased}
 
-  @handles OrderPlaced
+  @handles CopyReserved
 
   @impl true
-  def handle(%OrderPlaced{} = event, _context) do
-    {:ok, %OrderConfirmationQueued{customer_id: event.customer_id}}
+  def handle(%CopyReserved{} = event, _context) do
+    {:ok, %StockDecreased{isbn: event.isbn, quantity: 1}}
   end
 end
 ```
