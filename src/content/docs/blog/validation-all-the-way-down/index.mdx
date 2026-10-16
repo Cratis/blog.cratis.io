@@ -16,6 +16,8 @@ import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 *[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 07 of 26*
 
+*Revised 2026-10-20: updated for Arc's read protection and the Elixir client's decision reads.*
+
 In the author feature, the rule that a name has at most 200 characters can run in the browser and again on the server. The rule that a name is unique within the organization runs in neither place. Chronicle checks it while it appends the event, and that's the only place where the check still holds when two people press **Register** with the same name at the same moment.
 
 A Cratis application has several places a rule can live, from the TypeScript the proxy generator writes for the browser down to the Chronicle kernel. [*Arc: commands and queries without the plumbing*](/arc-commands-and-queries/) and [*Rules that hold when you write*](/rules-that-hold-when-you-write/) took the command pipeline and the constraints one at a time. A `RegisterAuthor` request meets both, and the layers between them, in a fixed order. Each layer promises something the one before it can't.
@@ -161,7 +163,7 @@ In the browser, Arc's `CommandForm` runs the generated validator and shows the m
 
 Arc runs a command through authorization, validation, `Provide()` and `Handle()`, in that [order](https://cratis.io/arc/backend/csharp/commands/command-pipeline/). In all three implementations, authorization is decided before any validator runs, so a caller who isn't allowed gets a 403 (401 when authentication itself fails) with no validation detail, even when the command is also invalid. In .NET the body says `isAuthorized: false` and carries an empty `validationResults` list.
 
-Validators can take constructor dependencies from the command's scope. In .NET, validation runs as two filters, one for data annotations and one for FluentValidation, which covers the command validator and the walk over concept validators. Every rule in the walk runs, so a form gets all of a command's problems in one response. A filter that fails stops the chain, and the next filter doesn't run.
+Validators can take constructor dependencies from the command's scope. With Arc's read protection On, a read model in a validator's constructor is folded fresh and guards the command's append, and the validator has to be registered by convention so Arc can build it for each command. In .NET, validation runs as two filters, one for data annotations and one for FluentValidation, which covers the command validator and the walk over concept validators. Every rule in the walk runs, so a form gets all of a command's problems in one response. A filter that fails stops the chain, and the next filter doesn't run.
 
 Data annotations have a catch for forms. Arc reports their member as the C# property name, `Name`, and the form matches members exactly against the field's name, `name`. A data-annotation failure from the server therefore doesn't appear under the field, and in the `cratis` template's dialog it doesn't appear at all: the request returns 400 and the dialog stays open without a message. The same goes for a validation result you build yourself with `nameof(Name)`, because Arc sends members you name as written ([Cratis/Arc#2945](https://github.com/Cratis/Arc/issues/2945)). Concept and command validators report `name`.
 
@@ -272,11 +274,11 @@ The member is the string `applicant` in every tab, because that's the field name
 
 `Handle()` can reject too, when the decision itself finds the problem. In C# it returns `Result<AuthorRegistered, ValidationResult>`, and with the Chronicle integration the event is appended only when the result is a success. In Arc for Kotlin and Java, `handle` can return a `ValidationResult`, on its own or as the value an `ArcOneOf` selects, and Arc treats it as a rejection. It can also throw an exception that implements `ValidationFailure`, and Arc turns that into validation results without exposing the exception's message. Arc for TypeScript returns `rejected(...)` for a 400 or `denied(...)` for a 403. Any other exception is a 500. In .NET, a result from `Provide()` goes through the severity filter, and a `ValidationResult` returned from `Handle()` doesn't.
 
-## State is a snapshot
+## State is a snapshot unless it's protected
 
-A rule about current state reads a read model, and Arc can [hand one](https://cratis.io/arc/backend/csharp/chronicle/read-models/injecting-into-commands/) to a validator, `Provide()` or `Handle()`, found by the command's key. What arrives is a snapshot. Another request can append between the read and the write, so two registrations of the same name can both read "not taken" and both pass. The uniqueness rule isn't a validator for that reason.
+A rule about current state reads a read model, and Arc can [hand one](https://cratis.io/arc/backend/csharp/chronicle/read-models/injecting-into-commands/) to a validator, `Provide()` or `Handle()`, found by the command's key. With read protection Off, the default, what arrives is a snapshot, and another request can append between the read and the write. With `<CratisReadProtection>On</CratisReadProtection>`, a read-model parameter is folded fresh from the event log and guards the append for that key. Neither makes a name unique: two registrations of the same name are two different keys, so the uniqueness rule isn't a validator either way.
 
-In .NET, `[ProtectedDecision]` on a command changes what a `DecisionRead<T>` parameter in `Provide()` or `Handle()` means. The read is enrolled in the command's Chronicle unit of work, and if an event that would change it is appended for the same key before the command commits, the command fails with a `concurrencyViolation` result and appends nothing. Arc doesn't retry it. A command opts in with the attribute and reads through `DecisionRead<T>`, and its validator stays parameterless. Renaming a ledger shows the shape:
+In .NET, a command can also opt in on its own with `[ProtectedDecision]`, which changes what a `DecisionRead<T>` parameter in `Provide()` or `Handle()` means. The read is enrolled in the command's Chronicle unit of work, and if an event that would change it is appended for the same key before the command commits, the command fails with a `concurrencyViolation` result and appends nothing. Arc doesn't re-run it. Outside read protection On, such a command's validator stays parameterless. Renaming a ledger shows the shape:
 
 ```csharp
 [Command]
@@ -293,7 +295,9 @@ public class RenameLedgerValidator : CommandValidator<RenameLedger>
 }
 ```
 
-A protected command refuses validators that take constructor dependencies, because their reads aren't part of the guard, and only the projection shapes Chronicle admits for decision reads can be protected. [*Rules that hold when you write*](/rules-that-hold-when-you-write/) covers decision reads and their limits. Arc for Kotlin and Java and Arc for TypeScript have no protected decisions, so a read model there is always a snapshot.
+Under read protection On, the same command needs neither the attribute nor `DecisionRead<T>`: a plain `LedgerBalance` parameter is guarded.
+
+Outside read protection On, a `[ProtectedDecision]` command refuses validators that take constructor dependencies, because their reads aren't part of the guard. Under On, a validator's read-model parameters are guarded like those of `Handle()`. Either way, only the shapes Chronicle admits for decision reads can be protected: flat projections keyed by the event source, and reducers without filters or constructor dependencies. [*Rules that hold when you write*](/rules-that-hold-when-you-write/) covers decision reads and their limits. Arc for Kotlin and Java and Arc for TypeScript have no read protection, so a read model there is always a snapshot.
 
 ## At the append
 

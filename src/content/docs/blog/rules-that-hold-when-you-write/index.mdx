@@ -3,7 +3,7 @@ title: "Event sourcing constraints and concurrency at write time · Script to st
 description: "Enforce rules at write time in an event-sourced system: Chronicle constraints, concurrency scopes, decision reads and Arc aggregates, and what each covers."
 date: 2026-09-30T09:05:00Z
 authors: sindre
-excerpt: "Checking a read model before you append enforces nothing. Constraints, concurrency scopes, decision reads and Arc aggregates check at write time, and each reaches a different set of appends."
+excerpt: "Checking a plain read model before you append enforces nothing. Constraints, concurrency scopes, decision reads, Arc's read protection and Arc aggregates check at write time, and each reaches a different set of appends."
 tags:
   - chronicle
   - arc
@@ -16,11 +16,13 @@ import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 *[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 05 of 26*
 
+*Revised 2026-10-20: updated for Arc's read protection and the Elixir client's decision reads.*
+
 An event-sourced system has no table to put a `UNIQUE` index on. A rule that has to hold at write time has to be checked where the event is committed.
 
 The author feature needs a name to stay unique within the user's organization. Chronicle and Arc have four tools for rules like that, and they differ in what they check, where the check runs and which clients have them.
 
-A read-model race approves "Withdraw 200" twice against a lagging balance in Arc's [bank-account example](https://cratis.io/arc/backend/csharp/chronicle/aggregates/). Neither check was wrong. Both were answered from state that hadn't caught up yet.
+With Arc's read protection Off, the default, a read-model race approves "Withdraw 200" twice against a lagging balance in Arc's [bank-account example](https://cratis.io/arc/backend/csharp/chronicle/aggregates/). Neither check was wrong. Both were answered from state that hadn't caught up yet.
 
 ![A diagram titled Two requests, one name. Two RegisterAuthor cards for Jane Austen, each noting that a check against a lagging read model passes. Both arrows lead into a frame labeled Chronicle kernel, to one constraint card: unique name, UniqueAuthorName, checked at append, per namespace. From the constraint, the first append goes to a green card, admitted, AuthorRegistered, and the second to a red card, constraint violation, nothing appended.](./two-requests-one-name.png)
 
@@ -370,9 +372,9 @@ A violation comes back as a failed append. The result names the constraint and c
 
 ## When one event isn't enough
 
-Uniqueness is the easy invariant. "A member can have at most three books on loan" spans many events, and there you have choices. Chronicle [supports decisions scoped this way](https://cratis.io/chronicle/dynamic-consistency-boundary/), what the community calls a [dynamic consistency boundary](https://dcb.events/), through constraints, concurrency scopes and, in the .NET client, decision reads.
+Uniqueness is the easy invariant. "A member can have at most three books on loan" spans many events, and there you have choices. Chronicle [supports decisions scoped this way](https://cratis.io/chronicle/dynamic-consistency-boundary/), what the community calls a [dynamic consistency boundary](https://dcb.events/), through constraints, concurrency scopes and, in the .NET and Elixir clients, decision reads.
 
-**Concurrency scopes** make an append fail if matching events were appended since you read. By default, the first append into a scope isn't checked unless you opt in, per append with `ExpectingNoMatchingEvent()` in .NET (the JVM and TypeScript clients have an equivalent), or with the `CheckFirstAppendIntoAScope` setting. The Elixir client can't ask for it. The [concurrency docs](https://cratis.io/chronicle/events/concurrency/) have the details.
+**Concurrency scopes** make an append fail if matching events were appended since you read. By default, the first append into a scope isn't checked unless you opt in, per append with `ExpectingNoMatchingEvent()` in .NET (the JVM and TypeScript clients have an equivalent), or with the `CheckFirstAppendIntoAScope` setting. The Elixir client asks for it per scope with `ConcurrencyScope.expecting_no_matching_event/1`, or for every append with the `check_first_append: true` client option. The [concurrency docs](https://cratis.io/chronicle/events/concurrency/) have the details.
 
 **[Decision reads](https://cratis.io/chronicle/read-models/decision-reads/)** fold the read model you decided from and guard the append with it. In .NET, with an order as the example:
 
@@ -418,12 +420,77 @@ Not available in the TypeScript client.
 </TabItem>
 <TabItem label="Elixir">
 
-Not available in the Elixir client.
+With the Elixir client, a workshop with a fixed number of places shows the shape. The read enrolls itself as the guard of the unit of work, and a later booking, cancellation or opening for the same workshop rejects the whole commit:
+
+```elixir
+defmodule MyApp.Events.WorkshopOpened do
+  use Chronicle.Events.EventType, id: "workshop-opened"
+
+  defstruct [:places]
+end
+
+defmodule MyApp.Events.PlaceBooked do
+  use Chronicle.Events.EventType, id: "place-booked"
+
+  defstruct [:attendee]
+end
+
+defmodule MyApp.Events.PlaceCancelled do
+  use Chronicle.Events.EventType, id: "place-cancelled"
+
+  defstruct [:attendee]
+end
+
+# The decision model: a flat projection keyed by the event source.
+defmodule MyApp.ReadModels.WorkshopPlaces do
+  use Chronicle.ReadModels.ReadModel
+
+  defstruct id: nil, total: 0, booked: 0
+
+  from MyApp.Events.WorkshopOpened, set: [id: :event_source_id, total: :places]
+  from MyApp.Events.PlaceBooked, add: [booked: 1]
+  from MyApp.Events.PlaceCancelled, subtract: [booked: 1]
+end
+
+defmodule MyApp.BookPlace do
+  alias Chronicle.EventSequences.EventLog
+  alias Chronicle.ReadModels.{DecisionConflict, DecisionReads}
+  alias MyApp.Events.PlaceBooked
+  alias MyApp.ReadModels.WorkshopPlaces
+
+  def handle(workshop_id, attendee) do
+    result =
+      Chronicle.decide(fn _unit_of_work ->
+        # 1. The read notes the log position, folds the workshop's events and enrolls
+        #    itself as the guard of the unit of work.
+        {:ok, read} = DecisionReads.get(WorkshopPlaces, workshop_id)
+
+        case read.instance do
+          %WorkshopPlaces{total: total, booked: booked} when booked < total ->
+            # 2. The append is buffered and committed with the guard. A later booking,
+            #    cancellation or opening for this workshop rejects the whole commit.
+            :ok = EventLog.append(workshop_id, %PlaceBooked{attendee: attendee})
+            :booked
+
+          _ ->
+            :full
+        end
+      end)
+
+    case result do
+      {:ok, :booked} -> true
+      {:ok, :full} -> false
+      {:error, %DecisionConflict{}} -> false
+      {:error, _reason} -> false
+    end
+  end
+end
+```
 
 </TabItem>
 </Tabs>
 
-It's an optimistic guard, so it doesn't lock and it doesn't retry. The read model has to be a Chronicle projection keyed directly by the event source, with no joins or children, and the cost grows with that key's history.
+It's an optimistic guard, so it doesn't lock, and Chronicle doesn't re-run your decision; the read itself refolds up to three times if events arrive while it folds. The read model has to be a Chronicle projection keyed directly by the event source, with no joins or children, or an unfiltered reducer without constructor dependencies, and the cost grows with that key's history.
 
 **Aggregates**, if you want them, come from Arc and not from Chronicle. An Arc command that uses one:
 
@@ -465,13 +532,13 @@ Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
 </TabItem>
 </Tabs>
 
-Arc discovers the aggregate, loads its history for the command's key before `Handle` runs, and commits its events in the command's transaction. Loading the history isn't, on its own, a concurrency guarantee, and in the published Arc packages aggregates are .NET only. The Arc for TypeScript source preview has an experimental aggregate root.
+Arc discovers the aggregate, loads its history for the command's key before `Handle` runs, and commits its events in the command's transaction. Arc notes the log position when it loads the history and guards the commit with a scope built from it, for the event types the aggregate handles, and in the published Arc packages aggregates are .NET only. The Arc for TypeScript source preview has an experimental aggregate root.
 
 ![A diagram titled Three ways to guard a rule, three columns side by side. Chronicle, unique constraint: checked in the kernel at append, per event sequence and namespace. Chronicle, decision read: the append is guarded by the read it decided from. Arc, aggregate: loads one key's history and commits in the command. A band underneath reads: All three append to the same event log.](./consistency-choices.png)
 
 *Three ways to guard a rule, from narrowest to most familiar.*
 
-We'd reach for a constraint first, a decision read when the rule really spans events, and an aggregate when your team thinks in aggregates and the boundary is genuinely fixed. Arc's own framing helps here. A read model answers "what does this look like now?" and an aggregate answers "is this change allowed?". They compose well. Validate against the read model for a fast, friendly message, and let the write side enforce the invariant.
+We'd reach for a constraint first, a decision read when the rule really spans events, and an aggregate when your team thinks in aggregates and the boundary is genuinely fixed. Arc's own framing helps here. A read model answers "what does this look like now?" and an aggregate answers "is this change allowed?". They compose well. With Arc's read protection Off, the default, a validator over the read model is a fast, friendly message and the write side has to enforce the invariant. With read protection On, the same validator's read is folded fresh and guards the command's append.
 
 ## Concurrency scopes up close
 
@@ -608,7 +675,33 @@ class Accounts {
 </TabItem>
 <TabItem label="Elixir">
 
-The Elixir client can't express an expectation that no event exists yet.
+```elixir
+defmodule MyApp.Events.AccountOpened do
+  use Chronicle.Events.EventType, id: "account-opened"
+
+  defstruct name: ""
+end
+
+defmodule MyApp.Accounts do
+  alias Chronicle.Events.ConcurrencyScope
+  alias MyApp.Events.AccountOpened
+
+  # Per append: ask for the check on one behavior without changing the client's default.
+  def try_open_account(account_id, name) do
+    scope =
+      ConcurrencyScope.expecting_no_matching_event(
+        event_source_id: true,
+        event_types: [AccountOpened]
+      )
+
+    Chronicle.append(
+      account_id,
+      %AccountOpened{name: name},
+      concurrency_scope: scope
+    )
+  end
+end
+```
 
 </TabItem>
 </Tabs>
@@ -699,12 +792,48 @@ async tryOpenPartition(accountId: AccountId, name: PartitionName): Promise<boole
 </TabItem>
 <TabItem label="Elixir">
 
-The Elixir client can't ask the kernel to expect no matching event.
+```elixir
+defmodule MyApp.Events.PartitionOpened do
+  use Chronicle.Events.EventType, id: "partition-opened"
+
+  defstruct name: ""
+end
+
+defmodule MyApp.Partitions do
+  alias Chronicle.Events.ConcurrencyScope
+  alias MyApp.Events.PartitionOpened
+
+  # Per append: ask for the check on one behavior without changing the client's default.
+  def try_open_partition(account_id, name) do
+    scope =
+      ConcurrencyScope.expecting_no_matching_event(
+        event_source_id: true,
+        event_types: [PartitionOpened]
+      )
+
+    Chronicle.append(
+      account_id,
+      %PartitionOpened{name: name},
+      concurrency_scope: scope
+    )
+  end
+end
+```
+
+Application-wide, opt every first append into an empty narrowing into the same check through
+the client's `:concurrency` option:
+
+```elixir
+{Chronicle.Client,
+  connection_string: "chronicle://localhost:35000",
+  event_store: "my-store",
+  concurrency: [default: :optimistic, check_first_append: true]}
+```
 
 </TabItem>
 </Tabs>
 
-Opting in can reject appends that used to succeed, so be ready for violations you've never seen before. A client and kernel on mismatched versions fall back to skipping the check and say so in the log. `ExpectingNoMatchingEvent` is the .NET name. The JVM client has `withExpectsNoMatchingEvent()` on `ConcurrencyScopeBuilder`, and TypeScript takes `EventSequenceNumber.beforeFirst` as the scope's sequence number.
+Opting in can reject appends that used to succeed, so be ready for violations you've never seen before. A client and kernel on mismatched versions fall back to skipping the check and say so in the log. `ExpectingNoMatchingEvent` is the .NET name. The JVM client has `withExpectsNoMatchingEvent()` on `ConcurrencyScopeBuilder`, and TypeScript takes `EventSequenceNumber.beforeFirst` as the scope's sequence number. The Elixir client has `ConcurrencyScope.expecting_no_matching_event/1`.
 
 `AppendMany` takes scopes per event source, so one decision that spans several sources gets a check for each of them in one atomic append.
 
@@ -720,13 +849,13 @@ A [decision read](https://cratis.io/chronicle/read-models/decision-reads/) folds
 
 If an event that could affect the read model is appended for the same event source after the read, the guarded append reports a concurrency violation and appends nothing. An absent model is guarded as well, so a concurrent creation conflicts. An unrelated event type, or another event source, leaves the read valid. On a conflict you read again and resubmit. Chronicle doesn't retry the command, and it takes no global lock.
 
-The admitted shape is narrower than "keyed by the event source". It has to be a single Chronicle projection on the event log, keyed directly by the event source id, with a nonempty, finite set of event types that includes its removal types. Joins, children, nested projections, event-property routing, subscriptions to all events, reducers and other sequences are refused with a typed `DecisionReadRefused`. `IDecisionReads.Admit<T>()` checks the shape without any I/O. GUID keys have to be written in lowercase canonical form by every writer. The other typed refusals are `FoldIncomplete`, `DefinitionMismatch` and `DecisionReadValidateOnlyNotSupported`.
+The admitted shape is narrower than "keyed by the event source". It has to be a single Chronicle projection on the event log, keyed directly by the event source id, with a nonempty, finite set of event types that includes its removal types. Joins, children, nested projections, event-property routing, subscriptions to all events, and other sequences are refused with a typed `DecisionReadRefused`. A reducer or self-reducing read model is admitted when it has no event filter and no constructor dependencies other than `ILogger<T>`. `IDecisionReads.Admit<T>()` checks the shape without any I/O. GUID keys have to be written in lowercase canonical form by every writer. The other typed refusals are `FoldIncomplete`, `DefinitionMismatch` and `DecisionReadValidateOnlyNotSupported`.
 
 Each attempt costs two tail calls, a fresh projection session and a fold over the key's entire history, and a read can take up to three attempts. The first read per model type adds two calls that list definitions. The longer the history, the more a read costs.
 
-Decision reads need kernel 19.0.0 or newer and exist only in the .NET client. A strict unit-of-work lifecycle is opt-in through `UnitOfWorkLifecyclePolicy.Strict` and becomes the default in the next major release. In ASP.NET Core the middleware normally completes the unit after the response has been written, so a conflict is reported too late to change that response. An action can ask for an early commit through `IUnitOfWorkCompletionFeature`.
+Decision reads need kernel 19.0.0 or newer and exist in the .NET and Elixir clients. A strict unit-of-work lifecycle is opt-in through `UnitOfWorkLifecyclePolicy.Strict` and becomes the default in the next major release. In ASP.NET Core the middleware normally completes the unit after the response has been written, so a conflict is reported too late to change that response. An action can ask for an early commit through `IUnitOfWorkCompletionFeature`.
 
-The guard covers the event-log tail for that event source. Revisions, redactions, migration replacements, other sequences, external data and definition changes aren't guarded, and the guard assumes a single, ordered writer to the event log. In [dynamic consistency boundary](https://dcb.events/) terms, decision reads are the concrete .NET API for reading what you decide on and guarding the write with it, next to the constraints, scopes and metadata tags that [Chronicle's DCB support](https://cratis.io/chronicle/dynamic-consistency-boundary/) already rests on.
+The guard covers the event-log tail for that event source. Revisions, redactions, migration replacements, other sequences, external data and definition changes aren't guarded, and the guard assumes a single, ordered writer to the event log. In [dynamic consistency boundary](https://dcb.events/) terms, decision reads are the concrete .NET and Elixir API for reading what you decide on and guarding the write with it, next to the constraints, scopes and metadata tags that [Chronicle's DCB support](https://cratis.io/chronicle/dynamic-consistency-boundary/) already rests on.
 
 ## How an Arc command carries them
 
@@ -912,12 +1041,12 @@ export class OpenAccount {
 </TabItem>
 <TabItem label="Elixir">
 
-Arc for Elixir doesn't exist, and the Chronicle Elixir client can't express an expectation that no event exists yet.
+Arc for Elixir doesn't exist. With the Chronicle Elixir client, set the expectation on the scope with `ConcurrencyScope.expecting_no_matching_event/1`.
 
 </TabItem>
 </Tabs>
 
-`WithdrawFunds` can also decide from a read model instead of an aggregate. Arc resolves the balance by the command's key and passes it to `Handle()`. That balance is a snapshot loaded before `Handle()` runs, so it doesn't stop two concurrent withdrawals from both passing:
+`WithdrawFunds` can also decide from a read model instead of an aggregate. Arc resolves the balance by the command's key and passes it to `Handle()`. With read protection Off, the default, that balance is a snapshot loaded before `Handle()` runs, so it doesn't stop two concurrent withdrawals from both passing. With `<CratisReadProtection>On</CratisReadProtection>` in the project, the same parameter is folded fresh from the event log and guards the append:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
@@ -1005,7 +1134,7 @@ Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
 </TabItem>
 </Tabs>
 
-A [`CommandValidator<T>`](https://cratis.io/arc/backend/csharp/chronicle/validation/) can take the read model Chronicle projected for the command's key and reject the command before `Handle()` runs. How fresh that read model is depends on what backs it, materialized or passive. The rule that must hold needs a constraint or, in .NET, a protected decision read, as in the decision reads above.
+A [`CommandValidator<T>`](https://cratis.io/arc/backend/csharp/chronicle/validation/) can take the read model Chronicle projected for the command's key and reject the command before `Handle()` runs. With Arc's read protection On, that read model is folded fresh from the event log and guards the command's append for the event types it folds on that key. With read protection Off, the default, how fresh it is depends on what backs it, materialized or passive, and the rule that must hold needs a constraint or a guarded read. Read protection is part of Arc for .NET.
 
 ## Aggregates up close
 
@@ -1019,7 +1148,7 @@ Chronicle is designed around constraints and decision-scoped consistency, and it
 
 ## What none of them cover
 
-When an append collides on a duplicate sequence number, the kernel retries it with a new number and doesn't revalidate the scopes. Duplicate grain activations, foreign writers, or an earlier storage outcome that was never resolved can therefore defeat a concurrency scope. Decision reads and aggregates don't replace constraints either. A constraint holds for every writer, and a guard holds only for the appends that declare it.
+When an append collides on a duplicate sequence number, the kernel retries it with a new number, and since Chronicle 19.40.1 it validates the scopes again before it writes. It doesn't run constraints again on that path. On older kernels, duplicate grain activations or an earlier storage outcome that was never resolved could defeat a concurrency scope, and writes that bypass the kernel's append path are never guarded. Decision reads and aggregates don't replace constraints either. A constraint holds for every writer, and a guard holds only for the appends that declare it.
 
 `[Unique]` on the author name is checked by the kernel inside the tenant's namespace, and it holds whichever client or command appends the event. Scopes, decision reads and aggregates earn their place when a rule reaches past one value.
 
