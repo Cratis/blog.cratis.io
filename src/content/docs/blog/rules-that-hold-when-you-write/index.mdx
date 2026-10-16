@@ -374,7 +374,7 @@ A violation comes back as a failed append. The result names the constraint and c
 
 Uniqueness is the easy invariant. "A member can have at most three books on loan" spans many events, and there you have choices. Chronicle [supports decisions scoped this way](https://cratis.io/chronicle/dynamic-consistency-boundary/), what the community calls a [dynamic consistency boundary](https://dcb.events/), through constraints, concurrency scopes and, in the .NET and Elixir clients, decision reads.
 
-**Concurrency scopes** make an append fail if matching events were appended since you read. By default, the first append into a scope isn't checked unless you opt in, per append with `ExpectingNoMatchingEvent()` in .NET (the JVM and TypeScript clients have an equivalent), or with the `CheckFirstAppendIntoAScope` setting. The Elixir client asks for it per scope with `ConcurrencyScope.expecting_no_matching_event/1`, or for every append with the `check_first_append: true` client option. The [concurrency docs](https://cratis.io/chronicle/events/concurrency/) have the details.
+**Concurrency scopes** make an append fail if matching events were appended since you read. By default, the first append into a scope isn't checked unless you opt in, per append with `ExpectingNoMatchingEvent()` in .NET (the JVM and TypeScript clients have an equivalent), or with the `CheckFirstAppendIntoAScope` setting. The Elixir client asks for it per scope with `ConcurrencyScope.expecting_no_matching_event/1`, or for every first append that has no explicit scope, through the client's `concurrency: [default: :optimistic, check_first_append: true]` option. The [concurrency docs](https://cratis.io/chronicle/events/concurrency/) have the details.
 
 **[Decision reads](https://cratis.io/chronicle/read-models/decision-reads/)** fold the read model you decided from and guard the append with it. In .NET, with an order as the example:
 
@@ -490,7 +490,7 @@ end
 </TabItem>
 </Tabs>
 
-It's an optimistic guard, so it doesn't lock, and Chronicle doesn't re-run your decision; the read itself refolds up to three times if events arrive while it folds. The read model has to be a Chronicle projection keyed directly by the event source, with no joins or children, or an unfiltered reducer without constructor dependencies, and the cost grows with that key's history.
+It's an optimistic guard, so it doesn't lock, and Chronicle doesn't re-run your decision; the read itself folds up to three times if events arrive while it folds. The read model has to be a Chronicle projection keyed directly by the event source, with no joins or children, or an unfiltered reducer without constructor dependencies, and the cost grows with that key's history.
 
 **Aggregates**, if you want them, come from Arc and not from Chronicle. An Arc command that uses one:
 
