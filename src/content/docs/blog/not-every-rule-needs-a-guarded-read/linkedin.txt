@@ -1,0 +1,17 @@
+Read protection is the answer for state on a key you read. It is the wrong answer for a unique email, a document two people edit, or a rule you would rather repair later.
+
+A guarded read watches one key's history. Two members registering the same email are two different keys, so no read of either can see the other. That rule belongs in the kernel, as a constraint that is checked inside every append, whoever writes.
+
+The same goes for an editor that saves a document ten minutes after loading it. The revision that matters is the one the user saw, so the command carries it as an explicit scope. A fresh read at save time is ten minutes too late.
+
+The part I'd want to know first: several of these choices fail without an error. An aggregate whose Commit() result is ignored, a command with no event source id, concurrency: true used as if it were a guard. The command succeeds, the tests pass one request at a time, and the rule is broken.
+
+In the post:
+- a flowchart for picking by the shape of the rule
+- constraints, aggregates, explicit scopes, stream decisions, repairs and hints, each with what to never rely on and when it is too much
+- constraints and concurrency scopes in C#, Kotlin, Java, Elixir and TypeScript
+- eight mistakes that fail silently, and the fix for each
+
+https://blog.cratis.io/not-every-rule-needs-a-guarded-read/
+
+#eventsourcing #cqrs #dotnet #cratis #chronicle
