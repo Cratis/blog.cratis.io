@@ -1,0 +1,18 @@
+A guard that is too narrow misses a conflict without a word. One that is too wide rejects good commands. So I wanted to see exactly what a guard is made of.
+
+In Chronicle, it's an append condition: a position in the log plus a filter. The position is the log's tail, taken before the read folds its events, so anything that lands during the fold still counts. The filter is the key you read and the event types the model folds. GetAppendConditions() prints the result after a commit:
+
+guard BankAccount-7: types=[MoneyWithdrawn], streamType=Transactions, streamId=2026-10, after 0
+
+The part that surprised me most is what a second read does. Read October and November of the same account and the stream id disappears from the guard: a withdrawal in December now rejects the commit. Merging only ever widens. It adds conflicts; it can't hide one. If a rule needs two streams, I'd rather read the whole source once, so the guard says what it covers.
+
+In the post:
+- the four parts of a guard, and where each comes from
+- real printed guards for one read, two keys, two months and a whole-source read
+- an explicit scope beside a read, and the refusal when it doesn't cover it
+- declared concurrency on a definition, before and after
+- what a guard can't see: revisions, redactions, unguarded writers, other stores
+
+https://blog.cratis.io/how-a-guard-is-built/
+
+#eventsourcing #cqrs #dotnet #cratis #chronicle
