@@ -86,7 +86,7 @@ See [Part 2](/the-read-model-said-yes/), [Part 3](/one-rule-two-entities/) and A
 
 ### Can a caller skip my validator?
 
-Under `Off` and `Measure`, yes. A model-bound command honours the caller's `X-Allowed-Severity`, and a caller that sends `3` (`Error`) removes the `Error` results of your validators and `Provide()`, unless the command declares `[BlockOnValidationSeverity]`. From Arc ARC_MIN_VERSION, a command declared `On`, in the project or on the command, has an `Error` floor: `Error` and `Unknown` results block whatever the caller sends, and the caller can still let warnings through. The floor follows the declared mode, so a runtime cap doesn't remove it, and a command's own `[BlockOnValidationSeverity]` takes precedence. No threshold turns a `ReadChanged` from the commit into a success. See [Part 5](/when-arc-says-no/) and Arc's [severity filtering](https://cratis.io/arc/backend/csharp/commands/validation-severity-filtering/).
+Under `Off` and `Measure`, yes. A model-bound command honours the caller's `X-Allowed-Severity`, and a caller that sends `3` (`Error`) removes the `Error` results of your validators and `Provide()`, unless the command declares `[BlockOnValidationSeverity]`. From Arc 22.108.0, a command declared `On`, in the project or on the command, has an `Error` floor: `Error` and `Unknown` results block whatever the caller sends, and the caller can still let warnings through. The floor follows the declared mode, so a runtime cap doesn't remove it, and a command's own `[BlockOnValidationSeverity]` takes precedence. No threshold turns a `ReadChanged` from the commit into a success. See [Part 5](/when-arc-says-no/) and Arc's [severity filtering](https://cratis.io/arc/backend/csharp/commands/validation-severity-filtering/).
 
 ### Is Measure a safe place to stay?
 
@@ -190,7 +190,7 @@ For Arc commands, start at [Choosing how a command's rule holds](https://cratis.
 
 For Chronicle without Arc, start at [Dynamic Consistency Boundary](https://cratis.io/chronicle/dynamic-consistency-boundary/), which has a reading order. [Choosing how a rule holds](https://cratis.io/chronicle/dynamic-consistency-boundary/choosing/) picks the mechanism, [DCB in Chronicle](https://cratis.io/chronicle/dynamic-consistency-boundary/chronicle/) says what maps and what doesn't, [How guards are derived](https://cratis.io/chronicle/dynamic-consistency-boundary/how-guards-are-derived/) and [Costs and limits](https://cratis.io/chronicle/dynamic-consistency-boundary/limits/) go into the detail, and its [questions and answers](https://cratis.io/chronicle/dynamic-consistency-boundary/faq/) cover the client's side. The API pages are [Decision reads](https://cratis.io/chronicle/read-models/decision-reads/) and [Read protection](https://cratis.io/chronicle/read-models/read-protection/).
 
-*Read protection as described here needs Arc ARC_MIN_VERSION or later and Chronicle 19.68.0 or later; per-stream read models need Chronicle 19.71.0 or later; decision reads need a Chronicle server of 19.0.0 or later.*
+*Read protection as described here needs Arc 22.108.0 or later and Chronicle 19.68.0 or later; per-stream read models need Chronicle 19.71.0 or later; decision reads need a Chronicle server of 19.0.0 or later.*
 
 ---
 
