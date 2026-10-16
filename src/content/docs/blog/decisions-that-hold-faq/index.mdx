@@ -1,5 +1,5 @@
 ---
-title: "Decisions that hold: questions and a decision guide · Decisions that hold, Part 11"
+title: "Questions and a decision guide · Decisions that hold, Part 11"
 description: "One page to come back to: which mechanism a rule needs, by the shape of the rule, what never to rely on, what is too much, and short answers to the questions the series raised, each linked to the part and the docs that explain it."
 date: 2026-11-17T09:00:00Z
 authors: sindre
@@ -39,7 +39,7 @@ The table has more rows than the questions, because some rules have a shape the 
 | Rich behaviour on one entity | An aggregate root that returns `Commit()` | Ignoring the result of `Commit()` | A read model for each invariant | [7](/not-every-rule-needs-a-guarded-read/) |
 | A rare, repairable violation | The default append and a reactor that repairs | The repair running before the harm | Any guard | [7](/not-every-rule-needs-a-guarded-read/) |
 | A hint on screen ("no copies left") | A query, or `[Unprotected("why")]` on the read | The hint as the rule | A guarded read | [5](/when-arc-says-no/), [7](/not-every-rule-needs-a-guarded-read/) |
-| External data (a price, a tax rate) | Fetch it in `Provide()`; the guard covers your own state | Assuming the external value is guarded | Guarding state you don't decide from | [2](/the-read-model-said-yes/) |
+| External data (a price, a tax rate) | Fetch it in `Provide()`; the guard covers your own state | Assuming the external value is guarded | Guarding state you don't decide from | [7](/not-every-rule-needs-a-guarded-read/#external-data) |
 | A hot key with a long history | A key per period, order or booking, or a constraint | A guarded read on a key that never stops growing | A flat model over years of events | [2](/the-read-model-said-yes/) |
 | Code without Arc (an endpoint, a worker) | A decision read passed to the append, or enrolled in the request's unit of work | A plain `Append` beside it, or an unchecked result | Read protection on a unit of work for one guarded append | [8](/decision-reads-without-arc/) |
 
@@ -104,7 +104,7 @@ Both are `400`s with the reason `concurrencyViolation`, and both mean nothing wa
 
 ### Why does my command return a `500` under On?
 
-The command reads or appends something Arc can't put under a guard: a read model with joins, children or a key taken from an event property, a filtered reducer or one with dependencies, a read through `IReadModels` or the event log inside the command, an immediate `IEventLog.Append`, an aggregate and a read of the same source, or a validator registered by hand. Nothing is written, and submitting again fails the same way, so the code has to change. Outside Development, the message is replaced by a generic one unless `ArcOptions.ExposeExceptionDetails` is set; find the full text in the server log by the result's `correlationId`. ARCCHR0024, ARCCHR0028 and ARCCHR0033 report most of these at build time. See [Part 5](/when-arc-says-no/) and Arc's [refusals](https://cratis.io/arc/backend/csharp/chronicle/consistency/refusals/).
+Usually the command reads or appends something Arc can't put under a guard. The common causes are a read model with joins, children or a key taken from an event property, a filtered reducer or one with dependencies, a read through `IReadModels` or the event log inside the command, an immediate `IEventLog.Append`, an aggregate and a read of the same source, or a validator registered by hand as scoped, as a singleton, or through a factory or an instance (a plain transient registration is fine). [Part 5](/when-arc-says-no/) lists the rest. Nothing is written, and submitting again fails the same way, so the code has to change. Outside Development, the message is replaced by a generic one unless `ArcOptions.ExposeExceptionDetails` is set; find the full text in the server log by the result's `correlationId`. ARCCHR0024, ARCCHR0028 and ARCCHR0033 report most of these at build time. See [Part 5](/when-arc-says-no/) and Arc's [refusals](https://cratis.io/arc/backend/csharp/chronicle/consistency/refusals/).
 
 ### Why was my reducer refused?
 
@@ -182,7 +182,7 @@ In code that calls Chronicle directly with read protection enforced on the unit 
 8. [The same guard without Arc: decision reads and append conditions](/decision-reads-without-arc/). The Chronicle calls underneath, and how they map to the Dynamic Consistency Boundary.
 9. [Testing a decision against a race](/testing-a-race/). Putting a competing write between a command's read and its commit.
 10. [How a guard is built, merged and widened](/how-a-guard-is-built/). Predicting exactly which events make a command fail.
-11. Decisions that hold: questions and a decision guide. This page.
+11. Questions and a decision guide. This page.
 
 ## Where the docs are
 
