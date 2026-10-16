@@ -289,7 +289,7 @@ When a project's report shows only `protected_read`, `advisory_read` with reason
 3. Run the project's tests. Arc's `CommandScenario` picks the in-process event log that supports guarded reads from the command's mode, so the scenarios run the commands under `On`. Part 9 is about testing the race itself.
 4. Exercise every command at least once. Refusals happen when a command runs, not at startup, and a command nobody ran under `Measure` has no report.
 
-From Arc ARC_MIN_VERSION, a command declared `On` also blocks on `Error` and `Unknown` validation results whatever `X-Allowed-Severity` the caller sends ([Part 5](/when-arc-says-no/) explains why). Measure has no category for this, so look for clients that send an allowed severity before you switch.
+From Arc 22.108.0, a command declared `On` also blocks on `Error` and `Unknown` validation results whatever `X-Allowed-Severity` the caller sends ([Part 5](/when-arc-says-no/) explains why). Measure has no category for this, so look for clients that send an allowed severity before you switch.
 
 Under `On`, a validator with read-model parameters has to be registered by convention, so Arc can build a fresh one per command. A validator registered by hand as scoped, singleton, a factory or an instance is refused.
 
@@ -336,7 +336,7 @@ Arc's [Adopting read protection](https://cratis.io/arc/backend/csharp/chronicle/
 
 The next part steps back from read protection. Not every rule needs a guarded read: uniqueness is a constraint, rich behaviour is an aggregate, and some rules are cheaper to repair than to guard.
 
-*Read protection as described here needs Arc ARC_MIN_VERSION or later and Chronicle 19.68.0 or later.*
+*Read protection as described here needs Arc 22.108.0 or later and Chronicle 19.68.0 or later.*
 
 ---
 
