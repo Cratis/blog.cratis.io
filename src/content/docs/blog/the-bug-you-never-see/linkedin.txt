@@ -1,0 +1,21 @@
+One item left in stock. Two customers press Buy a few milliseconds apart. Both orders succeed, the stock column says 0, and nothing in the logs looks wrong.
+
+That's a check-then-act decision: read, check, write. Most business code is full of them. Is there stock? Is the name free? Is the balance enough? Is the slot still open?
+
+Between the check and the write there's a gap, and in most code nothing ties the write to what the check saw. Tests run one request at a time, development has one user, and the result looks like bad data, not a bug. Finance finds it weeks later.
+
+The database defaults don't close it. PostgreSQL and SQL Server default to READ COMMITTED, MySQL InnoDB to REPEATABLE READ, and none of them stops this lost update. And with an ORM, the read and SaveChanges usually aren't even in the same transaction.
+
+In the post:
+- the race, step by step, in plain EF Core
+- what each default isolation level does with it, with links to the vendor docs
+- write skew: the "at most three loans" rule that snapshot isolation lets through
+- unique constraints, conditional updates, concurrency tokens, FOR UPDATE and SERIALIZABLE, and where each one stops
+- why event sourcing and CQRS make it more common, not less
+- a checklist for finding these decisions in your own code
+
+It's Part 1 of Decisions that hold, a series on making decisions still true when they're written.
+
+https://blog.cratis.io/the-bug-you-never-see/
+
+#eventsourcing #cqrs #dotnet #cratis #chronicle
