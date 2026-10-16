@@ -1,0 +1,355 @@
+---
+title: "The same guard without Arc: decision reads and append conditions · Decisions that hold, Part 8"
+description: "Under Arc's read protection is a Chronicle decision read: note the log position, fold the key, append with the read as the guard. How to write that yourself in an endpoint, a controller or a worker, in the .NET and Elixir clients, and what it maps to in DCB terms."
+date: 2026-11-09T09:00:00Z
+authors: sindre
+excerpt: "Under Arc's read protection is one Chronicle call you can make yourself: note where the log was, fold the state, and append only if nothing it depended on arrived since. This part writes that guard by hand, and says exactly what it is in DCB terms and what it is not."
+tags:
+  - chronicle
+  - concurrency
+  - event-sourcing
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+*[Decisions that hold](/the-bug-you-never-see/) · Part 08 of 11*
+
+Parts 2 to 7 let Arc do the work. A command takes a read model, read protection is On, and the read guards the command's append without any code that mentions a guard. Those examples assume read protection is On, as in new Cratis applications (see [Part 2](/the-read-model-said-yes/)).
+
+Not every decision runs as an Arc command. A minimal API endpoint, an MVC controller, a background worker or an Elixir service talks to Chronicle directly, and there nothing enrolls a read for you. The mechanism underneath Arc is a Chronicle API, and you can call it yourself. This part does that, and then uses the result to say concretely what Chronicle's guard is in the terms of the Dynamic Consistency Boundary (DCB), and what it is not.
+
+## What Arc was doing for you
+
+Arc's read protection is a host for Chronicle's decision reads. For each command under On, it does three things:
+
+| In an Arc command under On | In Chronicle's API |
+| --- | --- |
+| A read-model parameter is read fresh | `IDecisionReads.GetFor<T>(unit, key)`: note the log position, fold the key, enroll the read as a guard in the command's unit of work |
+| The events `Handle()` returns are written | Staged in the unit and appended with every enrolled guard in one call |
+| A lost race comes back as a 400 with `ReadChanged` | The unit's commit fails, and `GetDecisionConflicts()` names the read model and key |
+
+Without Arc, those three are yours: take the read as a decision read, attach it to the append, and check the result before you answer the caller. Chronicle's [read protection page](https://cratis.io/chronicle/read-models/read-protection/#how-arc-uses-this-api) has the full mapping.
+
+## A decision read and a guarded append
+
+The smallest form guards one append. A workshop has a fixed number of places, and a booking may only be made while one is free. [Decision reads](https://cratis.io/chronicle/read-models/decision-reads/) exist in the .NET and Elixir clients:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+using Cratis.Chronicle;
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.EventSequences;
+using Cratis.Chronicle.Projections.ModelBound;
+using Cratis.Chronicle.ReadModels;
+
+public record WorkshopId(string Value) : EventSourceId(Value);
+
+[EventType]
+public record WorkshopOpened(int Places);
+
+[EventType]
+public record PlaceBooked(string Attendee);
+
+[EventType]
+public record PlaceCancelled(string Attendee);
+
+// The decision model: a flat projection with an Id, keyed by the event source.
+[FromEvent<WorkshopOpened>]
+public record WorkshopPlaces(
+    string Id,
+    [SetFrom<WorkshopOpened>(nameof(WorkshopOpened.Places))] int Total,
+    [Increment<PlaceBooked>] [Decrement<PlaceCancelled>] int Booked);
+
+public static class BookPlace
+{
+    public static async Task<bool> Handle(IEventStore eventStore, WorkshopId workshop, string attendee)
+    {
+        // 1. The read notes the log position, then folds the workshop's events.
+        var read = await eventStore.GetDecisionReads().GetDetached<WorkshopPlaces>(new ReadModelKey(workshop.Value));
+        if (read.Instance is not { } places || places.Booked >= places.Total)
+        {
+            return false;
+        }
+
+        // 2. The append carries the read as its guard. A later PlaceBooked, PlaceCancelled or
+        //    WorkshopOpened for this workshop rejects it and nothing is written.
+        var result = await eventStore.EventLog.AppendMany(
+            [new EventForEventSourceId(workshop, new PlaceBooked(attendee))],
+            guardedBy: [read]);
+
+        return result.IsSuccess;
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+The Kotlin client does not have decision reads yet.
+
+</TabItem>
+<TabItem label="Java">
+
+The Java client does not have decision reads yet.
+
+</TabItem>
+<TabItem label="Elixir">
+
+```elixir
+defmodule MyApp.Events.WorkshopOpened do
+  use Chronicle.Events.EventType, id: "workshop-opened"
+
+  defstruct [:places]
+end
+
+defmodule MyApp.Events.PlaceBooked do
+  use Chronicle.Events.EventType, id: "place-booked"
+
+  defstruct [:attendee]
+end
+
+defmodule MyApp.Events.PlaceCancelled do
+  use Chronicle.Events.EventType, id: "place-cancelled"
+
+  defstruct [:attendee]
+end
+
+# The decision model: a flat projection keyed by the event source.
+defmodule MyApp.ReadModels.WorkshopPlaces do
+  use Chronicle.ReadModels.ReadModel
+
+  defstruct id: nil, total: 0, booked: 0
+
+  from MyApp.Events.WorkshopOpened, set: [id: :event_source_id, total: :places]
+  from MyApp.Events.PlaceBooked, add: [booked: 1]
+  from MyApp.Events.PlaceCancelled, subtract: [booked: 1]
+end
+
+defmodule MyApp.BookPlace do
+  alias Chronicle.EventSequences.EventLog
+  alias Chronicle.ReadModels.{DecisionConflict, DecisionReads}
+  alias MyApp.Events.PlaceBooked
+  alias MyApp.ReadModels.WorkshopPlaces
+
+  def handle(workshop_id, attendee) do
+    result =
+      Chronicle.decide(fn _unit_of_work ->
+        # 1. The read notes the log position, folds the workshop's events and enrolls
+        #    itself as the guard of the unit of work.
+        {:ok, read} = DecisionReads.get(WorkshopPlaces, workshop_id)
+
+        case read.instance do
+          %WorkshopPlaces{total: total, booked: booked} when booked < total ->
+            # 2. The append is buffered and committed with the guard. A later booking,
+            #    cancellation or opening for this workshop rejects the whole commit.
+            :ok = EventLog.append(workshop_id, %PlaceBooked{attendee: attendee})
+            :booked
+
+          _ ->
+            :full
+        end
+      end)
+
+    case result do
+      {:ok, :booked} -> true
+      {:ok, :full} -> false
+      {:error, %DecisionConflict{}} -> false
+      {:error, _reason} -> false
+    end
+  end
+end
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+The TypeScript client does not have decision reads yet.
+
+</TabItem>
+</Tabs>
+
+`GetDetached` does two things in order. It notes the position of the event log's tail, and then it folds `WorkshopPlaces` for that workshop from the event log in a fresh projection session. It does not use the stored read model, which can lag and has no position. What comes back is the state (`read.Instance`) and the guard (`read` itself), and `guardedBy: [read]` hands the guard to the append. The kernel then rejects the append if an event of a type the model folds (`WorkshopOpened`, `PlaceBooked` or `PlaceCancelled`) was appended for this workshop after the noted position.
+
+![Four numbered steps from top to bottom: note the log position, fold ws-1 as the decision model, decide that Booked is less than Total, append with the condition. The condition for ws-1 lists WorkshopOpened, PlaceBooked and PlaceCancelled after the position from step one. Below it, two outcomes: a PlaceBooked for ws-1 arriving after step one rejects the append and nothing is written; a PlaceBooked for ws-2 does not, because another key is not watched.](./decision-model-append-condition.png)
+
+*The fold is what you decide on. The key, the model's event types and the noted position are what the append is checked against.*
+
+Three details matter when you write this yourself.
+
+- **An absent model is guarded too.** If nothing has opened the workshop, `Instance` is `null` and the guard expects no matching event at all, so a `WorkshopOpened` that lands before the append rejects it. The example returns `false` in that case anyway, but a create-if-absent rule depends on it.
+- **A conflict is a result, not an exception.** `AppendMany` returns an `AppendManyResult` with `IsSuccess` set to `false`, and `result.GetDecisionConflicts([read])` returns one conflict that names `WorkshopPlaces` and the key. `IsSuccess` is also `false` for a constraint violation, so ask for the conflicts when you need to tell the two apart.
+- **Nothing is retried.** Chronicle does not re-run your decision. The fold itself makes up to three attempts if events arrive while it folds, but once you have the value, a lost race means: read again, decide again, or tell the caller.
+
+Events on other keys, or events of a type the model does not fold, such as a hypothetical `WorkshopRenamed`, leave the append alone. The guard is as narrow as the model.
+
+The Elixir client reads inside `Chronicle.decide`. `DecisionReads.get` enrolls the read in the unit of work that `decide` opens, `EventLog.append` buffers the event in that unit, and the unit commits with the guard when the function returns. A lost race comes back as `{:error, %DecisionConflict{}}`.
+
+## Inside a request
+
+`GetDetached` suits code where the read and the append sit next to each other. In a web request they often don't: the read happens in one service, the append in another. In the .NET client, `IDecisionReads.Get<T>` enrolls the read in the request's unit of work instead of returning a detached guard, and every event staged in that unit is appended with the guard when it commits.
+
+A member may hold at most three loans. As a minimal API endpoint, with the loan count as the decision model:
+
+```csharp
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.Projections.ModelBound;
+
+[EventType]
+public record LoanTaken(string Isbn);
+
+public record MemberLoans(
+    EventSourceId Id,
+    [Increment<LoanTaken>] int Active);
+```
+
+```csharp
+using Cratis.Chronicle.AspNetCore.Transactions;
+using Cratis.Chronicle.EventSequences;
+using Cratis.Chronicle.ReadModels;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+
+public record TakeLoanRequest(string Isbn);
+
+public static class LoanEndpoints
+{
+    public static void Map(WebApplication app) =>
+        app.MapPost("/members/{memberId}/loans", async (
+            string memberId,
+            TakeLoanRequest body,
+            HttpContext http,
+            IDecisionReads reads,
+            IEventLog eventLog) =>
+        {
+            var loans = await reads.Get<MemberLoans>(memberId);
+            if (loans.Instance is { Active: >= 3 })
+            {
+                return Results.UnprocessableEntity("The member has reached the loan limit.");
+            }
+
+            await eventLog.Transactional.Append(memberId, new LoanTaken(body.Isbn));
+
+            var unit = await http.Features.Get<IUnitOfWorkCompletionFeature>()!.CommitAsync();
+            if (unit.GetDecisionConflicts().Any())
+            {
+                return Results.Conflict("The member's loans changed. Nothing was written; read again and decide again.");
+            }
+
+            return unit.IsSuccess ? Results.Ok() : Results.UnprocessableEntity("The loan was not recorded.");
+        });
+}
+```
+
+Chronicle's ASP.NET Core middleware begins a unit of work for each request, and `Get<T>` needs that ambient unit. `Transactional.Append` stages the event in it. The line that is easy to leave out is the commit. Left alone, the middleware commits the unit after the endpoint has returned, when the response is already on its way, and it reports no concurrency violation to the caller. The caller would see a 200 for a write that was rejected. `IUnitOfWorkCompletionFeature.CommitAsync()` asks the middleware's owner to commit now, so the endpoint can answer with the outcome, and the middleware does not commit that unit again.
+
+When another loan for the same member lands between the read and the commit, this endpoint answers 409, and the member's log has the competing loan and not this one. A member who already holds three gets the 422 before anything is staged. The conflict check comes before `IsSuccess` because `IsSuccess` is also `false` for a constraint violation. And the 409 carries a message, not the conflicts themselves: a `DecisionConflict` holds the read model's `Type`, which System.Text.Json refuses to serialize, so `Results.Conflict(unit.GetDecisionConflicts())` fails while it writes the response, on exactly the path you wanted to report.
+
+One mistake undoes it quietly: a plain `eventLog.Append(...)` in the same request is written immediately and bypasses the guard. A controller action uses the same calls, with `HttpContext.Features` instead of the `http` parameter; Arc's [Chronicle used directly](https://cratis.io/arc/backend/csharp/chronicle/consistency/scenarios/chronicle-direct/) page has both. In Elixir, `Chronicle.decide` commits when its function returns, so the outcome is known while you can still choose the response.
+
+## In DCB terms
+
+DCB, as the [specification](https://dcb.events/specification/) describes it, gives every event a set of tags. A decision builds its state, the decision model, from a query: event types (any of them) and tags (all of them). When it appends, it passes an append condition: fail if an event matching that query was stored after the position the decision read up to. One event can carry several tags, so a fact about a student and a course is one event that both decisions see.
+
+Chronicle has the same two parts, a decision model and an append condition, but not the tags. Each event belongs to exactly one event source. The role of the tags is played by four values on every event, each with exactly one value: the event source ID, the event source type, the event stream type and the event stream ID. For the workshop read above, the query is "`WorkshopOpened` or `PlaceBooked` or `PlaceCancelled`, with event source ID `ws-1`", and the position is the one noted before the fold.
+
+| DCB | Chronicle |
+| --- | --- |
+| Decision model | The state of a decision read: a flat projection keyed by the event source, over a finite set of event types |
+| Query: event types ORed, tags ANDed | The read model's event types, and the event source ID plus, where you narrow it, event source type, stream type and stream ID |
+| `after`: the position the decision read up to | The position the decision read notes before it folds |
+| Append condition | `guardedBy:` on `AppendMany`, or the reads enrolled in a unit of work |
+| Atomic append across entities | `AppendMany`, all or nothing across event sources. A unit of work commits as one `AppendMany` |
+
+What DCB can do and Chronicle cannot follows from the one-source-per-event model. One event can't be tagged with two entities, so a fact about two entities is two events in one atomic `AppendMany`, one per event source. There is no query for "events about both X and Y". Custom tags are stored and filterable, but take no part in concurrency, so anything the guard must tell apart has to be an event type or one of the four values. Two independent conditions on the same event source are merged into one wider one. A decision read refuses a projection that joins entities or is keyed by something other than the event source. And a guard covers the event log only, not other event sequences.
+
+Chronicle's own summary is the sentence I'd keep: it supports DCB-style decision models and append conditions within its event-source model. It is not a DCB event store. The [DCB in Chronicle](https://cratis.io/chronicle/dynamic-consistency-boundary/chronicle/) page has the full mapping and says when recording one fact as two events is acceptable, and [DCB examples in Chronicle](https://cratis.io/chronicle/dynamic-consistency-boundary/dcb-examples/) answers each canonical DCB example, including the course subscription with two decision reads and two events.
+
+## When no model fits: tail first
+
+Some decisions don't fit an admitted read model: a balance summed from two event types with no projection for it, or a rule over raw events. You can build the same guard by hand. Note the tail first, read the facts after, and append with a concurrency scope from the noted tail. In the .NET client:
+
+```csharp
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.EventSequences;
+using Cratis.Chronicle.EventSequences.Concurrency;
+using Microsoft.AspNetCore.Http;
+using ScopeBuilder = Cratis.Chronicle.EventSequences.Concurrency.ConcurrencyScopeBuilder;
+
+[EventType]
+public record Deposited(decimal Amount);
+
+[EventType]
+public record Withdrawn(decimal Amount);
+
+public static class Withdraw
+{
+    public static async Task<IResult> Handle(IEventLog eventLog, EventSourceId accountId, decimal amount)
+    {
+        var tail = await eventLog.GetTailSequenceNumber(accountId);
+        var events = await eventLog.GetFromSequenceNumber(EventSequenceNumber.First, accountId);
+        var balance = events.Select(_ => _.Content).Sum(content => content switch
+        {
+            Deposited deposited => deposited.Amount,
+            Withdrawn withdrawn => -withdrawn.Amount,
+            _ => 0m
+        });
+
+        if (balance < amount)
+        {
+            return Results.UnprocessableEntity("Insufficient funds.");
+        }
+
+        var scope = tail.IsUnavailable
+            ? new ScopeBuilder().WithEventSourceId(accountId).ExpectingNoMatchingEvent().Build()
+            : new ConcurrencyScope(tail, EventSourceId: accountId);
+
+        var result = await eventLog.Append(accountId, new Withdrawn(amount), concurrencyScope: scope);
+        return result.IsSuccess ? Results.Ok() : Results.Conflict();
+    }
+}
+```
+
+The order is the guard. With the tail noted before the read, a withdrawal that lands in between is after the scope's position and rejects the append. Note the tail after the read instead, and that same withdrawal sits before the position: the append succeeds against a balance that no longer holds. When the account has no events yet, the tail is unavailable, and the scope expects no matching event at all.
+
+This scope is wider than a decision read's guard: it names no event types, so any event for the account after the tail rejects the append. That is safe, and more conflicts than you need on a busy account. Name the types with `WithEventType<T>()` on the builder when only some events matter. The alias at the top is there because in an Arc project `Cratis.Arc.Chronicle.Commands` has a static class called `ConcurrencyScopeBuilder` as well. [Part 7](/not-every-rule-needs-a-guarded-read/) shows a concurrency scope in every Chronicle client.
+
+## Results you must check
+
+Outside an Arc command, nothing reads the result for you, and every failure on this path is a value.
+
+- `Append` returns an `AppendResult` and `AppendMany` an `AppendManyResult`. A concurrency or constraint violation sets `IsSuccess` to `false` and throws nothing, so code that ignores the result reports success whatever happened.
+- `GetDecisionConflicts` tells a lost race from a constraint violation and names the read model and key. It does not name the event that conflicted.
+- A scope with neither a sequence number nor `ExpectingNoMatchingEvent()` is not a guard. The kernel skips it and the append succeeds with `ConcurrencyCheckPerformed` set to `false`. A skipped check does not look like a failed one.
+- The first event into a new event source or stream has no tail to compare against, and by default Chronicle skips that check. A decision read of an absent model already expects no matching event. For your own scopes, use `ExpectingNoMatchingEvent()`, as `Withdraw` does.
+
+## Limits
+
+A decision read guards less than it might seem to, and costs more than a plain read.
+
+- **Only some models can be read this way.** A flat projection keyed by the event source, or an unfiltered reducer without constructor dependencies other than `ILogger<T>`. Joins, children, event-property keys, filtered reducers and other event sequences are refused with `DecisionReadRefused` and a typed reason, before anything is read.
+- **GUID keys must be written the same way everywhere.** For a model keyed by a GUID, every writer of that event source must use the lowercase canonical form. A writer in another language that formats it differently is outside the guard.
+- **It is a full fold every time.** Each attempt makes two tail reads, opens a fresh projection session and folds the key's whole history. The first read of a model type also checks its definition. Keep the keys short-lived. Chronicle's docs publish [one measurement with its environment](https://cratis.io/chronicle/dynamic-consistency-boundary/limits/#what-a-decision-read-costs).
+- **What it does not see.** A revision or redaction of an earlier event does not move the tail, so it does not conflict. Other event sequences, external data, clocks and projection definitions changed by another process are not guarded either. And a guard only protects the decisions that carry it: a writer that appends without one can still break the rule. The rule holds only when every writer that decides on it is guarded, or when it is a [constraint](https://cratis.io/chronicle/constraints/), which the kernel checks for every append.
+
+## Where this goes next
+
+Everything here is opt-in, append by append. That is the trade: code that calls Chronicle directly chooses each guard, and nothing stops the next change from reading through `IReadModels` and appending without one. Chronicle's `EnforceReadProtection()` turns that around for a unit of work: inside it, a decision read is enrolled as a guard, a plain read is refused unless you mark it advisory with a reason, and an immediate append is refused. That is the contract Arc enforces for commands under On. Part 10 covers that, and how guards from several reads are merged. Part 9 is first: testing a decision against a competing write.
+
+:::tip[What to do when]
+- **One read, one append:** `GetDetached<T>(key)`, then `AppendMany(…, guardedBy: [read])`, then check `IsSuccess` and `GetDecisionConflicts([read])`.
+- **The read and the append are in different places in a request:** `IDecisionReads.Get<T>` in the request's unit of work, `Transactional.Append`, and `IUnitOfWorkCompletionFeature.CommitAsync()` before you respond.
+- **In Elixir:** `DecisionReads.get` inside `Chronicle.decide`, and match on `{:error, %DecisionConflict{}}`.
+- **No read model fits:** note the tail, then read, then append with a `ConcurrencyScope` built from that tail.
+- **A value may be claimed once:** a [constraint](https://cratis.io/chronicle/constraints/), not a decision read.
+- **You need every read refused unless it is guarded:** `EnforceReadProtection()` on the unit of work (Part 10), or an Arc command with read protection On.
+:::
+
+Chronicle's [decision reads](https://cratis.io/chronicle/read-models/decision-reads/) page covers the unit-of-work lifecycle, stream-scoped reads and admitted shapes in full. [Choosing how a rule holds](https://cratis.io/chronicle/dynamic-consistency-boundary/choosing/) compares decision reads with constraints and scopes, and Arc's [pitfalls](https://cratis.io/arc/backend/csharp/chronicle/consistency/pitfalls/#results-you-must-check-when-you-use-chronicle-directly) page lists the results to check when you call Chronicle directly.
+
+*Decision reads need a Chronicle server of 19.0.0 or later.*
+
+---
+
+- Previous: [Part 07 — Not every rule needs a guarded read](/not-every-rule-needs-a-guarded-read/)
