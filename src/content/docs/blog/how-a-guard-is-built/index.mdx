@@ -141,7 +141,7 @@ guard BankAccount-7: types=[MoneyWithdrawn], streamType=Transactions, streamId=2
 
 Read it left to right. `BankAccount-7` is the event source, whose events count. `types=[…]` lists the event type ids that count. For a .NET `[EventType]` record without an explicit id, that's the type name. `streamType` and `streamId` narrow it to one stream of the source. `after 0` is the position: an event that matches everything before it and lands after position 0 rejects the append. On an empty log the boundary prints as `no matching event` instead, which is how "create it only if nothing like it exists yet" holds.
 
-The condition also says where it came from. `Origins` is `[ProtectedRead, DefaultRouting]` and `Reads` is `[MonthlyWithdrawals 'BankAccount-7']`: the read gave the guard its filter and position, and the ordinary optimistic check for an append to that source was merged into it. A source the command reads but doesn't append to carries only `ProtectedRead`.
+The condition also says where it came from. `Origins` is `[ProtectedRead, DefaultRouting]` and `Reads` is `[MonthlyWithdrawals 'BankAccount-7']`: the read gave the guard its filter and position, and it replaces the ordinary optimistic check for an append to that source. `DefaultRouting` only records that the append's routing was taken into account; it adds nothing to the filter. A source the command reads but doesn't append to carries only `ProtectedRead`.
 
 ## The parts of a guard
 
@@ -174,7 +174,7 @@ The rejection is a `ConcurrencyViolation` with the event source and the expected
 
 ## Several reads
 
-A command often reads more than once. The unit of work collects every read, any explicit scope you pass, and the routing of the events you append, and merges them per event source when you commit:
+A command often reads more than once. The unit of work collects every read, any explicit scope you pass, and the routing of the events you append, and merges them per event source when you commit. Only routing a definition declares joins the merge; ordinary routing leaves the reads' guard as it is:
 
 ![A diagram titled How a commit's guard is assembled. On the left, a frame labeled In the unit of work holds three cards: Decision reads, key plus types, tail taken first; Explicit scope, your scope, must cover reads; Definition, declared routing, its dimensions. Arrows from all three lead to a tall card labeled Per source, Merge, union of types, and from there to a card labeled Per source, One guard, with the append. A band underneath reads One condition fails: nothing in the batch is written.](./how-guards-merge.png)
 
@@ -242,7 +242,7 @@ public class LedgerEventSource : IEventSource;
 public record LedgerPosted(decimal Amount);
 ```
 
-Read a per-month model of `LedgerPosted` for `2026-10` and stage the posting without the definition's routing, and the guard is the read's own:
+Read a per-month model of `LedgerPosted` for source type `Ledger`, `Transactions/2026-10`, then stage the posting without the definition's routing. The read passes the source type along with the stream type and stream id, so the guard is the read's own, with origins `[ProtectedRead, DefaultRouting]`:
 
 ```text
 guard BankAccount-7: types=[LedgerPosted], sourceType=Ledger, streamType=Transactions, streamId=2026-10, after 0
@@ -278,13 +278,7 @@ Two more dependencies supply guards in Arc, and both fit the same shape:
 
 ## What a guard cannot see
 
-A guard compares events appended after a position with a filter. Anything that isn't an appended event matching the filter is outside it:
-
-- **Revisions and redactions.** Revising or redacting an earlier event doesn't move the tail, so a decision made before the change can still commit. Chronicle refuses `Revise` and `Redact` inside a read-protection frame, so a protected command can't do it to itself, but another process can. [Chronicle#4900](https://github.com/Cratis/Chronicle/issues/4900) tracks a kernel check.
-- **Writers without a guard.** A guarded commit detects a competing event whoever appended it. An unguarded writer's own decision isn't protected and can still break the rule.
-- **A projection definition changed in another process.** The read folds with the definition this client registered. Quiesce commands during a projection deploy.
-- **Other event sequences, external services and other databases.** A guard covers the event log it was read from.
-- **A command that appends nothing.** A guard that exists only because of a read sends nothing; `GetAppendConditions()` is empty. No write means nothing to protect.
+A guard compares events appended after a position with a filter, so anything that isn't an appended event matching that filter is outside it: revisions and redactions, writers without a guard, projection definitions changed elsewhere, other sequences and stores. [Part 8](/decision-reads-without-arc/) and [Part 9](/testing-a-race/) list these in full. Two details follow from the anatomy. Chronicle refuses `Revise` and `Redact` inside a read-protection frame, so a protected command can't do them to itself ([Chronicle#4900](https://github.com/Cratis/Chronicle/issues/4900) tracks a kernel check for other processes). And a command that reads but appends nothing has no guard at all: `GetAppendConditions()` is empty.
 
 Guards also have a cost shape worth knowing. Each guarded read folds the key's history of the model's types, every time, and folds of one model type are served through one projection per type in the kernel, so they are expected to queue behind each other across keys and tenants. Chronicle's [costs and limits](https://cratis.io/chronicle/dynamic-consistency-boundary/limits/) page has the one measurement published so far, with its environment. Keep guarded models flat and keys short-lived.
 
