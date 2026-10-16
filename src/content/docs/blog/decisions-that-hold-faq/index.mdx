@@ -148,7 +148,7 @@ Yes. In the .NET client, `GetDecisionReads().GetDetached<T>(key)` notes the posi
 
 ### Is this the Dynamic Consistency Boundary?
 
-Chronicle supports DCB-style decision models and append conditions within its event-source model. It is not a DCB event store. Each event belongs to one event source, and the event source ID, event source type, event stream type and event stream ID play the part of tags, with one value each. Custom tags take no part in consistency, and a fact about two entities is two events in one atomic append. See [Part 8](/decision-reads-without-arc/) and [DCB in Chronicle](https://cratis.io/chronicle/dynamic-consistency-boundary/chronicle/).
+Chronicle supports DCB-style decision models and append conditions within its event-source model. It is not a DCB event store. Each event belongs to one event source, and the event source ID, event source type, event stream type and event stream ID play the part of tags, with one value each. Custom tags take no part in consistency, and a fact about two entities is two events in one atomic append. See [Part 8](/decision-reads-without-arc/), Einar's [DCB, but not DCB](/dcb-but-not-dcb/) and [DCB in Chronicle](https://cratis.io/chronicle/dynamic-consistency-boundary/chronicle/).
 
 ## Questions about testing and seeing the guard
 
