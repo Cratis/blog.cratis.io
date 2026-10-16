@@ -1,0 +1,853 @@
+---
+title: "Not every rule needs a guarded read · Decisions that hold, Part 7"
+description: "A guarded read is one way to make a rule hold. A unique value is a constraint, rich behaviour is an aggregate, an editing conflict is an explicit scope, and some rules are cheaper to repair. What each one guards, when it is too much, and the mistakes that fail without an error."
+date: 2026-11-05T09:00:00Z
+authors: sindre
+excerpt: "Read protection is the answer for state on a key you read. It is the wrong answer for a unique email, a document two people edit, or a rule you would rather repair later. Pick by the shape of the rule, and know which choices fail silently."
+tags:
+  - arc
+  - chronicle
+  - concurrency
+  - constraints
+  - event-sourcing
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+*[Decisions that hold](/the-bug-you-never-see/) · Part 07 of 11*
+
+The last five parts made one tool dependable. A command takes a read model, read protection is On, the read is folded fresh, and if an event the model folds arrives for that key before the commit, nothing is written. That is the right tool when the rule is about state on a key the command reads: the copies of one book, the loans of one member, one account's withdrawals in one month.
+
+It is the wrong tool for a lot of other rules. A guarded read can't make an email unique, because two members registering the same address are two different keys. It doesn't know which revision of a document the user was looking at when they pressed save. And it costs a fold of the key's history on every command, which a rule you would rather repair afterwards doesn't need to pay. This part goes through the alternatives: what each one guards, when it is too much, and the mistakes that make a rule stop holding without any error.
+
+The examples assume read protection is On, as in new Cratis applications (see [Part 2](/the-read-model-said-yes/)). Read protection, aggregates and the commands are part of Arc for .NET. Constraints, concurrency scopes and reactors are Chronicle, and those examples come in every Chronicle client that has them.
+
+## Start from the rule, not the tool
+
+Arc's [guide to choosing how a rule holds](https://cratis.io/arc/backend/csharp/chronicle/consistency/) has a flowchart. It reads well as a list of questions, asked in order, where the first yes picks the mechanism:
+
+![Seven numbered questions on the left, each with an arrow to a mechanism on the right. One: a value or event once? Constraint. Two: no stored state needed? Stateless validator. Three: fine to repair later? Reactor repair. Four: client sent a revision? Explicit scope. Five: one entity, many rules? Aggregate root. Six: one routed stream? Stream model or decision. Seven: otherwise, a guarded read under On. A line below reads: ask in order, the first yes picks the tool.](./pick-by-rule-shape.png)
+
+*Ask in order. A guarded read is what is left when none of the other shapes fits.*
+
+The order matters. A constraint comes first because it needs no read at all: the kernel checks it inside every append, whoever writes. A rule that needs no stored state ("the title is not empty") needs no guard either. Repair comes before every guard because when a short violation is acceptable, any guard is cost without benefit. The rest are guards of different shapes, and a guarded read is the general one at the bottom.
+
+Each section below ends with two things: what the mechanism must never be relied on for, and when it is too much. "Never rely on" means the mechanism can fail silently: the command succeeds and the rule is broken.
+
+## A unique value: a constraint
+
+A unique email is the classic check-then-act rule. A validator asks "is this email taken?", the answer is no, and the command appends. Two requests with the same email both get "no". Turning read protection On doesn't change that. A guard watches the history of the key the command read, and the key here is the new member. A registration command has no member id yet, so each call starts a new member, and no read of one new member can see another.
+
+The rule belongs in the kernel, as a constraint on the event:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.Events.Constraints;
+
+[EventType]
+public record MemberRegistered([property: Unique(message: "A member with this email address is already registered.")] string Email, string Name);
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+// Requires io.cratis:chronicle 6.5.0 or later.
+import io.cratis.chronicle.constraints.Unique
+import io.cratis.chronicle.events.EventType
+
+@EventType
+data class MemberRegistered(
+    @Unique(message = "A member with this email address is already registered.") val email: String,
+    val name: String
+)
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+// Requires io.cratis:chronicle 6.5.0 or later.
+import io.cratis.chronicle.constraints.Unique;
+import io.cratis.chronicle.events.EventType;
+
+@EventType
+record MemberRegistered(
+    @Unique(message = "A member with this email address is already registered.") String email, String name) {}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+```elixir
+defmodule MyApp.Events.MemberRegistered do
+  use Chronicle.Events.EventType, id: "member-registered"
+
+  defstruct [:email, :name]
+
+  unique(:email, message: "A member with this email address is already registered.")
+end
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { eventType, unique } from '@cratis/chronicle';
+
+@eventType('member-registered')
+class MemberRegistered {
+    @unique(undefined, 'A member with this email address is already registered.') email = '';
+    name = '';
+}
+```
+
+</TabItem>
+</Tabs>
+
+The client registers the constraint when it connects, and the kernel keeps an index of the values. Every append of `MemberRegistered` is checked against that index inside the append, so of two registrations with the same email, one is written and the other is rejected, whatever the timing and whoever sends them. A value belongs to an event source: the same member may append its own email again, and a new email replaces its previous claim and frees the old one.
+
+"Once per entity" is the same mechanism on the event type instead of a property. One library card per member:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.Events.Constraints;
+
+[EventType]
+[Unique(name: "OneLibraryCard", message: "This member already has a library card.")]
+public record LibraryCardIssued(string CardNumber, string HolderName);
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+// Requires io.cratis:chronicle 6.5.0 or later.
+import io.cratis.chronicle.constraints.Unique
+import io.cratis.chronicle.events.EventType
+
+@EventType
+@Unique(id = "OneLibraryCard", message = "This member already has a library card.")
+data class LibraryCardIssued(val cardNumber: String, val holderName: String)
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+// Requires io.cratis:chronicle 6.5.0 or later.
+import io.cratis.chronicle.constraints.Unique;
+import io.cratis.chronicle.events.EventType;
+
+@EventType
+@Unique(id = "OneLibraryCard", message = "This member already has a library card.")
+record LibraryCardIssued(String cardNumber, String holderName) {}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+```elixir
+defmodule MyApp.Events.LibraryCardIssued do
+  use Chronicle.Events.EventType,
+    id: "library-card-issued"
+
+  defstruct [:card_number, :holder_name]
+
+  # Elixir supports a custom constraint name, but not a custom violation message.
+  unique_event_type(name: "OneLibraryCard")
+end
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { eventType, unique } from '@cratis/chronicle';
+
+@eventType('library-card-issued')
+@unique('OneLibraryCard', 'This member already has a library card.')
+class LibraryCardIssued {
+    cardNumber = '';
+    holderName = '';
+}
+```
+
+</TabItem>
+</Tabs>
+
+An Arc command that returns either event needs nothing else. When the kernel rejects the append, Arc turns the violation into a validation result with the reason `constraintViolation` and your message:
+
+```text
+reason:  constraintViolation
+message: A member with this email address is already registered.
+```
+
+A constraint has its own limits, and they are different from a guard's. It is checked per event sequence and per namespace, so tenants in different namespaces can claim the same value. If the index update fails after an append is already durable, Chronicle logs it, and a later duplicate can pass until the index is rebuilt. A value that may change, or be given up, is released with a removal event marked `[RemoveConstraint]`. And it is a fixed rule about values: it can't count, so "at most three loans" is not a constraint. [Chronicle's constraints documentation](https://cratis.io/chronicle/constraints/) covers removal, grouping and scoping, and Einar's post on [how Chronicle constraints work](/invariants-at-write-time-with-chronicle-constraints/) explains why the check lives in the kernel.
+
+**Never rely on** a validator that asks whether the value exists. **Too much:** read protection added only to make a value unique. It costs a fold and still doesn't do it.
+
+## Rich behaviour: an aggregate
+
+When one entity has many rules and state transitions, the rules can be easier to write as methods on the entity than as one validator per rule. A copy of a book that is lent to one member at a time, with more rules to follow:
+
+```csharp
+using Cratis.Arc.Chronicle.Aggregates;
+using Cratis.Arc.Commands.ModelBound;
+using Cratis.Chronicle.Events;
+using Cratis.Concepts;
+
+public record MemberId(Guid Value) : ConceptAs<Guid>(Value);
+
+public record CopyId(string Value) : EventSourceId(Value);
+
+[EventType]
+public record CopyLent(MemberId Member);
+
+[EventType]
+public record CopyReturned();
+
+public class Copy : AggregateRoot
+{
+    bool _lent;
+
+    public async Task Lend(MemberId member)
+    {
+        if (_lent)
+        {
+            Failed("The copy is already lent.");
+            return;
+        }
+
+        await Apply(new CopyLent(member));
+    }
+
+    public void OnCopyLent(CopyLent @event) => _lent = true;
+
+    public void OnCopyReturned(CopyReturned @event) => _lent = false;
+}
+
+[Command]
+public record LendCopy(CopyId Copy, MemberId Member)
+{
+    public async Task<AggregateRootCommitResult> Handle(Copy copy)
+    {
+        await copy.Lend(Member);
+        return await copy.Commit();
+    }
+}
+```
+
+An aggregate carries its own guard. Arc rehydrates `Copy` from the copy's events and notes the position of the log's tail at that moment. The commit is guarded from that position, for the event types the aggregate handles:
+
+```text
+guard copy-1: types=[CopyLent, CopyReturned], after <tail when the aggregate was rehydrated>
+```
+
+That is notation, not output. If another `CopyLent` lands on the copy between the rehydration and the commit, nothing is written. A new aggregate expects an empty history, so two commands that both create it can't both succeed.
+
+Return the result of `Commit()`. `Failed(...)` only records the failure; `Commit()` turns it into a result. A handler that awaits `Commit()` and throws the result away reports success for a copy that was already lent, and nothing reports that mistake.
+
+Under On, an aggregate and a read model of the same event source in one command are refused with `ReadAndAggregateOnSameSource`, a `500`, and [ARCCHR0033](https://cratis.io/arc/backend/csharp/chronicle/code-analysis/arcchr0033/) warns about it at build time. Decide from the aggregate's own state instead. A read model of a different source, the member for example, is fine; each gets its own guard.
+
+The aggregate's guard covers its own event source only. Two aggregates for two keys each guard their own, which is not a rule across both; that takes two read models, as in [Part 3](/one-rule-two-entities/). An aggregate also has no snapshots, so every command reads the key's handled events again, and a key with a long history gets slower with every event.
+
+**Never rely on** a `Commit()` whose result you don't return. **Too much:** a read model for each invariant of an entity that has a dozen.
+
+## Two people editing: an explicit scope
+
+Some conflicts are not about state the server reads. An editor loads a document at some revision, the user works on it for ten minutes, and presses save. The question is whether anyone changed it since the revision the user saw, and only the client knows that revision. A guarded read in the command reads the document fresh at save time, which is ten minutes too late.
+
+The command takes the revision as input and returns an explicit concurrency scope built from it:
+
+```csharp
+using Cratis.Arc.Commands.ModelBound;
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.EventSequences;
+using Cratis.Chronicle.EventSequences.Concurrency;
+
+public record DocumentId(string Value) : EventSourceId(Value);
+
+[EventType]
+public record DocumentTitleChanged(string Title);
+
+[Command]
+public record RenameDocument(DocumentId Document, string Title, ulong ExpectedRevision)
+{
+    public EventsWithConcurrencyScopes Handle() => new(
+        [new(Document, new DocumentTitleChanged(Title))],
+        [new(Document, new ConcurrencyScope(
+            new EventSequenceNumber(ExpectedRevision),
+            EventSourceId: Document,
+            EventTypes: [typeof(DocumentTitleChanged).GetEventType()]))]);
+}
+```
+
+```text
+guard doc-1: types=[DocumentTitleChanged], after <ExpectedRevision>
+```
+
+The append fails if any `DocumentTitleChanged` for this document has a sequence number above `ExpectedRevision`. The caller gets a validation result with the reason `concurrencyViolation`. With two title changes at sequence numbers 0 and 1, and a client that last saw revision 0, the message reads:
+
+```text
+Event source 'doc-1' has new events since the command read it: expected events up to sequence number 0, but it has events up to sequence number 1. Read it again and resubmit.
+```
+
+How the client learns the revision is up to your read model and query. Whatever you choose, the scope is only as strong as that number. The client chooses it, and a revision at or ahead of the log's tail passes the check. For an editing conflict that is acceptable: a client that lies about its revision only overwrites a change its own user never saw. For a rule that protects someone else, such as an authorization or a limit, it is not. Resolve that revision on the server while handling the command, as Arc's [notes on exact scopes](https://cratis.io/arc/backend/csharp/chronicle/commands/events/#events-with-exact-concurrency-scopes) say; otherwise the caller chooses which version of the fact the command is checked against.
+
+Two related shapes look similar and are not. `concurrency: true` on `[EventSourceType]`, `[EventStreamType]` or `[EventStreamId]` narrows the default check, but that check reads the tail after `Handle()`, so it can never carry the revision the user saw. And if the same command also takes a read model of the document, the scope must cover what that read watches and must not be captured after it; otherwise the command is refused with `ExplicitScopeDoesNotCoverReads`, which [ARCCHR0036](https://cratis.io/arc/backend/csharp/chronicle/code-analysis/arcchr0036/) reports at build time.
+
+Without Arc, the scope goes on the append itself, and your code reads the result. Chronicle's own example is the other common scope: opening an account, where the append must fail if the account already exists. Each client asks the kernel for that as an explicit expectation that no matching event exists, not as a sequence number:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+using Cratis.Chronicle;
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.EventSequences;
+using Cratis.Chronicle.EventSequences.Concurrency;
+
+public static class ConcurrencyFirstAppendCheckSetup
+{
+    // Application-wide: every first append into a scope the optimistic strategy resolves is checked.
+    public static void ConfigureChronicle(ChronicleOptions options) =>
+        options.ConcurrencyOptions.CheckFirstAppendIntoAScope = true;
+}
+
+[EventType]
+public record ConcurrencyFirstAppendPartitionOpened(string Name);
+
+public class ConcurrencyFirstAppendPartitionService(IEventLog eventLog)
+{
+    // Per append: ask for the same check on one behavior, without turning it on everywhere.
+    public async Task<bool> TryOpenPartition(EventSourceId accountId, string name)
+    {
+        var concurrencyScope = new ConcurrencyScopeBuilder()
+            .ExpectingNoMatchingEvent()
+            .WithEventSourceId(accountId)
+            .WithEventType<ConcurrencyFirstAppendPartitionOpened>()
+            .Build();
+
+        var result = await eventLog.Append(
+            accountId,
+            new ConcurrencyFirstAppendPartitionOpened(name),
+            concurrencyScope: concurrencyScope);
+
+        return result.IsSuccess;
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import io.cratis.chronicle.IEventStore
+import io.cratis.chronicle.events.EventType
+import io.cratis.chronicle.eventSequences.AppendOptions
+import io.cratis.chronicle.eventSequences.concurrency.ConcurrencyScopeBuilder
+
+@EventType
+data class ConcurrencyFirstAccountOpened(val accountName: String = "")
+
+/**
+ * Opts in to the first-append check with [ConcurrencyScopeBuilder.withExpectsNoMatchingEvent].
+ * The kernel rejects the append with a concurrency violation if an event already exists for
+ * this event source, so two concurrent "open account" appends cannot both succeed.
+ */
+suspend fun openAccountOnce(store: IEventStore, accountId: String, accountName: String): Boolean {
+    val concurrencyScope = ConcurrencyScopeBuilder()
+        .withEventSourceId()
+        .withExpectsNoMatchingEvent()
+        .build()
+
+    val result = store.eventLog.append(
+        accountId,
+        ConcurrencyFirstAccountOpened(accountName),
+        AppendOptions(concurrencyScope = concurrencyScope)
+    )
+
+    return result.isSuccess
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+import io.cratis.chronicle.EventStore;
+import io.cratis.chronicle.events.EventType;
+import io.cratis.chronicle.eventSequences.AppendOptions;
+import io.cratis.chronicle.eventSequences.AppendResult;
+import io.cratis.chronicle.eventSequences.concurrency.ConcurrencyScope;
+import io.cratis.chronicle.eventSequences.concurrency.ConcurrencyScopeBuilder;
+
+import io.cratis.chronicle.java.EventLogJavaBridge;
+
+@EventType
+record ConcurrencyFirstAccountOpened(String accountName) {}
+
+class EventsConcurrencyFirstAppendCheck {
+    // Opts in to the first-append check with withExpectsNoMatchingEvent(). The kernel rejects the
+    // append with a concurrency violation if an event already exists for this event source, so
+    // two concurrent "open account" appends cannot both succeed.
+    boolean openAccountOnce(EventStore store, String accountId, String accountName) {
+        ConcurrencyScope scope = new ConcurrencyScopeBuilder()
+            .withEventSourceId()
+            .withExpectsNoMatchingEvent()
+            .build();
+
+        AppendResult result = EventLogJavaBridge.append(
+            store.getEventLog(), accountId, new ConcurrencyFirstAccountOpened(accountName), new AppendOptions(null, scope));
+
+        return result.isSuccess();
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+```elixir
+defmodule MyApp.Events.ConcurrencyFirstAppendAccountOpened do
+  use Chronicle.Events.EventType, id: "concurrency-first-append-account-opened"
+
+  defstruct account_name: ""
+end
+
+defmodule MyApp.ConcurrencyFirstAppendAccountService do
+  alias Chronicle.Events.ConcurrencyScope
+  alias MyApp.Events.ConcurrencyFirstAppendAccountOpened
+
+  # Per append: ask for the check on one behavior without changing the client's default.
+  def open_account(account_id, account_name) do
+    scope =
+      ConcurrencyScope.expecting_no_matching_event(
+        event_source_id: true,
+        event_types: [ConcurrencyFirstAppendAccountOpened]
+      )
+
+    Chronicle.append(
+      account_id,
+      %ConcurrencyFirstAppendAccountOpened{account_name: account_name},
+      concurrency_scope: scope
+    )
+  end
+end
+{Chronicle.Client,
+  connection_string: "chronicle://localhost:35000",
+  event_store: "my-store",
+  concurrency: [default: :optimistic, check_first_append: true]}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { eventType, EventSequenceNumber, IEventStore } from '@cratis/chronicle';
+import { field } from '@cratis/fundamentals';
+
+@eventType()
+class ConcurrencyFirstAccountOpened {
+    @field(String) readonly accountName: string;
+
+    constructor(accountName: string) {
+        this.accountName = accountName;
+    }
+}
+
+class ConcurrencyFirstAppendService {
+    constructor(private readonly store: IEventStore) {}
+
+    async openAccount(accountId: string, accountName: string): Promise<void> {
+        // EventSequenceNumber.beforeFirst expects that no event matching the scope exists yet.
+        // The client sends it as the kernel's ExpectsNoMatchingEvent condition.
+        const result = await this.store.eventLog.append(accountId, new ConcurrencyFirstAccountOpened(accountName), {
+            concurrencyScope: {
+                sequenceNumber: EventSequenceNumber.beforeFirst.value,
+                eventSourceId: true
+            }
+        });
+        if (!result.isSuccess) {
+            throw new Error('The account already has events');
+        }
+    }
+}
+```
+
+</TabItem>
+</Tabs>
+
+The C# and Elixir versions narrow the expectation to the opening event type, so other events on the account don't count; the Kotlin, Java and TypeScript versions expect no event at all for the account. TypeScript writes it as `EventSequenceNumber.beforeFirst`, which the client sends as the same no-matching-event condition. The C# and Elixir versions also show the application-wide switch, `CheckFirstAppendIntoAScope` and `check_first_append: true`. An expected sequence number is not the same thing: the kernel rejects such an append only when a matching event sits after that position in the log, so expecting 0 lets an append through for an account whose one event is at position 0. In .NET, `Append` returns a violation in its `AppendResult` instead of throwing, and the other clients report it in their result too, so code that appends directly has to check it. Chronicle's [concurrency page](https://cratis.io/chronicle/events/concurrency/) covers narrowing by event type, stream and source type.
+
+**Never rely on** `concurrency: true` as the guard for a decision, or on a client-supplied revision for a rule that protects someone else. **Too much:** a read model that folds the document to detect what a revision number already tells you.
+
+## A short raw stream: a stream decision
+
+[Part 4](/a-limit-for-one-month/) covered rules that live in one routed stream, such as one account's withdrawals in one month, with a per-stream read model. When the rule is only "has this fact happened in this stream?", for example "has this month's report been approved?", there is no state to fold. A stream decision reads the raw events of the command's own stream, captures the tail before reading, and returns a scope that fails the append if anything arrives in that stream after the read. The whole stream crosses the wire for each decision, so it suits short streams. Use either a per-stream model or a stream decision in a command, not both. [Stream decisions](https://cratis.io/arc/backend/csharp/chronicle/commands/stream-decisions/) in the Arc docs has the API.
+
+**Never rely on** an injected read of the stream under `Off`. **Too much:** a read of the whole event source when only one period matters.
+
+## A rare violation you can repair
+
+Some rules can be broken for a while. An airline may let a flight be briefly overbooked and cancel the extra reservations afterwards. Then the command needs no guard: it appends with the default check, and a reactor appends a correcting event when it sees the violation.
+
+A reactor that returns an event has Chronicle append it, to the event source of the event it handled. The shape in each client:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.Reactors;
+
+[EventType]
+public record CopyReserved(string Isbn);
+
+[EventType]
+public record StockCheckRequested(string Isbn);
+
+[EventType]
+public record StockDecreased(string Isbn, int Quantity);
+
+public class WarehouseReactor : IReactor
+{
+    [OnceOnly]
+    public StockDecreased CopyReserved(CopyReserved @event, EventContext context) =>
+        new(@event.Isbn, 1);
+
+    [OnceOnly]
+    public async Task<StockDecreased> StockCheckRequested(StockCheckRequested @event, EventContext context)
+    {
+        var available = await FetchCurrentStockAsync(@event.Isbn);
+        return new StockDecreased(@event.Isbn, available);
+    }
+
+    Task<int> FetchCurrentStockAsync(string isbn) => Task.FromResult(0);
+}
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import io.cratis.chronicle.events.EventContext
+import io.cratis.chronicle.events.EventType
+import io.cratis.chronicle.observation.Reactor
+
+@EventType
+data class CopyReserved(val isbn: String)
+
+@EventType
+data class StockCheckRequested(val isbn: String)
+
+@EventType
+data class StockDecreased(val isbn: String, val quantity: Int)
+
+@Reactor
+class WarehouseReactor {
+    // Return the event directly - it is appended to the event log using the EventSourceId from
+    // the incoming event.
+    fun copyReserved(event: CopyReserved, context: EventContext) =
+        StockDecreased(event.isbn, 1)
+
+    // A handler may suspend before returning its side-effect event.
+    suspend fun stockCheckRequested(event: StockCheckRequested, context: EventContext): StockDecreased {
+        val available = fetchCurrentStock(event.isbn)
+        return StockDecreased(event.isbn, available)
+    }
+
+    private suspend fun fetchCurrentStock(isbn: String): Int = 0
+}
+```
+
+</TabItem>
+<TabItem label="Java">
+
+```java
+import io.cratis.chronicle.events.EventContext;
+import io.cratis.chronicle.events.EventType;
+import io.cratis.chronicle.observation.Reactor;
+
+@EventType
+record CopyReserved(String isbn) {}
+
+@EventType
+record StockCheckRequested(String isbn) {}
+
+@EventType
+record StockDecreased(String isbn, int quantity) {}
+
+@Reactor
+class WarehouseReactor {
+    // Return the event directly - it is appended to the event log using the EventSourceId from
+    // the incoming event.
+    StockDecreased copyReserved(CopyReserved event, EventContext context) {
+        return new StockDecreased(event.isbn(), 1);
+    }
+
+    StockDecreased stockCheckRequested(StockCheckRequested event, EventContext context) {
+        int available = fetchCurrentStock(event.isbn());
+        return new StockDecreased(event.isbn(), available);
+    }
+
+    private int fetchCurrentStock(String isbn) {
+        return 0;
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Elixir">
+
+```elixir
+defmodule MyApp.Events.CopyReserved do
+  use Chronicle.Events.EventType, id: "copy-reserved"
+
+  defstruct [:isbn]
+end
+
+defmodule MyApp.Events.StockDecreased do
+  use Chronicle.Events.EventType, id: "stock-decreased"
+
+  defstruct [:isbn, :quantity]
+end
+
+defmodule MyApp.Reactors.WarehouseReactor do
+  use Chronicle.Reactors.Reactor
+
+  alias MyApp.Events.{CopyReserved, StockDecreased}
+
+  @handles CopyReserved
+
+  @impl true
+  def handle(%CopyReserved{} = event, _context) do
+    {:ok, %StockDecreased{isbn: event.isbn, quantity: 1}}
+  end
+end
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { EventContext, eventType, onceOnly, reactor } from '@cratis/chronicle';
+import { field } from '@cratis/fundamentals';
+
+@eventType()
+class CopyReserved {
+    @field(String) readonly isbn: string;
+
+    constructor(isbn: string = '') {
+        this.isbn = isbn;
+    }
+}
+
+@eventType()
+class StockDecreased {
+    @field(String) readonly isbn: string;
+    @field(Number) readonly quantity: number;
+
+    constructor(isbn: string = '', quantity: number = 0) {
+        this.isbn = isbn;
+        this.quantity = quantity;
+    }
+}
+
+@reactor()
+class WarehouseReactor {
+    // Returning an event from a handler appends it for you, targeting the triggering
+    // event's own event source id, stream, and subject.
+    @onceOnly()
+    async copyReserved(event: CopyReserved, context: EventContext): Promise<StockDecreased> {
+        return new StockDecreased(event.isbn, 1);
+    }
+}
+```
+
+</TabItem>
+</Tabs>
+
+The repair itself, in C#:
+
+```csharp
+using Cratis.Chronicle;
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.EventSequences;
+using Cratis.Chronicle.Reactors;
+
+[EventType]
+public record SeatReserved(Guid ReservationId);
+
+[EventType]
+public record ReservationCancelled(Guid ReservationId, string Reason);
+
+public class OverbookingRepair(IEventStore eventStore) : IReactor
+{
+    const int Capacity = 100;
+
+    [OnceOnly]
+    public async Task<ReservationCancelled?> Reserved(SeatReserved @event, EventContext context)
+    {
+        var events = await eventStore.EventLog.GetFromSequenceNumber(
+            EventSequenceNumber.First,
+            context.EventSourceId);
+        if (events.Any(_ => _.Content is ReservationCancelled cancelled && cancelled.ReservationId == @event.ReservationId))
+        {
+            return null;
+        }
+
+        var upToThis = events.Where(_ => _.Context.SequenceNumber <= context.SequenceNumber).ToList();
+        var active = upToThis.Count(_ => _.Content is SeatReserved) - upToThis.Count(_ => _.Content is ReservationCancelled);
+
+        return active > Capacity
+            ? new ReservationCancelled(@event.ReservationId, "The flight was overbooked.")
+            : null;
+    }
+}
+```
+
+The reactor skips a reservation it has already cancelled, then counts the active reservations on the flight up to and including the one it is handling: reservations minus cancellations, so a seat a passenger gave up earlier doesn't count against a later reservation. It cancels this reservation if the flight is over capacity. Returning `null` records nothing. `[OnceOnly]` keeps the repair out of replays, but it doesn't make delivery exactly-once, which is why the reactor checks for its own earlier cancellation first. A reactor is not a command, so read protection doesn't apply to it.
+
+What you give up is time. Between the violation and the repair the data is wrong, and anything that acted on it in between acted on wrong data. A repair can append a correcting event; it can't take back an email that was sent or a boarding pass that was printed.
+
+**Never rely on** the repair running before the harm. **Too much:** any guard on a rule you have decided to repair.
+
+## A hint
+
+Some reads are not the rule at all. "This book has too many reservations" may be a soft limit, where going a little over is fine, or a message you show before the user submits while the real rule is enforced somewhere else. Then the read doesn't need a guard, and under On you say so on the parameter:
+
+```csharp
+using Cratis.Arc.Chronicle.ReadModels;
+using Cratis.Arc.Commands;
+using Cratis.Arc.Commands.ModelBound;
+using Cratis.Arc.Queries.ModelBound;
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.Projections.ModelBound;
+using FluentValidation;
+
+public record Isbn(string Value) : EventSourceId(Value);
+
+[EventType]
+public record BookReserved();
+
+[ReadModel]
+public record Reservations(
+    Isbn Id,
+    [Increment<BookReserved>] int Count);
+
+[Command]
+public record ReserveBook(Isbn Isbn)
+{
+    public BookReserved Handle() => new();
+}
+
+public class ReserveBookValidator : CommandValidator<ReserveBook>
+{
+    public ReserveBookValidator([Unprotected("soft limit: a few reservations over ten are acceptable")] Reservations? reservations) =>
+        RuleFor(command => command.Isbn)
+            .Must(_ => reservations is not { Count: >= 10 })
+            .WithMessage("This book has too many reservations.");
+}
+```
+
+`[Unprotected("why")]` makes the read a plain snapshot. It costs no fold and guards nothing: with ten reservations the validator refuses the command, but a reservation that lands between the read and the commit doesn't stop it. The reason is the part a reviewer reads, so write down why staleness is acceptable or what holds the rule instead. Put the attribute on the parameter rather than the read-model type, unless every command that reads the type can live with a stale value. When the hint is only for the screen, a query is simpler still, and the command doesn't read the model at all.
+
+**Never rely on** the hint as the rule. **Too much:** a guarded read to display a message.
+
+## External data
+
+Some decisions use a value that isn't in the event log at all: a price from a price list, a tax rate, an exchange rate. A command that sells a copy only while one is in stock, at the current price:
+
+```csharp
+using Cratis.Arc.Commands;
+using Cratis.Arc.Commands.ModelBound;
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.Projections.ModelBound;
+using FluentValidation;
+
+public interface IPriceList
+{
+    Task<decimal> PriceOf(EventSourceId bookId);
+}
+
+public record QuotedPrice(decimal Amount);
+
+public record BookId(string Value) : EventSourceId(Value);
+
+[EventType]
+public record CopyStocked();
+
+[EventType]
+public record CopySold(decimal Price);
+
+public record CopiesInStock(
+    EventSourceId Id,
+    [Increment<CopyStocked>, Decrement<CopySold>] int Available);
+
+[Command]
+public record SellCopy(BookId Book)
+{
+    public async Task<QuotedPrice> Provide(IPriceList prices) => new(await prices.PriceOf(Book));
+
+    public CopySold Handle(QuotedPrice price) => new(price.Amount);
+}
+
+public class SellCopyValidator : CommandValidator<SellCopy>
+{
+    public SellCopyValidator(CopiesInStock? stock) =>
+        RuleFor(command => command.Book)
+            .Must(_ => stock is { Available: > 0 })
+            .WithMessage("No copies are left.");
+}
+```
+
+`Provide()` fetches the price from the service before `Handle()` runs, and `Handle()` puts the amount into `CopySold`. The `CopiesInStock` parameter is guarded as usual: if another `CopySold` for the book lands between the read and the commit, the command is refused with `CopiesInStock 'book-1' changed after SellCopy read it.` and nothing is written. The price is not guarded. Read protection can't see what `IPriceList` does, and a price that changes a millisecond after `Provide()` read it doesn't stop the command. What you get instead is a record: the event carries the price the decision used, so nobody has to reconstruct it later from a service that has moved on.
+
+**Never rely on** the external value being guarded. **Too much:** guarding state you don't decide from.
+
+## What fails silently
+
+Most mistakes with these mechanisms produce an error: a refused read, a `500` that names the problem, an analyzer warning. These eight don't. The command succeeds, the tests pass one request at a time, and the rule is broken in production.
+
+| Mistake | What happens | Signal | Fix |
+| --- | --- | --- | --- |
+| A "does it exist?" check for a unique value | Both requests see "not taken" and both append | None | A constraint |
+| A read under `Off` or `Measure` | A plain snapshot; `Measure` only reports what `On` would do | ARCCHR0011 at Info, under `Off` only | Turn read protection `On` |
+| `Commit()` awaited, its result ignored | The command reports success though the aggregate failed | None | Return `Commit()` |
+| No event source id on the command | A new random id on every call, so nothing ever conflicts | ARCCHR0002 only when there are two candidates | An `EventSourceId` property, or `ICanProvideEventSourceId` |
+| A model keyed differently from where the facts go | The count stays at zero; the guard watches a stream nobody writes | None | Write the facts to the key you read |
+| `concurrency: true` as the guard | The check reads the tail after `Handle()`, not before your read | ARCCHR0016 only next to exact scopes | A real guard |
+| The first append into a new scope | No tail to compare with; by default two creations both succeed | None | `CheckFirstAppendIntoAScope`, or `ExpectingNoMatchingEvent()` on the scope |
+| A writer that decides without a guard | Its decision is unprotected; yours catches its event only inside your own window | None | Guard every writer that decides on the rule, or use a constraint |
+
+The last row is the easiest to miss. A guard detects any matching event appended through the kernel, whoever wrote it, but it protects only the decision that carries it. An import job that appends without reading is checked by nothing. A rule holds fully only when every writer that decides on it is guarded, or when it is a constraint, which the kernel checks on every append. Arc's [pitfalls page](https://cratis.io/arc/backend/csharp/chronicle/consistency/pitfalls/) has a code example for each row.
+
+:::tip[What to do when]
+| Rule shape | Use | Never rely on | Too much |
+| --- | --- | --- | --- |
+| A unique value (email, user name) | `[Unique]` on the event property | A validator asking "does it exist?" | Read protection only for uniqueness |
+| Once per entity (one library card) | `[Unique]` on the event type | An "exists" check in a validator | A read over the whole history |
+| State on one key (stock, loans) | A read-model parameter under `On`, the rule in a validator | The same validator under `Off` | A constraint: it can't count |
+| An editing conflict | An explicit scope with the client's revision | `concurrency: true` alone | A read model that folds what a revision tells you |
+| One short stream (approvals this month) | A per-stream model or a stream decision | An injected read under `Off` | A whole-source read when one period matters |
+| Rich behaviour on one entity | An aggregate root that returns `Commit()` | Ignoring the result of `Commit()` | A read model for each invariant |
+| A rare, repairable violation | The default append and a reactor | The repair running before the harm | Any guard |
+| A hint ("too many reservations") | A query, or `[Unprotected("why")]` | The hint as the rule | A guarded read |
+| External data (a price, a tax rate) | `Provide()` fetches it, the event records it, a read-model parameter guards your own state | Assuming the external value is guarded | Guarding state you don't decide from |
+:::
+
+The [scenarios](https://cratis.io/arc/backend/csharp/chronicle/consistency/scenarios/) in the Arc docs have each shape written out, including [unique and once](https://cratis.io/arc/backend/csharp/chronicle/consistency/scenarios/unique-and-once/), [the aggregate](https://cratis.io/arc/backend/csharp/chronicle/consistency/scenarios/aggregate/), [the editing conflict](https://cratis.io/arc/backend/csharp/chronicle/consistency/scenarios/editing-conflict/) and [rules that need no guard](https://cratis.io/arc/backend/csharp/chronicle/consistency/scenarios/no-guard/). [Script to stage, Part 5](/rules-that-hold-when-you-write/) goes deeper into constraints, scopes and aggregates in one application. The next part leaves Arc and builds the same guard with Chronicle's decision reads and append conditions directly.
+
+*The examples need Arc 22.108.0 or later and Chronicle 19.68.0 or later.*
+
+---
+
+- Previous: [Part 06 — Turning read protection on in an application that already runs](/turning-read-protection-on/)
