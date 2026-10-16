@@ -4,7 +4,7 @@ The 400 is the race from earlier in the series. Two members borrow the last copy
 
 The 500 is a read Arc can't fold fresh and guard: IReadModels inside a command, a model with joins, an immediate append. Under Off that code runs unguarded. Under On it's refused before anything is written, and most of it is already a warning at build time.
 
-There's also a yes that should have been a no. Under Off, a caller that sends X-Allowed-Severity: 3 removes the validator's errors, and the borrow is written for a book with no copy left. Under On, from Arc ARC_MIN_VERSION, errors block whatever the caller sends.
+There's also a yes that should have been a no. Under Off, a caller that sends X-Allowed-Severity: 3 removes the validator's errors, and the borrow is written for a book with no copy left. From Arc ARC_MIN_VERSION, a command declared On blocks on errors whatever the caller sends.
 
 In the post:
 - the two 400s, ReadChanged and ReadIncomplete, and what's in each result

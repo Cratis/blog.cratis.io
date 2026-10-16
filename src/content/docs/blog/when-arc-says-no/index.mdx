@@ -49,7 +49,7 @@ The second `400` comes from the read, not the commit:
 BookStock 'isbn-1' could not be read completely. Nothing was written; submit it again.
 ```
 
-That's `ReadIncomplete`. Chronicle folds a guarded read up to a log position it captured first. When events for that key keep arriving while it folds, it folds again, and it makes up to three attempts in total. If the last one still falls short, the read fails and the command stops. Its reason is `concurrencyViolation` too, with the detail `ReadIncomplete` and no state. Submitting again is safe for the same reason as with `ReadChanged`: the next request reads fresh state and runs every rule again.
+That's `ReadIncomplete`. Before each attempt at a guarded read, Chronicle notes the position of the log and of the last event of the model's types for that key, and then folds. If the fold doesn't reach that last event, it tries again. It makes up to three attempts in total, and if the last one still falls short, the read fails and the command stops. Events that arrive during the fold are a different case: they make Chronicle fold again too, but the last attempt returns a guarded read, and a conflict shows up at commit as `ReadChanged`. A `ReadIncomplete` result has the reason `concurrencyViolation` too, with the detail `ReadIncomplete` and no state. Submitting again is safe for the same reason as with `ReadChanged`: the next request reads fresh state and runs every rule again.
 
 You get one result per guarded read that changed. A command whose validator reads both `BookStock` and a `BookTitle` model of the same book guards both, and a concurrent retitle produces a `ReadChanged` for each of them, `BookStock` included, although `BookStock` doesn't fold titles. Reads of one event source merge into one guard that covers the event types of all of them, so an event that conflicts with the guard conflicts with every read in it. That's one reason to keep context you don't decide from out of the guard, as the section on advisory reads below shows.
 
@@ -76,13 +76,14 @@ export function outcomeOf(result: ICommandResult<unknown>): Outcome {
 }
 ```
 
-Every `concurrencyViolation` asks for the same thing, whichever guard produced it: read again and decide. `reasonDetail` says which kind it was, `ReadChanged` or `ReadIncomplete`, and is a plain string with no TypeScript constant. Use it for wording or telemetry if you need to. `reason` is an open set, so an unfamiliar value lands in `failed` here rather than being shown as copy.
+Every `concurrencyViolation` asks for the same thing, whichever guard produced it: read again and decide. `reasonDetail` says which kind it was, `ReadChanged` or `ReadIncomplete`, and is a plain string with no TypeScript constant. Use it for wording or telemetry if you need to. `reason` is an open set. Arc's own guidance is to treat an unfamiliar value like `rule`; this handler deliberately sends it to `failed` and shows generic copy, because it can't know that the message was written for a user.
 
 In a React form, the same function runs from `CommandForm`'s `onFailed` callback, which receives the whole command result:
 
 ```tsx
 import { useState } from 'react';
 import { CommandForm } from '@cratis/arc.react/commands';
+import { ValidationResultReason } from '@cratis/arc/validation';
 import { BorrowBook } from './BorrowBook';
 import { outcomeOf } from './outcome';
 
@@ -102,7 +103,10 @@ export function BorrowButton({ isbn, member, onReadAgain }: Props) {
                         setNotice('This book changed while you were looking. Check the stock and borrow again if you still want it.');
                         break;
                     case 'rejected':
-                        setNotice(result.validationResults.map(_ => _.message).join(' '));
+                        setNotice(result.validationResults
+                            .filter(_ => _.reason === ValidationResultReason.Rule)
+                            .map(_ => _.message)
+                            .join(' '));
                         break;
                     default:
                         setNotice('The library could not lend this book right now.');
@@ -115,7 +119,7 @@ export function BorrowButton({ isbn, member, onReadAgain }: Props) {
 }
 ```
 
-`BorrowBook` is the proxy Arc generates for the command. `onReadAgain` is the page's own: it reloads whatever showed the stock, so the user decides from the new value. The rule's message, "No copies of this book are available.", is the user's to see. Its result names the `isbn` member, so a form with an `isbn` field shows it there. A `ReadChanged` names no member, so `CommandForm` never attaches it to a field.
+`BorrowBook` is the proxy Arc generates for the command. `onReadAgain` is the page's own: it reloads whatever showed the stock, so the user decides from the new value. The rule's message, "No copies of this book are available.", is the user's to see, and only `rule` messages are shown. Its result names the `isbn` member, so a form with an `isbn` field shows it there. A `ReadChanged` names no member, so `CommandForm` never attaches it to a field.
 
 [*Validation all the way down*](/validation-all-the-way-down/) covers results, reasons and severities in general. The only thing read protection adds is `ReadChanged` and `ReadIncomplete` under a reason a UI already had to handle.
 
@@ -139,7 +143,7 @@ The common causes, and what to change:
 | `AmbiguousReadModelLookup` | Several command properties have the model's `Id` type | Name one with `[LookUpBy(nameof(Property))]` on the parameter |
 | `ReadRefusedWhileReadsAreProtected` | A read through `IReadModels`, `IEventStore`, `IEventLog` or an event sequence inside the command | Take the read model as a parameter, use `IDecisionReads.Get` in `Provide()`, or mark the method `[Unprotected("why")]` |
 | `ImmediateAppendWhileReadsAreProtected` | `IEventLog.Append`, `AppendMany`, `Revise` or `Redact`, which write at once | Return the event from `Handle()`, or stage it with `IEventLog.Transactional.Append` |
-| `ReadAndAggregateOnSameSource` | An aggregate and a plain read of the same event source in one command | Decide from the aggregate's state, or read another source |
+| `ReadAndAggregateOnSameSource` | An aggregate and a guarded read-model parameter of the same event source in one command | Decide from the aggregate's state, read another source, or mark the read `[Unprotected("why")]` if it's only context |
 | `DiscoverableValidatorRefusedInProtectedDecision` | A validator registered by hand as scoped, singleton, a factory or an instance | Let convention discovery register it |
 
 An immediate append is refused for a reason that has nothing to do with reads: it's written before the commit and stays if the commit conflicts, so it can't be part of a guarded decision. The validator row is the one [Part 2](/the-read-model-said-yes/) mentioned. Under `On`, Arc builds a fresh validator for every command so its read-model parameters belong to that command, and a validator the container hands out from another registration is refused:
@@ -148,7 +152,7 @@ An immediate append is refused for a reason that has nothing to do with reads: i
 Discoverable validator 'BorrowBookValidator' cannot run while read protection is On because Arc did not construct it for this invocation. Let convention discovery register it as transient; do not use a scoped, singleton, factory or instance registration.
 ```
 
-Any `ReadCannotBeProtected` row can also be a read you only use as context; then mark it `[Unprotected("why")]`, as the next section shows. Arc's [refusals page](https://cratis.io/arc/backend/csharp/chronicle/consistency/refusals/) has the full list, including scopes, nested commands and declarations.
+Any of the read-model-parameter rows can also be a read you only use as context; then mark it `[Unprotected("why")]`, as the next section shows. An `IMongoCollection<T>` can't be marked that way: the collection itself is refused, so take the read model as an `[Unprotected("why")]` parameter instead. Arc's [refusals page](https://cratis.io/arc/backend/csharp/chronicle/consistency/refusals/) has the full list, including scopes, nested commands and declarations.
 
 A `500` carries its message in `exceptionMessages`, not in `validationResults`. In Development that's the text above. Elsewhere, for model-bound commands, `ArcOptions.ExposeExceptionDetails` is `false` by default, and the caller gets this instead:
 
@@ -234,7 +238,7 @@ export async function borrowIgnoringErrors(isbn: string, member: string) {
 
 For a book whose last copy is out, Arc drops the validator's "No copies of this book are available.", `Handle()` runs, and `BookBorrowed` is appended for a book with no copy on the shelf. This is documented behaviour: severities are there for warnings a user can confirm, and Arc's [severity filtering](https://cratis.io/arc/backend/csharp/commands/validation-severity-filtering/) page says not to use them for integrity. A command can declare a floor the caller can't lower with `[BlockOnValidationSeverity]`, but only if somebody remembers to add it to every command with a rule that must hold.
 
-Under `On`, both are closed, the second from Arc ARC_MIN_VERSION. The read is fresh and guarded, so a stale value gives a `400 ReadChanged` instead of a yes. And a command with read protection On also blocks on `Error` whatever threshold the caller sends. The caller can still let warnings and information through, which is what the threshold is for. Under `Off` and `Measure`, the caller's threshold works as before.
+Under `On`, both are closed, the second from Arc ARC_MIN_VERSION. The read is fresh and guarded, so a stale value gives a `400 ReadChanged` instead of a yes. And a command that declares read protection On, in the project or on the command, gets an `Error` floor: `Error` and `Unknown` results block whatever threshold the caller sends, and the caller can only let warnings and information through, which is what the threshold is for. The floor follows the declaration, so lowering `ReadProtection:MaximumMode` at runtime removes the guard but not the floor. A command with its own `[BlockOnValidationSeverity]` keeps that policy instead, so a `Warning` floor still blocks warnings. Commands declared `Off` or `Measure`, without such an attribute, keep the caller's threshold as before.
 
 The threshold applies to the results of filters, validators and `Provide()`. The `ReadChanged` from the commit isn't one of them, so no threshold turns it into a success.
 
@@ -279,9 +283,9 @@ At runtime it's refused with `ReadRefusedWhileReadsAreProtected`, a `500` with t
 | [ARCCHR0031](https://cratis.io/arc/backend/csharp/chronicle/code-analysis/arcchr0031/) | Error | An invalid `[LookUpBy]` |
 | [ARCCHR0037](https://cratis.io/arc/backend/csharp/chronicle/code-analysis/arcchr0037/) | Error | A per-stream read model the command isn't routed to |
 | [ARCCHR0011](https://cratis.io/arc/backend/csharp/chronicle/code-analysis/arcchr0011/) | Info | Under `Off`, a plain read model in a command that produces events |
-| [ARCCHR0012](https://cratis.io/arc/backend/csharp/chronicle/code-analysis/arcchr0012/) | Info | An immediate append that bypasses a protected decision |
+| [ARCCHR0012](https://cratis.io/arc/backend/csharp/chronicle/code-analysis/arcchr0012/) | Info (Warning under `On`) | An immediate append that bypasses a protected decision |
 
-The diagnostics say "not proven" for a reason. They see what's visible in the code, and some refusals depend on how a model is registered at runtime, so a clean build doesn't mean no command will be refused. The two `Info` diagnostics are easy to miss in a build log. If a project has commands still under `Off`, raise them:
+The diagnostics say "not proven" for a reason. They see what's visible in the code, and some refusals depend on how a model is registered at runtime, so a clean build doesn't mean no command will be refused. `Info` diagnostics are easy to miss in a build log. Raise ARCCHR0011 in a project with commands still under `Off`. ARCCHR0012 only fires for commands that are `On`, use decision reads or carry `[ProtectedDecision]`, and raising it makes the `[ProtectedDecision]` and decision-read cases warnings too, so an immediate append there shows up at build time rather than at runtime:
 
 ```ini
 [*.cs]
@@ -293,13 +297,13 @@ With warnings treated as errors, each of them then fails the build instead of sc
 
 :::tip[What to do when]
 - **`400` with `ReadChanged`:** read again and show the user the new state. Don't put an error on a field, and don't resubmit automatically.
-- **`400` with `ReadIncomplete`:** submit again. Events kept arriving for that key while it was read.
+- **`400` with `ReadIncomplete`:** submit again. The read didn't reach that key's latest events in three attempts.
 - **`500` with `ReadCannotBeProtected`:** reshape the model, read the parts separately, or mark the read `[Unprotected("why")]` if it's only context.
 - **`500` with `ReadRefusedWhileReadsAreProtected`:** take the read model as a parameter, or use `IDecisionReads.Get` in `Provide()`.
 - **`500` with `ImmediateAppendWhileReadsAreProtected`:** return the event from `Handle()`, or use `IEventLog.Transactional.Append`.
 - **`500` from a validator:** let convention discovery register it.
 - **Production shows "An internal error occurred":** the message is redacted outside Development. Find the `correlationId` in the server log.
-- **A rule must hold whatever the caller sends:** run the command under `On` (Arc ARC_MIN_VERSION or later). Under `Off`, add `[BlockOnValidationSeverity]` to it.
+- **A rule must hold whatever the caller sends:** run the command under `On` (Arc ARC_MIN_VERSION or later). Under `Off` or `Measure`, add `[BlockOnValidationSeverity]` to it.
 :::
 
 The [refusals page](https://cratis.io/arc/backend/csharp/chronicle/consistency/refusals/) lists every refusal with its message, [Reads](https://cratis.io/arc/backend/csharp/chronicle/consistency/reads/) explains what each kind of read becomes, and the frontend's [command result](https://cratis.io/arc/frontend/core/commands/command-result/) page covers reasons and details. The next part is about getting an application that already runs from `Off` to `On`, by finding these refusals with `Measure` before they reach a user.
