@@ -10,7 +10,7 @@ export const authors = {
     einar: {
         name: 'Einar Ingebrigtsen',
         title: 'Co-founder, Cratis',
-        url: 'https://github.com/einari',
+        url: 'https://cast.cratis.io/einari/',
         picture: 'https://github.com/einari.png?size=160',
         signature:
             'Einar has been building developer platforms and event-sourced systems for decades — and still gets excited when a design finally clicks. Expect strong opinions, held loosely, and the occasional tangent that turns out to be the point.',
@@ -18,7 +18,7 @@ export const authors = {
     sindre: {
         name: 'Sindre Alstad Wilting',
         title: 'Co-founder, Cratis',
-        url: 'https://github.com/woksin',
+        url: 'https://cast.cratis.io/woksin/',
         picture: 'https://github.com/woksin.png?size=160',
         signature:
             'Sindre works across the Cratis stack, from the Chronicle kernel to the clients that talk to it. He writes the way he builds: precise, grounded in what actually ships, and skeptical of claims without evidence.',

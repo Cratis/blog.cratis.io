@@ -1,0 +1,48 @@
+LINKEDIN POSITIONING: Inside Cratis Studio
+Link: https://blog.cratis.io/studio-architecture/
+(Post date 2026-10-16. Publish once the site deploys. Put the link in the first comment, not the post body.)
+
+ANGLE
+Proof by use. Not "here is our product" but "here is what happens when you build a real, multi-service product on the platform you ship". The reader who doesn't care about Studio still learns a service layout they can copy: edge in front, an event store per service, tenant = namespace, facts between services.
+
+AUDIENCE
+Architects and tech leads running .NET systems who are tired of shared databases and service-to-service calls. Secondary: existing Chronicle/Arc users who want to see it at product scale.
+
+POST (copy, adjust to taste)
+
+We build Cratis Studio on Cratis. Chronicle, Arc, Components, AuthProxy and Ante, the same packages you can install.
+
+I wrote up how it's put together:
+
+- an edge (AuthProxy) that handles sign-in, organization and identity, so no service rebuilds it
+- an event store per service, and facts passed between them instead of calls
+- an organization that is a Chronicle namespace, so each tenant's events, observers and read models live apart
+- one invitation followed from the first command to the last reactor
+
+The part I like best: most of it is boring. Commands produce events, read models are projections, follow-up work is a reactor. That's the point.
+
+Studio is live and in beta, and some features are still preview or experimental. The post says which.
+
+Full walkthrough with the diagrams in the first comment.
+
+FIRST COMMENT
+Inside Cratis Studio, built on the platform it's for: https://blog.cratis.io/studio-architecture/
+
+HASHTAGS (keep to 3)
+#EventSourcing #dotnet #SoftwareArchitecture
+
+IMAGE
+Use studio-at-a-glance.png (it is the strongest single figure). Alt text: Browser and AI agent go through AuthProxy to Core, MCP and the lobby, which record into Chronicle.
+
+DO
+- Say "live and in beta" if Studio status comes up.
+- Answer architecture questions in the comments with the post's own wording.
+- Link the AuthProxy post if someone asks about the edge.
+
+DON'T
+- Say "secure", "guaranteed", or "production-grade".
+- Reveal hostnames, instance counts, ports, key storage or deployment specifics in replies. The post leaves them out on purpose.
+- Turn it into a sales pitch. Studio is the example, not the ask.
+
+FOLLOW-UPS
+A week later: the invitation flow alone as a carousel (three or four figures). Then the AuthProxy post for anyone who asked about the edge.

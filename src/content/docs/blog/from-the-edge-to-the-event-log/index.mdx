@@ -24,6 +24,8 @@ tags:
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
+*Revised 2026-10-20: updated for Arc's read protection and the Elixir client's decision reads.*
+
 A signed-in user registers an author, and author names have to be unique within the user's organization. The whole feature fits on a sticky note.
 
 In a Cratis application, that uniqueness rule is one attribute on an event. Nobody writes a lookup before the write or a lock around it, and there's no per-tenant version of the check either. Chronicle checks the `[Unique]` constraint in its kernel when the event is appended, and Arc's Chronicle integration has already given each tenant a namespace of its own, so the rule holds per organization. Register two different authors under the same name in the same second, and one of the two appends is rejected.
@@ -683,7 +685,7 @@ Each product ships on its own, with its own package, releases, license and suppo
 - **Experimental:** Stage, Scene and Prologue, including Prologue inside Cratis Studio, and Narrator and Prompter. Syntax and behavior can still change.
 - **Early preview, available as source only, not on npm:** Arc for TypeScript, whose Chronicle integration is experimental.
 - **Preview:** the Cratis AI corpus and its hooks.
-- **.NET only today:** Arc aggregates in the published packages. The Arc for TypeScript source preview has an experimental aggregate root. Decision reads are in the .NET and Elixir Chronicle clients.
+- **.NET only today:** Arc read protection and Arc aggregates in the published packages. The Arc for TypeScript source preview has an experimental aggregate root. Chronicle's decision reads are in the .NET and Elixir clients.
 
 For the company side of Cratis, who we are and how we work with teams, see [cratis.no](https://cratis.no).
 

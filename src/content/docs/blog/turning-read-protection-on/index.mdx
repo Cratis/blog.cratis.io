@@ -1,0 +1,343 @@
+---
+title: "Turning read protection on in an application that already runs · Decisions that hold, Part 6"
+description: "Read protection On refuses reads it cannot guard, so an application that already runs cannot just flip it. Measure runs every command as before and reports what On would guard, refuse or reject. This is the path from Off through Measure to On, how to read the report, and how to back out."
+date: 2026-11-03T09:00:00Z
+authors: sindre
+excerpt: "You can't switch a running application to 'refuse unguarded reads' on a hunch. Measure runs every command as before and reports which reads On would guard, which it would refuse, and which appends it would reject. Here is the path from Off to On, what a real report looks like, and how to back out."
+tags:
+  - arc
+  - chronicle
+  - concurrency
+  - event-sourcing
+---
+
+*[Decisions that hold](/the-bug-you-never-see/) · Part 06 of 11*
+
+[Part 2](/the-read-model-said-yes/) turned a validator's read into a guard with one project setting, `<CratisReadProtection>On</CratisReadProtection>`. New applications from the Cratis templates have that setting already. An application that already runs is a different matter. It has commands that read through `IReadModels`, read models with joins, and services that append to the event log as a side effect, and under `On` each of those fails the command instead of running unguarded. [Part 5](/when-arc-says-no/) went through those refusals one by one. This part is about finding them before your users do.
+
+## Why On is not a flag you flip
+
+Read protection is `Off` by default today. Making `On` the default is planned for a future major version of Arc ([Cratis/Arc#3255](https://github.com/Cratis/Arc/issues/3255)), so an explicit `<CratisReadProtection>` setting also keeps the mode from changing under you when you upgrade. There are three reasons not to jump straight to `On` in existing code:
+
+- A protected command fails closed. It refuses a read it can't guard, an immediate append and a read outside a parameter. Commands that work today would start returning `500`s.
+- Moving a read from `Handle()` into a parameter or a validator changes where a rule lives and what it decides from. That's a code change per command, not a setting.
+- A guarded read is a fresh fold of the key's history, and costs more than a plain one. A team should choose that where a rule needs it.
+
+So Arc has a third mode between the two.
+
+## The path
+
+| Step | Mode | What you do | What callers see |
+| --- | --- | --- | --- |
+| 1 | `Off` | Update the packages | Nothing changes |
+| 2 | `Measure` | Set the mode, run the application and its tests | Nothing changes. Arc records what `On` would do |
+| 3 | `Measure` | Read the report. Fix each refused read and immediate append, or mark a read advisory | The fixes are ordinary code changes |
+| 4 | `On`, one project at a time | Switch the project and run its tests | Reads are guarded, reads Arc can't guard fail the command, and validation errors block whatever severity the caller allows |
+
+`Measure` is set the same way as `On`, in the project that contains the commands or in a `Directory.Build.props` that covers several:
+
+```xml
+<PropertyGroup>
+    <CratisReadProtection>Measure</CratisReadProtection>
+</PropertyGroup>
+```
+
+Modes mix. A command can stay where it is while its project moves: `[ReadProtection(ReadProtectionMode.Off)]` (namespace `Cratis.Arc.Commands`) keeps one command `Off` in a `Measure` or `On` project, and `[ReadProtection(ReadProtectionMode.On)]` turns one command on ahead of the rest. A command-level `[Unprotected]` means `Off` for that command.
+
+Read protection is part of Arc for .NET.
+
+![A diagram titled Off, Measure, On, with three cards joined by arrows. Off: plain reads, no change for callers, reads are snapshots. Measure: measured reads, no change for callers, Arc reports what On would do. On: guarded reads, lost races get a 400 and unguardable reads fail. A band below reads The run-time cap only ever lowers the mode.](./off-measure-on.png)
+
+*Callers see a difference only under On.*
+
+## What Measure does and what it costs
+
+Under `Measure`, reads, key lookups, concurrency scopes, results and status codes stay as they are under `Off`. A read model in a validator is still a plain read, and it still guards nothing. What Arc adds is a record of what `On` would have done with each command. A failure inside that measurement never fails the command.
+
+It does three things:
+
+- On the request path, it classifies each parameter Arc resolves for the command: a read model `On` would guard, a read `On` would refuse, an advisory read, or a dependency Arc can't see into. This is local reflection and costs nothing beyond that.
+- At the start of each command, it reads the event log's tail once. This is the one awaited call Measure adds, and it has a timeout of 250 ms by default.
+- After the command, on a sample of commands (10 percent by default), a background scan looks for events written by someone else between that tail and the scan that match what the command read. These are the commands where `On` might have returned a `400`.
+
+The sample rate, the tail timeout, the scan timeout and the most events one scan looks at are runtime settings (`MeasureSampleRate`, `MeasureTailTimeout`, `MeasureScanTimeout`, `MeasureScanLimit`) in the `ReadProtection` configuration section. No benchmark of Measure is published. The cost has the shape above: one extra awaited call per command and background reads on a sample.
+
+It's best effort. A command whose tail read timed out, or whose scan was dropped, is reported as `measurement_unavailable` and counts as no evidence either way. The report is a set of hypotheses about `On`. It isn't protection, and an application in `Measure` is exactly as unguarded as one in `Off`.
+
+## What the report looks like
+
+Take an illustrative library application with four commands. `BorrowBook` is Part 2's command: a validator that takes `BookStock`. The other three are written the way older code often is. `PlaceHold` reads `BookStock` through `IReadModels` in `Handle()`. `ReturnBook` calls a service that appends `BookReturned` through `IEventLog`. `SendPickupNotice` copies a shelf name from a read model that joins the shelf's events. The code for each is in the next section.
+
+Measure reports through three channels:
+
+| Channel | What you get |
+| --- | --- |
+| Metric | The counter `cratis.arc.read_protection.events` on the meter `Cratis.Arc.ReadProtection`, tagged `command`, `category`, `model` and `reason` |
+| Trace | A span event `read-protection.plan` on the current activity, with the same tags |
+| Log | A Warning once per command and category for `refused_read`, `immediate_append` and `scope_refusal`, and a periodic Information summary |
+
+Start with the counter, grouped by `category` and `command`. Run each of the four commands once under `Measure`, here in an Arc `CommandScenario` with a `MeterListener` on the meter, and every one succeeds, as it would under `Off`. The counter receives these observations:
+
+| `command` | `category` | `model` | `reason` |
+| --- | --- | --- | --- |
+| `BorrowBook` | `protected_read` | `BookStock` | `Would be protected` |
+| `PlaceHold` | `refused_read` | `Cratis.Chronicle.ReadModels.IReadModels` | `IReadModels` |
+| `ReturnBook` | `immediate_append` | `BookReturned` | `Would be refused while reads are protected` |
+| `SendPickupNotice` | `refused_read` | `BookCard` | `Join` |
+
+The category that matters most is missing: `matching_events_since_start`, even though the `BorrowBook` run had another member's `BookBorrowed` appended between its read and its commit. That category comes from the background scan, and a `CommandScenario` can't run the scan. It has no host to start the scan queue, and its in-process event log can't serve the scan's reads, so a sampled command there reports `measurement_unavailable` instead. Races show up in the scan of a running application with real traffic, which is where Measure belongs, not only in your test suite.
+
+`ReturnBook` also reported `unknown_dependency` for `ILoanLedger`, the service it calls. Every command in that run reported `unknown_dependency` for services resolved by the framework rather than by the command, too: `Orleans.IGrainFactory` from the in-process test kernel, `Cratis.Chronicle.Sequences.RequestCausation` and `Cratis.Arc.Authorization.ICurrentPrincipalAccessor`. They're left out of the table. Which of these appear depends on the host, so when you group the counter, look at the dependencies that are yours. The `command` and `model` tags are full type names; the example's types are in the global namespace, so they're short here.
+
+The log said the same thing for the three that need work, once each:
+
+```text
+Read-protection hypothesis for PlaceHold: category=refused_read, model=Cratis.Chronicle.ReadModels.IReadModels, reason=IReadModels; this may need attention before turning On
+Read-protection hypothesis for ReturnBook: category=immediate_append, model=BookReturned, reason=Would be refused while reads are protected; this may need attention before turning On
+Read-protection hypothesis for SendPickupNotice: category=refused_read, model=BookCard, reason=Join; this may need attention before turning On
+```
+
+These are the categories you'll meet most:
+
+| `category` | What it means | What to do |
+| --- | --- | --- |
+| `protected_read` | `On` would guard this read | Nothing |
+| `refused_read` | `On` would refuse this read. `reason` names the cause or the API | Fix it, or mark it advisory |
+| `advisory_read` | The read is marked `[Unprotected]`. `reason` is your text | Check the reason still holds |
+| `immediate_append` | The command appended through `IEventLog` at once, and `On` would refuse it | Return the event from `Handle()` |
+| `unknown_dependency` | A service Arc can't see into | Check what the service reads. A Chronicle read inside it is still refused under `On` |
+| `redirect` | `On` would look the model up by a different key than today | Say which key you mean with `[LookUpBy]` |
+| `matching_events_since_start` | Someone else wrote an event matching the read while the command ran. `On` might have returned `400` | A real race. These commands gain the most from `On` |
+| `scope_refusal` | `On` would refuse the command's explicit concurrency scope as narrower than the read, captured after it, or incomplete | Widen the scope or remove it |
+| `measurement_unavailable` | A measurement couldn't be taken. `reason` says why | Raise the timeouts, or ignore it |
+| `mode_lowered` | The run-time cap lowered the declared mode | See the last section |
+
+The full list, including `displacement`, `coarsened`, `self_write` and `conflict_today`, is on Arc's [Adopting read protection](https://cratis.io/arc/backend/csharp/chronicle/consistency/adopting/#reading-the-report) page.
+
+A quiet report isn't a clean bill of health. Measure doesn't currently report everything `On` would do differently: it can't tell from its observations which concurrency scopes were explicit and which were derived, and it doesn't see a nested command reading an event its outer command has staged but not committed. The absence of a category means only that Measure didn't observe it. The background scan runs on a sample, so a race that happened on an unsampled command isn't in the report either.
+
+## Fixing what it finds
+
+The examples use `Isbn`, `MemberId`, `BookStock` and the book events from Part 2, and one new event:
+
+```csharp
+using Cratis.Chronicle.Events;
+
+[EventType]
+public record HoldPlaced(MemberId Member);
+```
+
+### A read through IReadModels
+
+`PlaceHold` lets a member queue for a book when no copy is on the shelf. The rule lives in `Handle()`, and the read goes through `IReadModels`:
+
+```csharp
+using Cratis.Arc.Commands.ModelBound;
+using Cratis.Arc.Validation;
+using Cratis.Chronicle.ReadModels;
+using Cratis.Monads;
+
+[Command]
+public record PlaceHold(Isbn Isbn, MemberId Member)
+{
+    public async Task<Result<HoldPlaced, ValidationResult>> Handle(IReadModels readModels)
+    {
+        var stock = await readModels.GetInstanceById<BookStock>(Isbn);
+        if (stock is { Available: > 0 })
+        {
+            return ValidationResult.Error("A copy is on the shelf. Borrow it instead.");
+        }
+        return new HoldPlaced(Member);
+    }
+}
+```
+
+Under `On`, Arc refuses the `GetInstanceById` call with a `500`, because a read through `IReadModels` has no position and can't guard the append. The fix is the shape from Part 2. The read becomes a constructor parameter of a validator, and the rule moves with it:
+
+```csharp
+using Cratis.Arc.Commands;
+using Cratis.Arc.Commands.ModelBound;
+using FluentValidation;
+
+[Command]
+public record PlaceHold(Isbn Isbn, MemberId Member)
+{
+    public HoldPlaced Handle() => new(Member);
+}
+
+public class PlaceHoldValidator : CommandValidator<PlaceHold>
+{
+    public PlaceHoldValidator(BookStock? stock) =>
+        RuleFor(command => command.Isbn)
+            .Must(_ => stock is not { Available: > 0 })
+            .WithMessage("A copy is on the shelf. Borrow it instead.");
+}
+```
+
+Under `On`, that `BookStock` is folded fresh and guards the append. A copy returned between the read and the commit makes the command fail with `ReadChanged` instead of placing a hold on a book that is on the shelf.
+
+### An append that happens at once
+
+`ReturnBook` doesn't append through its return value. It calls a service, and the service appends:
+
+```csharp
+using Cratis.Arc.Commands.ModelBound;
+using Cratis.Chronicle.EventSequences;
+
+public interface ILoanLedger
+{
+    Task RecordReturn(Isbn isbn, MemberId member);
+}
+
+public class LoanLedger(IEventLog eventLog) : ILoanLedger
+{
+    public Task RecordReturn(Isbn isbn, MemberId member) =>
+        eventLog.Append(isbn, new BookReturned(member));
+}
+
+[Command]
+public record ReturnBook(Isbn Isbn, MemberId Member)
+{
+    public Task Handle(ILoanLedger ledger) => ledger.RecordReturn(Isbn, Member);
+}
+```
+
+`IEventLog.Append` writes at once, before the command commits. If the command's guard then conflicts, nothing rolls that event back, so under `On` Arc refuses it. The build doesn't see this one. Arc's analyzers warn when `Handle()` takes `IEventLog` itself (ARCCHR0007), but here the append is behind an interface, and it compiled without a diagnostic. Measure saw it at run time, as `immediate_append` with the event type, next to `unknown_dependency` for `ILoanLedger`.
+
+The fix is to return the event, so it's committed with the command:
+
+```csharp
+using Cratis.Arc.Commands.ModelBound;
+
+[Command]
+public record ReturnBook(Isbn Isbn, MemberId Member)
+{
+    public BookReturned Handle() => new(Member);
+}
+```
+
+When the append has to stay in a service, `IEventLog.Transactional.Append` adds the event to the command's unit of work instead of writing it at once, and `On` accepts that.
+
+### A read model with a join
+
+`SendPickupNotice` tells a member where to collect a book, and takes the shelf's name from a read model that joins the shelf's events:
+
+```csharp
+using Cratis.Arc.Queries.ModelBound;
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.Projections.ModelBound;
+using Cratis.Concepts;
+
+public record ShelfId(Guid Value) : ConceptAs<Guid>(Value);
+
+[EventType]
+public record BookShelved(ShelfId Shelf);
+
+[EventType]
+public record ShelfNamed(string Name);
+
+[EventType]
+public record PickupNoticeSent(MemberId Member, string Shelf);
+
+[ReadModel]
+public record BookCard(
+    Isbn Id,
+    [SetFrom<BookShelved>] ShelfId Shelf,
+    [Join<ShelfNamed>(on: nameof(Shelf), eventPropertyName: nameof(ShelfNamed.Name))] string ShelfName);
+```
+
+```csharp
+using Cratis.Arc.Commands.ModelBound;
+
+[Command]
+public record SendPickupNotice(Isbn Isbn, MemberId Member)
+{
+    public PickupNoticeSent Handle(BookCard? card) => new(Member, card?.ShelfName ?? "Front desk");
+}
+```
+
+A joined model folds events from more than one key, so a guard on the book's key can't cover it, and `On` refuses the read. This one the build flags already in `Measure`: ARCCHR0024 warns that `BookCard` has joins or children, "so protection is not proven".
+
+There are two honest answers. If a decision depends on the joined data, read the parts as separate models, each keyed by its own entity, and look each up by the command property that holds its key with `[LookUpBy]` ([Part 3](/one-rule-two-entities/) does that for a book and a member). Here the shelf name is only copied into the notice, and a stale name is acceptable, so the read can say so:
+
+```csharp
+using Cratis.Arc.Chronicle.ReadModels;
+using Cratis.Arc.Commands.ModelBound;
+
+[Command]
+public record SendPickupNotice(Isbn Isbn, MemberId Member)
+{
+    public PickupNoticeSent Handle([Unprotected("copied as of read; may be stale")] BookCard? card) =>
+        new(Member, card?.ShelfName ?? "Front desk");
+}
+```
+
+An `[Unprotected]` read is a stored read that guards nothing, on purpose. Measure then reports it as `advisory_read` with your reason, so the reasons stay visible in the same report. Use it for context, never to silence a refusal you don't understand.
+
+### The other categories
+
+- `redirect`: under `Off` and `Measure`, Arc looks up a read-model parameter by the command's event source id. Under `On`, it uses the one command property whose type is the model's `Id` type, when there is one. A `redirect` means those two disagree for this command, so `On` would read a different instance. Put `[LookUpBy(nameof(Property))]` (namespace `Cratis.Arc.Commands`) on the parameter, naming the command property that holds the key you mean. It applies in every mode, so the lookup no longer changes when the project moves to `On`.
+- `refused_read` with other reasons: a reducer with an event filter or constructor dependencies, children, a key taken from an event property, Pinned generation delivery. Part 5 has the table of reasons and fixes.
+- `unknown_dependency`: look inside the service. If it calls an HTTP API or another database, there's nothing to fix, and that read stays outside the guard under `On` too. If it reads Chronicle, through `IReadModels` for example, Measure records only the service, but `On` still refuses the read when the command runs. Move that read into a parameter of the command, as with `PlaceHold`.
+
+## Switching a project to On
+
+When a project's report shows only `protected_read`, `advisory_read` with reasons you still agree with, and dependencies you know about:
+
+1. Set `<CratisReadProtection>On</CratisReadProtection>` for that project.
+2. Build, and fix ARCCHR0024 (a read model shape that can't be protected), ARCCHR0028 (a Chronicle read that isn't proven protected) and ARCCHR0033 (an aggregate and a read of the same source). Raise them to errors in projects you've moved.
+3. Run the project's tests. Arc's `CommandScenario` picks the in-process event log that supports guarded reads from the command's mode, so the scenarios run the commands under `On`. Part 9 is about testing the race itself.
+4. Exercise every command at least once. Refusals happen when a command runs, not at startup, and a command nobody ran under `Measure` has no report.
+
+From Arc 22.108.0, a command declared `On` also blocks on `Error` and `Unknown` validation results whatever `X-Allowed-Severity` the caller sends ([Part 5](/when-arc-says-no/) explains why). Measure has no category for this, so look for clients that send an allowed severity before you switch.
+
+Under `On`, a validator with read-model parameters has to be registered by convention, so Arc can build a fresh one per command. A validator registered by hand as scoped, singleton, a factory or an instance is refused.
+
+With the fixed commands in an `On` project, `PlaceHold` places a hold when no copy is on the shelf and fails with the rule's message when one is. With a `BookReturned` appended between its read and its commit, it fails with `concurrencyViolation` and `ReadChanged`, and nothing is written. `ReturnBook` commits its event with the command, and `SendPickupNotice` runs with its advisory read.
+
+## Backing out at run time
+
+If something goes wrong after a deployment with `On`, operations can lower the mode without a build:
+
+```json
+{
+  "ReadProtection": {
+    "MaximumMode": "Measure"
+  }
+}
+```
+
+| `MaximumMode` | Effect |
+| --- | --- |
+| `On`, missing or invalid | The compiled modes apply |
+| `Measure` | Commands compiled as `On` run as `Measure` |
+| `Off` | Commands compiled as `On` or `Measure` run as `Off` |
+
+The cap only lowers. It never raises a mode that wasn't compiled in, so a missing or mistyped value can't switch anything on. At startup, Arc logs a Warning for each command it lowers, in this form (the command name here is an example):
+
+```text
+Read protection for Library.PlaceHold is lowered from On to Measure by ReadProtection:MaximumMode.
+```
+
+Measure reports `mode_lowered` for those commands too. The cap lowers the guard, not the severity floor: that follows the declared mode, so a command declared `On` keeps blocking on `Error` under any cap. Only changing the declared mode to `Off` or `Measure` gives callers their threshold back. There, callers filter as before, so declare `[BlockOnValidationSeverity(ValidationResultSeverity.Error)]` on a command whose validators must not be skipped. With the cap set, the commands run unguarded, so use it to get through an incident while you fix the code, and then remove it. `Measure` and a lowered cap both leave an application that looks protected and isn't. Check that production configuration has no cap you didn't set on purpose.
+
+:::tip[What to do when]
+- **New code:** start with `On`, as the Cratis templates do (Part 2).
+- **An application that already runs:** set `Measure`, run it for a representative period, and group `cratis.arc.read_protection.events` by `category` and `command`.
+- **`refused_read`:** fix it per its `reason`, or mark the read `[Unprotected("why")]` if it's only context.
+- **`immediate_append`:** return the event from `Handle()`, or use `IEventLog.Transactional.Append`.
+- **`redirect`:** add `[LookUpBy(nameof(Property))]` to the parameter.
+- **`matching_events_since_start`:** a race that already happens. Move these commands first.
+- **A quiet report:** run every command, and remember the scan is sampled. Absence isn't evidence.
+- **An incident after switching to `On`:** set `ReadProtection:MaximumMode` to `Measure` or `Off`, fix the code, and remove the cap.
+:::
+
+Arc's [Adopting read protection](https://cratis.io/arc/backend/csharp/chronicle/consistency/adopting/) has the full category list and the refusal reasons, and [Pitfalls](https://cratis.io/arc/backend/csharp/chronicle/consistency/pitfalls/) covers what still fails silently once a project is `On`. [Why protection is opt-in](https://cratis.io/arc/backend/csharp/chronicle/consistency/#why-protection-is-opt-in) gives the reasons `Off` is the default.
+
+The next part steps back from read protection. Not every rule needs a guarded read: uniqueness is a constraint, rich behaviour is an aggregate, and some rules are cheaper to repair than to guard.
+
+*Read protection as described here needs Arc 22.108.0 or later and Chronicle 19.68.0 or later.*
+
+---
+
+- Previous: [Part 05 — When Arc says no](/when-arc-says-no/)

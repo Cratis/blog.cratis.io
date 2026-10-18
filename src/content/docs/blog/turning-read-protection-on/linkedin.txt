@@ -1,0 +1,18 @@
+You can't switch a running application to "refuse unguarded reads" on a hunch.
+
+Arc's read protection turns a read model in a validator into a guard on the command's append. Under On it also refuses what it can't guard: reads through IReadModels, read models with joins, and appends that hit the event log before the command commits. In an application that already runs, each of those is a command that starts failing.
+
+So there's a mode in between. Measure runs every command exactly as before, same results, same status codes, and reports what On would do: which reads it would guard, which it would refuse, which appends it would reject, and where someone else's event matched a read while the command ran.
+
+The part I find most useful: Measure sees things the build can't. An append hidden behind a service interface compiled without a diagnostic, and Measure reported it as immediate_append with the event type the first time the command ran.
+
+In the post:
+- the path from Off through Measure to On, one project at a time
+- what Measure adds per command, and why its report is a set of hypotheses, not protection
+- a real report from four commands, and how to read the counter by category
+- fixing a read through IReadModels, an immediate append and a joined read model
+- the run-time cap that lowers the mode during an incident, and only ever lowers it
+
+https://blog.cratis.io/turning-read-protection-on/
+
+#eventsourcing #dotnet #cqrs #cratis

@@ -1,0 +1,20 @@
+Read protection says no in two ways. A 400 means something the command read changed: read again and decide. A 500 means the code reads something Arc can't guard: change the code.
+
+The 400 is the race from earlier in the series. Two members borrow the last copy, and the second commit comes back with concurrencyViolation and ReadChanged. It names no field, because nothing the user typed was wrong, so a UI should reload and let the user decide again rather than put an error on the form. Arc and Chronicle don't re-run the command.
+
+The 500 is a read Arc can't fold fresh and guard: IReadModels inside a command, a model with joins, an immediate append. Under Off that code runs unguarded. Under On it's refused before anything is written, and most of it is already a warning at build time.
+
+There's also a yes that should have been a no. Under Off, a caller that sends X-Allowed-Severity: 3 removes the validator's errors, and the borrow is written for a book with no copy left. From Arc 22.108.0, a command declared On blocks on errors whatever the caller sends.
+
+In the post:
+- the two 400s, ReadChanged and ReadIncomplete, and what's in each result
+- a TypeScript and CommandForm handler that branches on reason, not message text
+- the common 500s and their fixes, and what production shows instead of the message
+- [Unprotected("why")] for reads that are only context
+- the analyzers that report most of this before anything runs
+
+Part 5 of Decisions that hold.
+
+https://blog.cratis.io/when-arc-says-no/
+
+#eventsourcing #cqrs #dotnet #cratis #typescript

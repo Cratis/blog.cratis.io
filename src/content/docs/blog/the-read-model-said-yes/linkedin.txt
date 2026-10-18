@@ -1,0 +1,17 @@
+The same validator, the same command, one project setting: the read model it checks now guards the append, and the loser of a race gets a 400 that says nothing was written.
+
+A library lends a book only while a copy is on the shelf. The command most of us write first checks a BookStock read model in a validator and then appends BookBorrowed. Two members press Borrow a few milliseconds apart, both read one copy left, both commits succeed, and the stock folds to -1. It doesn't even take concurrency: a materialized read model can lag behind the request that just finished.
+
+With <CratisReadProtection>On</CratisReadProtection>, Arc reads that model fresh from the event log, after Chronicle has noted the log's position, and the commit is refused if a borrow, return or new copy for that book arrived after that position. A rename doesn't conflict, and neither does a borrow of another book. Arc and Chronicle don't re-run the command; the caller reads again and decides.
+
+In the post:
+- the race step by step, and why the default append check doesn't catch it
+- what turning On changes, and the guard it builds
+- what the caller gets back: concurrencyViolation, ReadChanged, and the exact message
+- what the guard doesn't cover, and what it costs
+
+Part 2 of Decisions that hold.
+
+https://blog.cratis.io/the-read-model-said-yes/
+
+#eventsourcing #cqrs #dotnet #cratis #concurrency

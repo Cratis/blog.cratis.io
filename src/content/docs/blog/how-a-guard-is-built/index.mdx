@@ -1,0 +1,299 @@
+---
+title: "How a guard is built, merged and widened · Decisions that hold, Part 10"
+description: "A guard is a position in the log and a filter. Here is where Chronicle takes each part from, how several reads, an explicit scope and a definition's declared concurrency merge into one guard per event source, and how to print what a commit guarded."
+date: 2026-11-13T09:00:00Z
+authors: sindre
+excerpt: "A guard is a position in the log and a filter. This part takes one apart: where the position and the filter come from, what a second read does to them, how an explicit scope and declared concurrency join in, and how to print what a commit actually guarded."
+tags:
+  - arc
+  - chronicle
+  - concurrency
+  - event-sourcing
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+*[Decisions that hold](/the-bug-you-never-see/) · Part 10 of 11*
+
+Every part of this series so far has leaned on the same object. A validator reads `BookStock` and the command's append carries a guard. A monthly limit reads one stream of an account and the guard covers that month. A test puts a competing event between the read and the commit and the guard refuses the commit. I've described what each guard covers, but not how it's put together.
+
+A guard is an append condition: a position in the event log plus a filter. The kernel checks it atomically with the append and rejects the append if any event that matches the filter was appended after the position. Everything in this part is about where the position and the filter come from, what happens when a command has more than one source of them, and how to print the result so you don't have to take my word for any of it.
+
+The examples assume read protection is On, as in new Cratis applications (see [Part 2](/the-read-model-said-yes/)). Under On, Arc drives the Chronicle machinery shown here for every command. The code below drives it directly, because that's where you can print the guard.
+
+## Print the guard first
+
+Chronicle's unit of work can report what it sent with the append. Under a read-protection frame, `GetAppendConditions()` returns one `AppendCondition` per guarded event source after the commit:
+
+<Tabs syncKey="language">
+<TabItem label="C#">
+
+```csharp
+using Cratis.Chronicle;
+using Cratis.Chronicle.Auditing;
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.EventSequences;
+using Cratis.Chronicle.Projections.ModelBound;
+using Cratis.Chronicle.ReadModels;
+using Cratis.Chronicle.Transactions;
+using Cratis.Execution;
+
+public record AccountId(string Value) : EventSourceId(Value);
+
+[EventType]
+public record MoneyWithdrawn(decimal Amount);
+
+// Counts the withdrawals in the stream the read is scoped to.
+[Passive]
+[FromEvent<MoneyWithdrawn>]
+public record MonthlyWithdrawals(string Id, [Count<MoneyWithdrawn>] int Count);
+
+public static class ShowTheGuard
+{
+    public static async Task<IReadOnlyList<AppendCondition>> Withdraw(IEventStore eventStore, AccountId account)
+    {
+        var unitOfWork = (UnitOfWork)eventStore.UnitOfWorkManager.Begin(CorrelationId.New());
+        using var frame = unitOfWork.EnforceReadProtection();
+        var owner = unitOfWork.ClaimDecisionReadCommitOwnership();
+
+        // Account, stream type "Transactions", stream id "2026-10".
+        await eventStore.GetDecisionReads().GetFor<MonthlyWithdrawals>(unitOfWork, account, "Transactions", "2026-10");
+        unitOfWork.AddEvent(
+            EventSequenceId.Log,
+            account,
+            new MoneyWithdrawn(100),
+            Causation.Unknown(),
+            eventStreamType: "Transactions",
+            eventStreamId: "2026-10");
+        await unitOfWork.CommitAsOwner(owner);
+
+        // One AppendCondition per guarded event source. Print it to see what the commit guarded.
+        return unitOfWork.GetAppendConditions();
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+The Kotlin client does not have decision reads yet.
+
+</TabItem>
+<TabItem label="Java">
+
+The Java client does not have decision reads yet.
+
+</TabItem>
+<TabItem label="TypeScript">
+
+The TypeScript client does not have decision reads yet.
+
+</TabItem>
+<TabItem label="Elixir">
+
+```elixir
+defmodule MyApp.Events.SeeTheGuardMoneyWithdrawn do
+  use Chronicle.Events.EventType, id: "see-the-guard-money-withdrawn"
+
+  defstruct [:amount]
+end
+
+# Counts the withdrawals in the stream the read is scoped to.
+defmodule MyApp.ReadModels.SeeTheGuardMonthlyWithdrawals do
+  use Chronicle.ReadModels.ReadModel, passive: true
+
+  defstruct id: nil, count: 0
+
+  from MyApp.Events.SeeTheGuardMoneyWithdrawn, set: [id: :event_source_id], count: :count
+end
+
+defmodule MyApp.SeeTheGuardShowTheGuard do
+  alias Chronicle.ReadModels.DecisionReads
+  alias Chronicle.Transactions.UnitOfWork
+  alias MyApp.ReadModels.SeeTheGuardMonthlyWithdrawals
+
+  def withdraw(account_id) do
+    unit_of_work = UnitOfWork.begin()
+
+    # Account, stream type "Transactions", stream id "2026-10".
+    {:ok, _read} =
+      DecisionReads.get(SeeTheGuardMonthlyWithdrawals, account_id, "Transactions", "2026-10")
+
+    # One concurrency scope per guarded event source. Inspect it to see what a commit would guard.
+    guards = UnitOfWork.get_decision_reads(unit_of_work)
+
+    UnitOfWork.rollback(unit_of_work)
+    guards
+  end
+end
+```
+
+</TabItem>
+</Tabs>
+
+The first three lines of `Withdraw` and the `CommitAsOwner` call are what Arc does for a command under On: begin the unit of work, turn read protection on for the whole invocation, claim the right to commit, and commit as that owner at the end. Read protection is part of Arc for .NET. The Elixir tab works differently: it inspects the decision reads enrolled in the unit of work before anything is committed, rather than the conditions a commit sent.
+
+With one earlier withdrawal in October already in the log, at position 0, `ToString()` on the single condition prints:
+
+```text
+guard BankAccount-7: types=[MoneyWithdrawn], streamType=Transactions, streamId=2026-10, after 0
+```
+
+Read it left to right. `BankAccount-7` is the event source, whose events count. `types=[…]` lists the event type ids that count. For a .NET `[EventType]` record without an explicit id, that's the type name. `streamType` and `streamId` narrow it to one stream of the source. `after 0` is the position: an event that matches everything before it and lands after position 0 rejects the append. On an empty log the boundary prints as `no matching event` instead, which is how "create it only if nothing like it exists yet" holds.
+
+The condition also says where it came from. `Origins` is `[ProtectedRead, DefaultRouting]` and `Reads` is `[MonthlyWithdrawals 'BankAccount-7']`: the read gave the guard its filter and position, and it replaces the ordinary optimistic check for an append to that source. `DefaultRouting` only records that the append's routing was taken into account; it adds nothing to the filter. A source the command reads but doesn't append to carries only `ProtectedRead`.
+
+## The parts of a guard
+
+Every guard has the same four parts. What changes is who supplies them:
+
+| Part | Decision read | Explicit scope | Event source definition |
+| --- | --- | --- | --- |
+| Event source | The key you read | `WithEventSourceId` | The event's own source, when the definition declares the event source id |
+| Event types | The types the model folds, including the types that remove it | `WithEventType` | None. Any type counts |
+| Source type, stream type, stream id | Only for a stream-scoped read, with the values you pass | Whatever you set on the builder | The dimensions the definition declares |
+| Position | The log's tail, taken before the fold | The sequence number you captured | The tail, read when you append |
+
+Only the decision read takes the position before it reads the facts it decides on. That ordering is the whole trick. The client asks the kernel for the tail, then folds the key's events. An event that lands during the fold, or after it, is after the position, so it conflicts. Take the tail after the fold instead and an event that arrives in between is in nobody's guard.
+
+The position is the tail of the whole log, not of the key. With `MemberRegistered` for `member-1` at position 0 and one for `member-2` at position 1, a read of `MemberLoans` for `member-1` gives:
+
+```text
+guard member-1: types=[MemberRegistered,LoanTaken,LoanReturned], after 1
+```
+
+That's harmless: the filter decides what counts, and nothing for `member-1` arrived after position 1. What the filter means in practice, with competing events appended between that read and the commit:
+
+| Competing event | Commit |
+| --- | --- |
+| `MemberRenamed` for `member-1`, a type the model doesn't fold | Succeeds |
+| `LoanTaken` for `member-2`, another source | Succeeds |
+| `LoanTaken` for `member-1` | Rejected, nothing written |
+
+The rejection is a `ConcurrencyViolation` with the event source and the expected and actual sequence numbers. It doesn't say which event caused it ([Chronicle#4926](https://github.com/Cratis/Chronicle/issues/4926) tracks that), and Chronicle doesn't re-run your decision. A model that doesn't exist yet is guarded the same way: the read of an unknown `member-9` returns no instance, and a `MemberRegistered` for `member-9` that arrives before the commit rejects it.
+
+## Several reads
+
+A command often reads more than once. The unit of work collects every read, any explicit scope you pass, and the routing of the events you append, and merges them per event source when you commit. Only routing a definition declares joins the merge; ordinary routing leaves the reads' guard as it is:
+
+![A diagram titled How a commit's guard is assembled. On the left, a frame labeled In the unit of work holds three cards: Decision reads, key plus types, tail taken first; Explicit scope, your scope, must cover reads; Definition, declared routing, its dimensions. Arrows from all three lead to a tall card labeled Per source, Merge, union of types, and from there to a card labeled Per source, One guard, with the append. A band underneath reads One condition fails: nothing in the batch is written.](./how-guards-merge.png)
+
+*Everything a commit is guarded by is collected in the unit of work and merged per event source.*
+
+Reads of different sources stay separate. Reading `MemberLoans` for both `member-1` and `member-2` gives two conditions, checked in the same atomic append, so a conflict on either one rejects the whole batch:
+
+```text
+guard member-1: types=[MemberRegistered,LoanTaken,LoanReturned], after 1
+guard member-2: types=[MemberRegistered,LoanTaken,LoanReturned], after 1
+```
+
+Reads of the same source merge into one condition. The event types are the union, the position is the earliest of the reads, and each stream value survives only if the reads agree on it. Here are the two cases that surprise people, both printed from a commit under a read-protection frame. October's and November's `MonthlyWithdrawals` for the same account:
+
+```text
+guard BankAccount-7: types=[MoneyWithdrawn], streamType=Transactions, after 0
+```
+
+The stream ids differ, so the stream id is gone. A withdrawal in December now rejects the commit, though neither read looked at December. October's `MonthlyWithdrawals` beside a whole-account `AccountBalance`, which folds deposits too:
+
+```text
+guard BankAccount-7: types=[MoneyWithdrawn,MoneyDeposited], after 0
+```
+
+The whole-account read has no stream, so the stream type and id are both gone, and the types are the union of both models.
+
+![A diagram titled What a second read does, in three rows. One read of MonthlyWithdrawals for 2026-10 gives a guard covering 2026-10, MoneyWithdrawn. A second read of the same model for 2026-11 gives a guard covering any month, MoneyWithdrawn. A second read of the whole account, AccountBalance, gives a guard covering any stream, with MoneyDeposited added. A band underneath reads A merged guard only gets wider.](./what-two-reads-become.png)
+
+*What a second read of the same account does to the guard.*
+
+That's the rule to remember: merging only widens. The merged condition covers everything either read would have caught, so a second read can add conflicts but can't hide one. Outside a read-protection frame, for example `AppendMany(guardedBy: reads)`, the stream values are kept only when both match and are otherwise both dropped; under a frame each value is kept or dropped on its own. If a rule really depends on two streams, read the whole source once instead, so the guard says what it covers. In an Arc command, [ARCCHR0038](https://cratis.io/arc/backend/csharp/chronicle/code-analysis/arcchr0038/) points out a per-stream read whose guard another read will widen.
+
+## An explicit scope beside a read
+
+You can still pass your own concurrency scope for a source you also read. Chronicle doesn't guess whether it's enough. Under a frame it checks that the scope covers the read: its source, source type, stream type and stream id are each unset or equal to the read's, its event types are empty or a superset, and its position is the same or earlier. A scope on the whole account, captured before the October read, covers it, and becomes the condition:
+
+```text
+guard BankAccount-7: any type, after 0
+```
+
+Its `Origins` are `[ProtectedRead, Explicit, DefaultRouting]`. A scope that is narrower than the read is refused at commit. A scope on `Transactions/2026-10` beside a whole-account `AccountBalance` read fails with `ExplicitScopeDoesNotCoverReads`:
+
+```text
+The command returns an exact concurrency scope for 'BankAccount-7' that does not watch what it read: AccountBalance 'BankAccount-7'. Widen the scope and capture its boundary before reading.
+```
+
+Outside a frame, combining a decision read and an explicit scope on one source is refused outright with `DecisionReadConflictsWithConcurrencyScope`. In Arc, a stream decision is an explicit scope, so a stream decision beside a whole-source read of the same source is refused for the same reason: the stream is narrower than the read. [Part 4](/a-limit-for-one-month/) met the same refusal from the other side: a stream decision beside a per-stream validator, whose scope is captured after the validator's read.
+
+## Declared concurrency on a definition
+
+An event source definition can declare which dimensions guard every append to it. This one makes every event in one month of a ledger conflict with every other event in that month:
+
+```csharp
+using Cratis.Chronicle.Events;
+using Cratis.Chronicle.EventSources;
+
+// Every event in one month of a ledger conflicts with every other event in that month.
+[EventSource("Ledger")]
+[EventStream(
+    "Transactions",
+    Concurrency = ConcurrencyDimensions.EventSourceId | ConcurrencyDimensions.EventStreamType | ConcurrencyDimensions.EventStreamId)]
+public class LedgerEventSource : IEventSource;
+
+[EventType]
+public record LedgerPosted(decimal Amount);
+```
+
+Read a per-month model of `LedgerPosted` for source type `Ledger`, `Transactions/2026-10`, then stage the posting without the definition's routing. The read passes the source type along with the stream type and stream id, so the guard is the read's own, with origins `[ProtectedRead, DefaultRouting]`:
+
+```text
+guard BankAccount-7: types=[LedgerPosted], sourceType=Ledger, streamType=Transactions, streamId=2026-10, after 0
+```
+
+Stage the same posting through `LedgerEventSource`, and under a frame the declared dimensions merge into the read's guard:
+
+```text
+guard BankAccount-7: any type, streamType=Transactions, streamId=2026-10, after 0
+```
+
+The origins change from `DefaultRouting` to `DeclaredRouting`. The declared dimensions are kept only where they equal the read's, so the month stays. The event types become any type, because the definition says every event in the month counts. The source type isn't among the declared dimensions, so it's dropped. The position is still the read's. Any event in October now rejects the commit, not only a posting.
+
+Arc follows the same rule under On: it doesn't build the routing scope itself, it hands the declared dimensions to Chronicle, which merges them at commit.
+
+| The definition declares | What it does to a read's guard |
+| --- | --- |
+| Nothing, or `None` | Nothing |
+| Dimensions that include the event source id | Merged into the read's guard. Event types become any type |
+| Dimensions without the event source id | A separate guard, not tied to the read. It doesn't protect the state you read |
+
+That's correct when the month really is the consistency boundary, such as a ledger, a numbering sequence or an approval stream, where every writer should see every other. For anything else it only adds conflicts. ARCCHR0038 also reports a declared `Concurrency` that includes the event source id without both stream dimensions, because it widens a per-stream guard to the whole source.
+
+## Aggregates and stream decisions
+
+Two more dependencies supply guards in Arc, and both fit the same shape:
+
+| Dependency | Guard |
+| --- | --- |
+| Aggregate root | Taken when the aggregate is rehydrated: its event source and the event types it handles, from the tail at that moment. An aggregate and a protected read of the same source are refused |
+| Stream decision | An explicit scope taken when the stream is read: the routed stream, any event type |
+| Fresh identifier check | An "expect no matching event" guard on the new id |
+
+## What a guard cannot see
+
+A guard compares events appended after a position with a filter, so anything that isn't an appended event matching that filter is outside it: revisions and redactions, writers without a guard, projection definitions changed elsewhere, other sequences and stores. [Part 8](/decision-reads-without-arc/) and [Part 9](/testing-a-race/) list these in full. Two details follow from the anatomy. Chronicle refuses `Revise` and `Redact` inside a read-protection frame, so a protected command can't do them to itself ([Chronicle#4900](https://github.com/Cratis/Chronicle/issues/4900) tracks a kernel check for other processes). And a command that reads but appends nothing has no guard at all: `GetAppendConditions()` is empty.
+
+Guards also have a cost shape worth knowing. Each guarded read folds the key's history of the model's types, every time, and folds of one model type are served through one projection per type in the kernel, so they are expected to queue behind each other across keys and tenants. Chronicle's [costs and limits](https://cratis.io/chronicle/dynamic-consistency-boundary/limits/) page has the one measurement published so far, with its environment. Keep guarded models flat and keys short-lived.
+
+:::tip[What to do when]
+- **A guard is wider than you expected:** print it. Look for a second read of the same source, a whole-source read beside a per-stream one, or declared `Concurrency` on the definition.
+- **You return an explicit scope and also read the source:** the scope must cover the read and be captured no later than it, or the commit fails with `ExplicitScopeDoesNotCoverReads`.
+- **You want to assert the guard in a test of Chronicle-direct code:** call `GetAppendConditions()` after the commit and assert on the count and each condition's `Origins`.
+- **You're tempted to declare `Concurrency` on a definition:** do it for ledgers, numbering and approval streams only.
+- **A rule needs two streams of one source:** read the whole source once rather than two streams.
+:::
+
+Chronicle's [How guards are derived](https://cratis.io/chronicle/dynamic-consistency-boundary/how-guards-are-derived/) page has the full merge tables, Arc's [How read protection works](https://cratis.io/arc/backend/csharp/chronicle/consistency/how-it-works/) shows what Arc does for each command, and [read protection](https://cratis.io/chronicle/read-models/read-protection/) documents the frame API. The last part of the series collects the questions that come up most and a guide to which mechanism a rule needs.
+
+*The examples need Chronicle 19.68.0 or later. With Arc, read protection needs Arc 22.108.0 or later.*
+
+---
+
+- Previous: [Part 09 — Testing a decision against a race](/testing-a-race/)

@@ -1,0 +1,17 @@
+A member may hold three loans, and a book has one copy left. Which entity does that rule belong to?
+
+Both. And that's where a guard on one key stops helping. Two tabs, two different books, the same member: each request sees two loans and approves a third. The guard on the book never sees the other borrow, because it was of another book.
+
+In Arc, the answer is to read both. Two read models in one validator, each picked by its own key with [LookUpBy], and one event for each entity: BookBorrowed to the book, LoanTaken to the member. With read protection On, each read is its own guard, and both are checked with the one atomic append. If either side changed after the read, nothing is written, and the 400 names the model and key that moved.
+
+The part I'd want to know before trying it: the obvious shortcut, counting loans from the book's events keyed by the member inside them, can't be guarded. The build warns about it, and at run time Arc refuses it instead of quietly reading a snapshot.
+
+In the post:
+- the member-and-book rule, and course capacity with a per-student limit
+- why each entity gets its own event type
+- how Arc chooses which key a parameter reads
+- what stays outside the guard, including key sets that grow
+
+https://blog.cratis.io/one-rule-two-entities/
+
+#eventsourcing #cqrs #dotnet #cratis #arc

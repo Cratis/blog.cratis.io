@@ -16,7 +16,9 @@ import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 *[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 11 of 26*
 
-A spec for "a second author with the same name is rejected" can pass without the first author ever reaching the event log. On an Arc `CommandScenario`, `Given` seeds an in-memory read model, and nothing it seeds is appended to the log that Chronicle checks a `[Unique]` constraint against. The spec sits in the right folder and carries the right name, and the constraint it's named after is never exercised.
+*Revised 2026-10-20: updated for Arc's read protection.*
+
+A spec for "a second author with the same name is rejected" can pass without the first author ever reaching the event log. On an Arc `CommandScenario` for a command with read protection Off, the default, and no decision reads, `Given` seeds an in-memory read model, and nothing it seeds is appended to the log that Chronicle checks a `[Unique]` constraint against. The spec sits in the right folder and carries the right name, and the constraint it's named after is never exercised.
 
 That's one of a handful of ways a spec in an event-sourced application can go green and prove nothing, and they all come from losing track of what a given kind of test actually runs. Cratis offers several kinds, from calling a method to running a real Chronicle in Docker, and for most rules the cheapest one is enough.
 
@@ -718,7 +720,7 @@ The first is a discarded assertion. Chronicle's `ShouldHaveAppendedEvent` and `S
 
 The second is a read model nobody seeded. When a validator, `Provide()` or `Handle()` asks for a read model that doesn't exist for the command's key, no rule runs at all, and the command is still rejected, with a single `DependencyUnavailable` validation result. `ShouldNotBeSuccessful()` passes, and it keeps passing after the rule the spec is named after has been deleted. `ShouldHaveValidationErrors()` refuses a result whose only errors carry that reason. An unhappy-path spec asserts both `ShouldNotBeSuccessful()` and `ShouldHaveValidationErrors()`, and a spec about authorization asserts `ShouldNotBeAuthorized()`.
 
-The third is the one from the opening. `Given` on a `CommandScenario` materializes read models. A precondition the constraint has to see goes through the scenario's `EventScenario.Given`, which appends it to the in-memory log before the command runs.
+The third is the one from the opening. With read protection Off, the default, `Given` on a `CommandScenario` materializes read models. A precondition the constraint has to see goes through the scenario's `EventScenario.Given`, which appends it to the in-memory log before the command runs. With read protection On or Measure, or on a command that takes decision reads, the scenario runs one real in-process event log and `Given` seeds that log, so the `EventScenario` property isn't available there.
 
 Two more are worth knowing. `Validate(command)` runs the command filters, and authorization comes before validation, so a validate-only spec on an `[Authorize]` command with no identity registered is denied before its rule runs. And an expected value computed in the spec with the same expression as the code under test agrees with it by construction. Write the literal.
 

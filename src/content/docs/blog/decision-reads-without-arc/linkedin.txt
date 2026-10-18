@@ -1,0 +1,18 @@
+Under Arc's read protection is one Chronicle call you can make yourself: note where the log was, fold the state, and append only if nothing it depended on arrived since.
+
+That matters the moment a decision runs outside an Arc command. A minimal API endpoint, a controller, a background worker or an Elixir service talks to Chronicle directly, and nothing enrolls a read for you.
+
+The call is a decision read. It notes the position of the log, folds the read model for one key, and hands you the state and a guard. Pass the guard to the append, and the kernel rejects the append if an event the model folds arrived for that key after the position. Nothing is written, and the conflict comes back as a value you have to check.
+
+The part I'd want to know first: in an ASP.NET Core request, the middleware commits after the response, and it doesn't report the conflict. Commit early, or the caller gets a 200 for a write that was rejected.
+
+In the post:
+- a decision read and a guarded append in C# and Elixir
+- the same guard across a request, with the early commit
+- what the guard is in DCB terms, and why Chronicle is not a DCB event store
+- a hand-built guard when no read model fits: the tail first, then the facts
+- the results you must check, and what the guard does not see
+
+https://blog.cratis.io/decision-reads-without-arc/
+
+#eventsourcing #dcb #dotnet #cratis #chronicle

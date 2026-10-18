@@ -1,0 +1,18 @@
+One line in a test puts a competing write between a command's read and its commit, and turns "it works" into "it still holds when someone else is faster".
+
+The tests most of us write for a rule run one command at a time: a copy on the shelf, it's lent; no copy, it's refused. Both pass with a plain read that guards nothing, so they can't tell a guarded decision from an unguarded one.
+
+An Arc command scenario can queue a competing event with AppendConcurrently. The scenario appends it after the validator has read and Handle has returned, and before the command commits. Under read protection On the command comes back with concurrencyViolation and ReadChanged, and nothing from it is written. Compile the same command with Off or Measure and the same test fails, which is exactly what it's there to tell you.
+
+In the post:
+- the race test line by line, and what to assert
+- what the scenario sets up for you under On, and why EventScenario throws there
+- why pinned read models don't feed a guarded read, and what to seed instead
+- two keys, a per-month stream, and the test that checks a guard isn't too wide
+- what a green race test does not show
+
+Part 9 of Decisions that hold.
+
+https://blog.cratis.io/testing-a-race/
+
+#eventsourcing #dotnet #testing #cratis #concurrency

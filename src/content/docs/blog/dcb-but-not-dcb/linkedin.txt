@@ -1,0 +1,52 @@
+LINKEDIN POSITIONING: DCB, but not DCB
+Link: https://blog.cratis.io/dcb-but-not-dcb/
+(Post date 2026-10-16. Publish once the site deploys. Put the link in the first comment, not the post body.)
+
+ANGLE
+A clarifying opinion, not a rebuttal. The Dynamic Consistency Boundary is a useful idea carrying a confusing label. Name what people actually want: modeling flexibility, one clear owner for each event producer, and rules per command. Then show which Chronicle mechanism gives each. Respect the DCB community and the Decider pattern; position this as "here is how I map them", not "DCB is wrong".
+
+AUDIENCE
+Event sourcing practitioners who have read about DCB and aggregates and are unsure which to pick. Secondary: .NET developers who know FluentValidation and wonder where it fits.
+
+POST (copy, adjust to taste)
+
+I think we should stop saying "DCB" and say what we mean.
+
+When people ask for it, they usually want three things:
+1. model events without being forced into one aggregate per stream
+2. one clear owner for who produces an event
+3. rules decided per command, not per entity
+
+In Chronicle each of those has a plain mechanism: event source definitions, constraints at append, decision reads on a command, and aggregates where an aggregate is the better fit. The newest piece: with Arc's read protection switched on, the validator-reads-a-read-model pattern I called wrong in March actually holds, because the read is guarded like a decision read. It's off by default.
+
+I also went back over what I wrote in March. Two things I got wrong, and one of them just got fixed by a release.
+
+The post has the code in C#, Kotlin, Java, TypeScript and Elixir where the client supports it, and a table of where they differ.
+
+Link in the first comment.
+
+FIRST COMMENT
+DCB, but not DCB: https://blog.cratis.io/dcb-but-not-dcb/
+For the original idea: https://dcb.events/
+
+HASHTAGS (keep to 3)
+#EventSourcing #DDD #dotnet
+
+IMAGE
+Use three-things-we-want.png. Alt text: Three things people want from DCB, and how Chronicle spells each.
+
+DO
+- Credit the DCB spec and the Decider pattern by name.
+- Be open about the March correction. It builds trust and it is a good hook for replies.
+- Be precise about client support: decision reads are .NET and Elixir only today, and read protection is Arc for .NET only. It is off by default.
+
+DON'T
+- Say "strongly consistent", "guarantees" or imply parity across all five clients.
+- Frame it as winning against aggregates. The post says aggregates still have a place.
+- Dismiss the acronym. Propose a vocabulary; don't police one.
+
+DISCUSSION STARTER (for a reply or follow-up)
+"Which of the three do you need, and which mechanism did you reach for first?"
+
+FOLLOW-UPS
+The decider-map figure as a single image post. Later, a short post on closing streams.
