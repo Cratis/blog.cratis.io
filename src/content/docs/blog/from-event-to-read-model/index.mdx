@@ -374,7 +374,32 @@ export class Order {
 </TabItem>
 <TabItem label="Elixir">
 
-Not available in the Elixir client.
+```elixir
+defmodule MyApp.ReadModels.OrderLine do
+  defstruct id: nil, product: "", quantity: 0
+end
+
+defmodule MyApp.ReadModels.Order do
+  use Chronicle.ReadModels.ReadModel,
+    types: [lines: {:list, MyApp.ReadModels.OrderLine}]
+
+  alias MyApp.Events.{LineItemAdded, LineItemRemoved, OrderCreated, QuantityAdjusted}
+
+  defstruct id: nil, customer: "", lines: []
+
+  from OrderCreated, set: [id: :event_source_id, customer: :customer_name]
+
+  children :lines, identified_by: :id do
+    from LineItemAdded,
+      key: :item_id,
+      set: [id: :item_id, product: :product_name, quantity: :initial_quantity]
+
+    from QuantityAdjusted, key: :item_id, set: [quantity: :new_quantity]
+
+    removed_with LineItemRemoved, key: :item_id
+  end
+end
+```
 
 </TabItem>
 </Tabs>
@@ -483,7 +508,38 @@ class GroupProjection implements IProjectionFor<Group> {
 </TabItem>
 <TabItem label="Elixir">
 
-Not available in the Elixir client.
+```elixir
+defmodule MyApp.ReadModels.GroupMember do
+  defstruct user_id: nil, role: nil
+end
+
+defmodule MyApp.ReadModels.Group do
+  use Chronicle.ReadModels.ReadModel,
+    types: [members: {:list, MyApp.ReadModels.GroupMember}]
+
+  defstruct name: nil, members: []
+end
+
+defmodule MyApp.Projections.GroupProjection do
+  use Chronicle.Projections.Projection, model: MyApp.ReadModels.Group
+
+  alias MyApp.Events.{GroupCreated, UserAddedToGroup, UserRemovedFromGroup, UserRoleChanged}
+
+  from GroupCreated
+
+  children :members, identified_by: :user_id do
+    from UserAddedToGroup,
+      key: :user_id,
+      set: [user_id: :user_id, role: :role]
+
+    from UserRoleChanged,
+      key: :user_id,
+      set: [role: :role]
+
+    removed_with UserRemovedFromGroup, key: :user_id
+  end
+end
+```
 
 </TabItem>
 </Tabs>
@@ -513,7 +569,7 @@ projection InvoiceDetails => InvoiceDetailsReadModel
 
 Two details in that text do less than they seem to. A `key` on the `projection` line is parsed but doesn't route any events. A `from` without a key uses the event source, here the invoice, and one that needs another key states it, as the line items do. In `join customer on customerId`, the name `customer` is only a label and is discarded when the definition is built.
 
-Because the server takes text and returns a definition, a PDL projection can be previewed before it's saved. The Workbench has an editor for it, and the .NET client has `IProjections.Query()` for an ad-hoc, bounded query that replays from the start. The ad-hoc query is .NET only and doesn't replace a registered projection.
+Because the server takes text and returns a definition, a PDL projection can be previewed before it's saved. The Workbench has an editor for it, and the .NET client has `IProjections.Query()` and the Elixir client `Chronicle.Projections.query/1` for an ad-hoc, bounded query that replays from the start. The ad-hoc query doesn't replace a registered projection.
 
 ## Keys decide what an instance is
 

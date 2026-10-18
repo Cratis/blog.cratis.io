@@ -590,8 +590,61 @@ class OrderLine {
 </TabItem>
 <TabItem label="Elixir">
 
-> Elixir does not support this workflow yet.
-> The model-bound children attributes (`ChildrenFrom` and `RemovedWith`) have no Elixir equivalent in the documented client.
+```elixir
+defmodule MyApp.Events.OrderCreated do
+  use Chronicle.Events.EventType, id: "order-created"
+
+  defstruct customer_name: ""
+end
+
+defmodule MyApp.Events.LineItemAdded do
+  use Chronicle.Events.EventType, id: "line-item-added"
+
+  defstruct item_id: "", product_name: "", initial_quantity: 0, unit_price: 0.0
+end
+
+defmodule MyApp.Events.QuantityAdjusted do
+  use Chronicle.Events.EventType, id: "quantity-adjusted"
+
+  defstruct item_id: "", new_quantity: 0
+end
+
+defmodule MyApp.Events.LineItemRemoved do
+  use Chronicle.Events.EventType, id: "line-item-removed"
+
+  defstruct item_id: ""
+end
+
+defmodule MyApp.ReadModels.OrderLine do
+  defstruct item_id: "", product: "", quantity: 0, unit_price: 0.0
+end
+
+defmodule MyApp.ReadModels.Order do
+  use Chronicle.ReadModels.ReadModel,
+    types: [lines: {:list, MyApp.ReadModels.OrderLine}]
+
+  alias MyApp.Events.{LineItemAdded, LineItemRemoved, OrderCreated, QuantityAdjusted}
+
+  defstruct order_id: "", customer: "", lines: []
+
+  from OrderCreated, set: [order_id: :event_source_id, customer: :customer_name]
+
+  children :lines, identified_by: :item_id do
+    from LineItemAdded,
+      key: :item_id,
+      set: [
+        item_id: :item_id,
+        product: :product_name,
+        quantity: :initial_quantity,
+        unit_price: :unit_price
+      ]
+
+    from QuantityAdjusted, key: :item_id, set: [quantity: :new_quantity]
+
+    removed_with LineItemRemoved, key: :item_id
+  end
+end
+```
 
 </TabItem>
 <TabItem label="TypeScript">
@@ -714,8 +767,41 @@ public class OrderSummaryProjection : IProjectionFor<OrderSummary>
 </TabItem>
 <TabItem label="Elixir">
 
-> Elixir does not support this workflow yet.
-> Declarative children projections are not available in the Elixir client.
+```elixir
+defmodule MyApp.ReadModels.OrderSummaryLine do
+  defstruct item_id: "", product: "", quantity: 0, unit_price: 0.0
+end
+
+defmodule MyApp.ReadModels.OrderSummary do
+  use Chronicle.ReadModels.ReadModel,
+    types: [lines: {:list, MyApp.ReadModels.OrderSummaryLine}]
+
+  defstruct order_id: "", customer: "", lines: []
+end
+
+defmodule MyApp.Projections.OrderSummaryProjection do
+  use Chronicle.Projections.Projection, model: MyApp.ReadModels.OrderSummary
+
+  alias MyApp.Events.{LineItemAdded, LineItemRemoved, OrderCreated, QuantityAdjusted}
+
+  from OrderCreated, set: [order_id: :event_source_id, customer: :customer_name]
+
+  children :lines, identified_by: :item_id do
+    from LineItemAdded,
+      key: :item_id,
+      set: [
+        item_id: :item_id,
+        product: :product_name,
+        quantity: :initial_quantity,
+        unit_price: :unit_price
+      ]
+
+    from QuantityAdjusted, key: :item_id, set: [quantity: :new_quantity]
+
+    removed_with LineItemRemoved, key: :item_id
+  end
+end
+```
 
 </TabItem>
 <TabItem label="TypeScript">

@@ -199,7 +199,7 @@ end
 </TabItem>
 </Tabs>
 
-Giving several events the same constraint name makes one rule follow the value across them, so a registered email and a changed email share one index. When a lifecycle can end in more than one way, each of those ending events gets its own `[RemoveConstraint]`. For rules that outgrow attributes there's the declarative `IConstraint` class. Its builder covers event types whose property names differ, can ignore casing and supplies messages. In C# and TypeScript it also names the constraint and declares removal, while the JVM clients name it with `@Constraint(id = ...)`. Both forms compile to the same constraint in the kernel.
+Giving several events the same constraint name makes one rule follow the value across them, so a registered email and a changed email share one index. When a lifecycle can end in more than one way, each of those ending events gets its own `[RemoveConstraint]`. For rules that outgrow attributes there's the declarative `IConstraint` class. Its builder covers event types whose property names differ, can ignore casing and supplies messages. In C#, TypeScript and Elixir it also names the constraint and declares removal, while the JVM clients name it with `@Constraint(id = ...)`. Both forms compile to the same constraint in the kernel.
 
 For a registered email and a changed email, the declarative form of the shared `UniqueEmail` rule looks like this, as a self-contained example with its own event types:
 
@@ -335,31 +335,33 @@ class UniqueEmailAcrossEvents implements IConstraint {
 </TabItem>
 <TabItem label="Elixir">
 
-The Elixir client declares the rule on the events, as in the model-bound example above, with the same name on each event:
-
 ```elixir
 defmodule MyApp.Events.UserRegistered do
-  use Chronicle.Events.EventType, id: "constraints-unique-user-registered"
-
-  unique :email, name: "UniqueEmail"
+  use Chronicle.Events.EventType, id: "user-registered"
 
   defstruct email: ""
 end
 
 defmodule MyApp.Events.UserEmailChanged do
-  use Chronicle.Events.EventType, id: "constraints-unique-user-email-changed"
-
-  unique :new_email, name: "UniqueEmail"
+  use Chronicle.Events.EventType, id: "user-email-changed"
 
   defstruct new_email: ""
 end
 
 defmodule MyApp.Events.UserRemoved do
-  use Chronicle.Events.EventType, id: "constraints-unique-user-removed"
-
-  remove_constraint "UniqueEmail"
+  use Chronicle.Events.EventType, id: "user-removed"
 
   defstruct []
+end
+
+defmodule MyApp.Constraints.UniqueEmail do
+  use Chronicle.Events.Constraint
+
+  unique name: "UniqueEmail" do
+    on MyApp.Events.UserRegistered, [:email]
+    on MyApp.Events.UserEmailChanged, [:new_email]
+    removed_with MyApp.Events.UserRemoved
+  end
 end
 ```
 
@@ -1041,7 +1043,25 @@ export class OpenAccount {
 </TabItem>
 <TabItem label="Elixir">
 
-Arc for Elixir doesn't exist. With the Chronicle Elixir client, set the expectation on the scope with `ConcurrencyScope.expecting_no_matching_event/1`.
+Arc for Elixir doesn't exist. With the Chronicle Elixir client, the scope travels on the event:
+
+```elixir
+defmodule MyApp.OpenAccount do
+  alias Chronicle.EventSequences.{EventForEventSourceId, EventLog}
+  alias Chronicle.Events.ConcurrencyScope
+  alias MyApp.Events.AccountOpened
+
+  def open_account(account_id, name) do
+    EventLog.append_many_for_event_sources([
+      %EventForEventSourceId{
+        event_source_id: account_id,
+        event: %AccountOpened{name: name},
+        concurrency_scope: ConcurrencyScope.expecting_no_matching_event(event_source_id: true)
+      }
+    ])
+  end
+end
+```
 
 </TabItem>
 </Tabs>

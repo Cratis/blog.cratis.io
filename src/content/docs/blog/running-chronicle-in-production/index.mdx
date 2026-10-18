@@ -300,7 +300,31 @@ sdk.start();
 </TabItem>
 <TabItem label="Elixir">
 
-The Elixir client doesn't emit traces or metrics of its own.
+The Elixir client reports spans under the `Cratis.Chronicle.Client` scope through the OpenTelemetry API, and does nothing with them until the application adds the SDK and an exporter. It also emits `:telemetry` events for the same operations.
+
+```elixir
+# mix.exs
+defp deps do
+  [
+    {:opentelemetry, "~> 1.3"},
+    {:opentelemetry_exporter, "~> 1.6"}
+    # ...your other dependencies
+  ]
+end
+```
+
+```elixir
+# config/runtime.exs
+import Config
+
+config :opentelemetry,
+  resource: [service: [name: "my-app"]],
+  text_map_propagators: [:trace_context]
+
+config :opentelemetry_exporter,
+  otlp_protocol: :http_protobuf,
+  otlp_endpoint: "http://localhost:4318"
+```
 
 </TabItem>
 </Tabs>
@@ -309,7 +333,7 @@ Arc's pipelines in .NET emit spans and no counters, so command and query rates c
 
 ### Where a trace stops
 
-Follow a `RegisterAuthor` command through a trace in .NET and it stops at the append. The HTTP request, Arc's `cratis.arc.command.execute` span and the client's `client.event_sequence.append` span nest in one trace, and the kernel receives the append through ASP.NET Core, which reads the trace context the call carries. From there the event is stored, and nothing that carries it on to observers carries the trace with it. The kernel's `cratis.chronicle.observer.handle` span runs in a separate trace, and `client.reactor.handle` and `client.reducer.handle` start with no parent and no link back to the command. The correlation ID travels with the event, but it's an ID, and a tracing backend can't join spans on it. The JVM client's tracing guide says the same of its own spans. The gap is [Cratis/Chronicle#4417](https://github.com/Cratis/Chronicle/issues/4417).
+Follow a `RegisterAuthor` command through a trace in .NET and it stops at the append. The HTTP request, Arc's `cratis.arc.command.execute` span and the client's `client.event_sequence.append` span nest in one trace, and the kernel receives the append through ASP.NET Core, which reads the trace context the call carries. From there the event is stored, and nothing that carries it on to observers carries the trace with it. The kernel's `cratis.chronicle.observer.handle` span runs in a separate trace, and `client.reactor.handle` and `client.reducer.handle` start with no parent and no link back to the command. The correlation ID travels with the event, but it's an ID, and a tracing backend can't join spans on it. The JVM and Elixir clients' documentation says the same of their own spans. The gap is [Cratis/Chronicle#4417](https://github.com/Cratis/Chronicle/issues/4417).
 
 ![A diagram titled Where a trace stops today, with a small tag that reads .NET. On the left, a box labeled One trace holds four rows, each indented further than the one above: HTTP request, Arc command, Client append and Kernel append. A dashed vertical line follows, labeled no trace context past the append. On the right, a box labeled New traces holds three rows: Observer, Reactor and Reducer. Two bands run along the bottom. The first reads: new traces have no parent and no link. The second reads: the correlation ID travels with the event, but a tracing backend can't join on it.](./where-the-trace-stops.png)
 

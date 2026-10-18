@@ -467,14 +467,34 @@ class ReplayAwareOrderReactor {
 </TabItem>
 <TabItem label="Elixir">
 
-Elixir does not support this workflow yet.
+```elixir
+defmodule ReplayAwareOrderPlaced do
+  use Chronicle.Events.EventType, id: "replay-aware-order-placed"
+
+  defstruct [:order_id]
+end
+
+defmodule ReplayAwareOrderReactor do
+  use Chronicle.Reactors.Reactor
+
+  @handles ReplayAwareOrderPlaced
+
+  # Runs as the event happens.
+  @impl true
+  def handle(%ReplayAwareOrderPlaced{}, _context), do: :ok
+
+  # Runs instead of handle/2 while the observer is replaying.
+  @impl true
+  def handle_replay(%ReplayAwareOrderPlaced{}, _context), do: :ok
+end
+```
 
 </TabItem>
 </Tabs>
 
 The second is recovery after a failure. The partition paused, and recovery delivers the event again as an ordinary observation, so neither `[OnceOnly]` nor `[Replay]` applies. If the handler charged the card before it threw, the retry charges it again.
 
-For that case the .NET client has [delivery identity](https://cratis.io/chronicle/reactors/delivery-identity/). Declare a `ReactorDelivery` parameter and Chronicle passes in a stable identity for this delivery of this event to this reactor. `delivery.Id` is built from six values Chronicle already has: the reactor id, the event store, the namespace, the event sequence, the partition and the event's sequence number. The same delivery gets the same id on a replay and on a partition recovery. Keep a receipt under that id, check it before the side effect and write it after:
+For that case the .NET and Elixir clients have [delivery identity](https://cratis.io/chronicle/reactors/delivery-identity/). Declare a `ReactorDelivery` parameter, or in Elixir read `delivery_id` from the context, and Chronicle passes in a stable identity for this delivery of this event to this reactor. `delivery.Id` is built from six values Chronicle already has: the reactor id, the event store, the namespace, the event sequence, the partition and the event's sequence number. The same delivery gets the same id on a replay and on a partition recovery. Keep a receipt under that id, check it before the side effect and write it after:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
@@ -517,7 +537,42 @@ The TypeScript client has no `ReactorDelivery` parameter.
 </TabItem>
 <TabItem label="Elixir">
 
-The Elixir client has no `ReactorDelivery` parameter.
+```elixir
+defmodule CustomerWelcomed do
+  use Chronicle.Events.EventType, id: "customer-welcomed"
+
+  defstruct [:customer_id]
+end
+
+defmodule WelcomeMail do
+  def send(_customer_id), do: :ok
+end
+
+defmodule WelcomeMailerReceipts do
+  def completed?(_delivery_id), do: false
+  def complete(_delivery_id), do: :ok
+end
+
+defmodule WelcomeMailer do
+  # Skip CustomerWelcomed while the observer replays. Replay exclusion is not
+  # exactly-once: recovering a failed partition can still deliver it again,
+  # so the delivery receipt guards the side effect as well.
+  use Chronicle.Reactors.Reactor, once_only: [CustomerWelcomed]
+
+  @handles CustomerWelcomed
+
+  @impl true
+  def handle(%CustomerWelcomed{} = event, %{delivery_id: delivery_id}) do
+    if WelcomeMailerReceipts.completed?(delivery_id) do
+      :ok
+    else
+      with :ok <- WelcomeMail.send(event.customer_id) do
+        WelcomeMailerReceipts.complete(delivery_id)
+      end
+    end
+  end
+end
+```
 
 </TabItem>
 </Tabs>
@@ -528,7 +583,7 @@ Delivery stays at-least-once. The id identifies a delivery and makes no promise 
 
 The id is also a persisted key. Renaming a reactor type that has no stable id, moving the reactor to another event sequence or renaming a namespace changes the id and orphans every receipt already written. A reactor that keeps receipts should have a stable id through `[Reactor("...")]`.
 
-Only the .NET client has `ReactorDelivery`, so integrations called from the Kotlin, Java, TypeScript and Elixir clients have to be idempotent on their own. TypeScript supports `@onceOnly()` and `@replay()` from `@cratis/chronicle` 6.9.0, and Elixir has neither marker. [Where the clients differ](https://cratis.io/chronicle/clients/where-the-clients-differ/) lists the rest.
+Only the .NET and Elixir clients have a delivery identity, so integrations called from the Kotlin, Java and TypeScript clients have to be idempotent on their own. TypeScript supports `@onceOnly()` and `@replay()` from `@cratis/chronicle` 6.9.0, and Elixir has the `once_only:` option and `handle_replay/2`. [Where the clients differ](https://cratis.io/chronicle/clients/where-the-clients-differ/) lists the rest.
 
 ![A diagram titled One delivery, three arrivals. Three numbered cards run left to right, each headed delivery.Id A. 1, live: effect and receipt written, then it throws. 2, recovery: OnceOnly doesn't apply; receipt found, skipped. 3, replay: OnceOnly skips the handler. Below them, a card labeled your receipt store reads A recorded, with an arrow labeled write from the live card and an arrow labeled check first from the recovery card. Beside it, a chip reads .NET client. An amber note reads: effect done, receipt not written: the retry repeats it; close the gap with one transaction or an idempotency key. A band at the bottom reads: Id from reactor, event store, namespace, event sequence, partition, sequence number.](./one-delivery-three-arrivals.png)
 
