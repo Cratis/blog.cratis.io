@@ -18,7 +18,7 @@ import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 ## TL;DR
 
-Cratis Studio is live and in beta. Open signup is coming soon at cratis.studio, with a 14-day free trial. Under the hood it's a handful of services in front of a Chronicle event store: an edge ([AuthProxy](/authproxy-the-edge-your-services-should-not-build/)) that signs you in and works out which organization you belong to, a lobby ([Ante](https://github.com/Cratis/Ante)) that handles invitations, and the Studio application itself. Core, the lobby, the admin console and the catalog each keep their own event store, and they pass each other facts. Studio is built with Chronicle, Arc, Components and the rest of the platform.
+Cratis Studio is a handful of services in front of a Chronicle event store: an edge ([AuthProxy](/authproxy-the-edge-your-services-should-not-build/)) that signs you in and works out which organization you belong to, a lobby ([Ante](https://github.com/Cratis/Ante)) that handles invitations, and the Studio application itself. Core, the lobby, the admin console and the catalog each keep their own event store, and they pass each other facts. Studio is built with Chronicle, Arc, Components and the rest of the platform.
 
 ## Why show the architecture
 
@@ -87,7 +87,7 @@ Between Core and the lobby, every hand-off in that story is an event, and every 
 
 *The published packages Studio is built with.*
 
-Studio is built with Chronicle, Arc, Components, Fundamentals, AuthProxy and Ante, and its Play and code generation features use Stage, Screenplay and Scene. Stage, Scene and Screenplay are experimental. Some of Studio's own features are still preview or experimental, and that's worth knowing if you try it.
+Studio is built with Chronicle, Arc, Components, Fundamentals, AuthProxy and Ante, and its Play and code generation features use Stage, Screenplay and Scene.
 
 Here's what a small slice looks like. This is registering a project, trimmed down: a command that returns a fact, a constraint that keeps names unique, and a read model that fills itself from the events and exposes a live query.
 
@@ -195,4 +195,4 @@ You don't need Studio's size to use any of this. The parts that travel are small
 - **Put the repeated work at the edge, keep the decisions in the service.** AuthProxy signs people in and finds their organization. The application decides what they can do.
 - **Let slices be small.** A command, an event, a constraint and a read model fit in one file, and most of Studio is that.
 
-If you want to see the result, [Cratis Studio](https://cratis.studio) is live and in beta. The parts you can use yourself are documented at [cratis.io](https://cratis.io): [Chronicle](https://cratis.io/chronicle/), [Arc](https://cratis.io/arc/) and [AuthProxy](https://cratis.io/authproxy/). Come and say hello on [Discord](https://discord.gg/kt4AMpV8WV) if something here made you want to know more.
+If you want to see the result, [Cratis Studio](https://cratis.studio) is the place to start. The parts you can use yourself are documented at [cratis.io](https://cratis.io): [Chronicle](https://cratis.io/chronicle/), [Arc](https://cratis.io/arc/) and [AuthProxy](https://cratis.io/authproxy/). Come and say hello on [Discord](https://discord.gg/kt4AMpV8WV) if something here made you want to know more.
