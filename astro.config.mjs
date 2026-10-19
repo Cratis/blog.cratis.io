@@ -4,6 +4,7 @@ import sitemap from '@astrojs/sitemap';
 import starlight from '@astrojs/starlight';
 import starlightBlog from 'starlight-blog';
 import { authors } from './src/data/authors.mjs';
+import { readPublishedPosts } from './src/data/published-posts.mjs';
 import { rootBlogUrls } from './src/integrations/root-blog-urls.ts';
 
 // starlight-blog wants only the fields it knows about; `signature` is used by
@@ -11,6 +12,21 @@ import { rootBlogUrls } from './src/integrations/root-blog-urls.ts';
 const blogAuthors = Object.fromEntries(
     Object.entries(authors).map(([id, { name, title, url, picture }]) => [id, { name, title, url, picture }]),
 );
+
+// Tag pages with fewer posts than this are `noindex` (see src/routeData.ts),
+// so they stay out of the sitemap too. Slugs mirror starlight-blog's tag URLs.
+const minimumPostsPerIndexedTag = 3;
+const publishedPosts = readPublishedPosts();
+const postCountByTag = new Map();
+for (const { tags } of publishedPosts) {
+    for (const tag of tags) postCountByTag.set(tag, (postCountByTag.get(tag) ?? 0) + 1);
+}
+const lastModifiedBySlug = new Map(publishedPosts.map(({ slug, lastModified }) => [slug, lastModified]));
+const thinTagUrls = new Set(
+    [...postCountByTag].filter(([, count]) => count < minimumPostsPerIndexedTag).map(([tag]) => `/blog/tags/${tag}/`),
+);
+
+const ogImageAlt = 'The Cratis Blog: event sourcing, CQRS and event modeling in practice.';
 
 // https://astro.build/config
 export default defineConfig({
@@ -30,8 +46,12 @@ export default defineConfig({
         // rewrite the relocated URLs (posts move from /blog/<slug> to
         // /<slug> at build time, see src/integrations/root-blog-urls.ts).
         sitemap({
+            filter: (page) => !thinTagUrls.has(new URL(page).pathname),
             serialize(item) {
-                return { ...item, url: item.url.replace('/blog/', '/') };
+                const url = item.url.replace('/blog/', '/');
+                const slug = new URL(url).pathname.replaceAll('/', '');
+                const lastmod = lastModifiedBySlug.get(slug)?.toISOString();
+                return lastmod ? { ...item, url, lastmod } : { ...item, url };
             },
         }),
         starlight({
@@ -43,8 +63,10 @@ export default defineConfig({
                 { tag: 'meta', attrs: { property: 'og:image', content: 'https://blog.cratis.io/og-image.jpg' } },
                 { tag: 'meta', attrs: { property: 'og:image:width', content: '1200' } },
                 { tag: 'meta', attrs: { property: 'og:image:height', content: '630' } },
+                { tag: 'meta', attrs: { property: 'og:image:alt', content: ogImageAlt } },
                 { tag: 'meta', attrs: { name: 'twitter:card', content: 'summary_large_image' } },
                 { tag: 'meta', attrs: { name: 'twitter:image', content: 'https://blog.cratis.io/og-image.jpg' } },
+                { tag: 'meta', attrs: { name: 'twitter:image:alt', content: ogImageAlt } },
             ],
             logo: {
                 light: './src/assets/cratis-mark-light.svg',
