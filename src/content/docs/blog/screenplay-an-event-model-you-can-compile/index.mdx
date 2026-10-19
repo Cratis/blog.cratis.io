@@ -1,5 +1,6 @@
 ---
 title: "Event modeling with Screenplay: a model you can compile · Script to stage, Part 20"
+seoTitle: "Event modeling with Screenplay: a model you can compile"
 description: "Event modeling with Screenplay: the .play language that sits next to your code, a compiler with stable diagnostic codes, and an MCP server for assistants."
 date: 2026-09-30T09:20:00Z
 authors: sindre
@@ -14,13 +15,13 @@ tags:
 
 *[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 20 of 26*
 
-`cratis screenplay validate` compiles an event model on a machine where the application has never started. It reads a folder of `.play` files, merges them into one application, and reports each problem with a code that stays the same from one release to the next. [Screenplay](https://cratis.io/screenplay/) is the language those files are written in.
+`cratis screenplay validate` compiles an event model on a machine where the application has never started. It reads a folder of `.play` files, merges them into one application, and reports each problem with a code that stays the same from one release to the next. [Screenplay](https://www.cratis.io/screenplay/) is the language those files are written in.
 
 In a model, the author feature is a `RegisterAuthor` command, the `AuthorRegistered` event it produces, and a list of authors built from those events. The code below uses a library example, where a member borrows a book. It has the same shape, with one command, one event and one list.
 
 ## Write the intent down first
 
-[Event modeling](https://cratis.io/event-modeling/) draws a feature as a timeline of screens, commands, events, read models and automations. For the author feature that timeline is short. A librarian fills in a form, the system records that an author was registered, and a list shows the authors. Drawing it first lets the people involved argue about cause and information flow while changing their minds is still cheap.
+[Event modeling](https://www.cratis.io/event-modeling/) draws a feature as a timeline of screens, commands, events, read models and automations. For the author feature that timeline is short. A librarian fills in a form, the system records that an author was registered, and a list shows the authors. Drawing it first lets the people involved argue about cause and information flow while changing their minds is still cheap.
 
 ![A diagram titled One slice as an event model, drawn as five horizontal lanes. Screen: an Author form issues the RegisterAuthor command, which produces the AuthorRegistered event. AuthorRegistered is projected into the Authors view, which feeds an Author list screen. In the Event log lane, a recorded AuthorRegistered is an instance of the modeled event. A band at the bottom reads: One .play file. The compiler, Stage, Scene and specs read it.](./model-timeline.png)
 
@@ -30,7 +31,7 @@ An event model on a whiteboard stops matching the code soon after the code exist
 
 ## The slice is the unit
 
-A `.play` file is indented like Python and has no braces. Nesting is decided by spaces, so a tab gets a warning (`PLAY0006`), and comments start with `//`. A file declares a `domain`, the concepts and policies it needs, and then a `module` that holds [features and slices](https://cratis.io/screenplay/slices/). Features nest as deep as the domain needs them to.
+A `.play` file is indented like Python and has no braces. Nesting is decided by spaces, so a tab gets a warning (`PLAY0006`), and comments start with `//`. A file declares a `domain`, the concepts and policies it needs, and then a `module` that holds [features and slices](https://www.cratis.io/screenplay/slices/). Features nest as deep as the domain needs them to.
 
 The slice is the smallest thing a model is made of, and its four types follow event modeling:
 
@@ -96,7 +97,7 @@ A model means something without any code in it. A few points in the language acc
 
 ## Personal data is declared on the value
 
-[Concepts](https://cratis.io/screenplay/concepts/) are the typed values a model is built from, and they're where personal data is marked:
+[Concepts](https://www.cratis.io/screenplay/concepts/) are the typed values a model is built from, and they're where personal data is marked:
 
 ```screenplay
 concept EmailAddress     : String   @pii
@@ -110,7 +111,7 @@ concept BankAccount : String @pii @sensitive
 
 ## Examples live in the slice
 
-A slice can carry [specifications](https://cratis.io/screenplay/specifications/), written as Given/When/Then over facts. `given` sets up earlier events, a read model's state, or the caller with their roles and claims. `when` runs a command or appends an event directly. `then` expects events, a read model, a query result, an error with its message, or `denied`.
+A slice can carry [specifications](https://www.cratis.io/screenplay/specifications/), written as Given/When/Then over facts. `given` sets up earlier events, a read model's state, or the caller with their roles and claims. `when` runs a command or appends an event directly. `then` expects events, a read model, a query result, an error with its message, or `denied`.
 
 `then denied` expects the typed unauthorized rejection, which is a different outcome from a failed validation. A scenario for a command with an `authorize` line has to say who the caller is with `given caller`, and without it binding fails with `PLAY0389`. Values in an executable specification are concrete literals, objects and lists. A `null` in a command or event value is rejected (`PLAY0350`), because in Chronicle an optional fact is a separate event.
 
@@ -118,7 +119,7 @@ For the author feature, "registering the same name twice is rejected" would have
 
 ## One folder is one application
 
-A [folder](https://cratis.io/screenplay/folders/) of `.play` files compiles as a single application. The files are merged before any name is resolved, so an event declared in one file and produced in another resolves. Compile the same files one at a time and you get false warnings about unknown types, policies and events (`PLAY0165` to `PLAY0167`). Compile the folder and you get none. A folder can hold at most one `domain`, and two files that each declare one get `PLAY0172`: "a folder compiles to one application, which can have at most one". Unrelated applications need separate folders.
+A [folder](https://www.cratis.io/screenplay/folders/) of `.play` files compiles as a single application. The files are merged before any name is resolved, so an event declared in one file and produced in another resolves. Compile the same files one at a time and you get false warnings about unknown types, policies and events (`PLAY0165` to `PLAY0167`). Compile the folder and you get none. A folder can hold at most one `domain`, and two files that each declare one get `PLAY0172`: "a folder compiles to one application, which can have at most one". Unrelated applications need separate folders.
 
 Checking the model needs nothing running:
 
@@ -126,13 +127,13 @@ Checking the model needs nothing running:
 cratis screenplay validate ./plays --warnings-as-errors
 ```
 
-The [CLI](https://cratis.io/cli/reference/screenplay/) compiles every `.play` file under the folder as one application and prints compiler-style errors, so it fits in CI on a machine where the application has never started. By default warnings and information don't fail the run, and an error does. `--warnings-as-errors` makes a warning fail it too. In CI that's usually what you want, since a warning almost always means an undeclared name. Piped output is JSON, and `-o plain` or `-o table` prints something for a person. Validation checks the model only. Whether a renderer can build it is a separate question, and [*Stage and Scene*](/stage-and-scene-after-a-model-compiles/) answers it.
+The [CLI](https://www.cratis.io/cli/reference/screenplay/) compiles every `.play` file under the folder as one application and prints compiler-style errors, so it fits in CI on a machine where the application has never started. By default warnings and information don't fail the run, and an error does. `--warnings-as-errors` makes a warning fail it too. In CI that's usually what you want, since a warning almost always means an undeclared name. Piped output is JSON, and `-o plain` or `-o table` prints something for a person. Validation checks the model only. Whether a renderer can build it is a separate question, and [*Stage and Scene*](/stage-and-scene-after-a-model-compiles/) answers it.
 
 The compiler is also a .NET global tool, `Cratis.Screenplay.Tool`, which puts a `screenplay` command on the path, and a NuGet library, `Cratis.Screenplay`, for tools of your own.
 
 ## Diagnostics you can match on
 
-Every problem is a [diagnostic](https://cratis.io/screenplay/diagnostics/) with a severity, a code, a message and a line and column. The [`screenplay` tool](https://cratis.io/screenplay/tool/) prints them like a compiler:
+Every problem is a [diagnostic](https://www.cratis.io/screenplay/diagnostics/) with a severity, a code, a message and a line and column. The [`screenplay` tool](https://www.cratis.io/screenplay/tool/) prints them like a compiler:
 
 ```text
 nested/broken.play(3,5): error PLAY0028: Unknown slice type 'Wat' - expected StateChange, StateView, Automation or Translate
@@ -173,7 +174,7 @@ As a library, `new ScreenplayCompiler().Compile(source)` returns a result with `
 
 New node kinds can be added, and an unknown form never throws. Enum members keep their numeric values, and public constants, every diagnostic code among them, never change. A node grows by an init-only property, never by a new constructor parameter. The positional parameter list, an exhaustive `switch` over a base type and the element types of collections are outside those promises, so tools shouldn't depend on them.
 
-`ScreenplayPrinter` turns a tree back into `.play` text, with two spaces per level, escaped strings and numbers that print the same in every culture. [Printing](https://cratis.io/screenplay/printing/) a compiled document gives an equivalent tree, and printing that again gives identical text. Comments survive and surrounding whitespace is normalized. That round trip keeps a generated `.play` file readable as a diff, whichever tool wrote it.
+`ScreenplayPrinter` turns a tree back into `.play` text, with two spaces per level, escaped strings and numbers that print the same in every culture. [Printing](https://www.cratis.io/screenplay/printing/) a compiled document gives an equivalent tree, and printing that again gives identical text. Comments survive and surrounding whitespace is normalized. That round trip keeps a generated `.play` file readable as a diff, whichever tool wrote it.
 
 ```csharp
 using Cratis.Screenplay;
@@ -195,7 +196,7 @@ A document that compiles is valid Screenplay. Whether it can execute is decided 
 
 ## An assistant on the model
 
-The [Screenplay MCP server](https://cratis.io/screenplay/mcp/) lets an assistant work on the same files a person does. It ships in the .NET tool and in the native CLI as [`cratis screenplay mcp`](https://cratis.io/cli/reference/screenplay-mcp/), which needs no separate .NET install. The CLI embeds its own copy of the server, so it can trail the newest Screenplay release. cli 3.29.0 embeds server 4.66.1, while the newest Screenplay release is 4.73.0. For VS Code, the [install guide](https://cratis.io/screenplay/mcp/install/) mounts a folder:
+The [Screenplay MCP server](https://www.cratis.io/screenplay/mcp/) lets an assistant work on the same files a person does. It ships in the .NET tool and in the native CLI as [`cratis screenplay mcp`](https://www.cratis.io/cli/reference/screenplay-mcp/), which needs no separate .NET install. The CLI embeds its own copy of the server, so it can trail the newest Screenplay release. cli 3.29.0 embeds server 4.66.1, while the newest Screenplay release is 4.73.0. For VS Code, the [install guide](https://www.cratis.io/screenplay/mcp/install/) mounts a folder:
 
 ```json
 {

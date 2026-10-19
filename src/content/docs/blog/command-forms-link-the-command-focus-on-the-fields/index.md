@@ -13,7 +13,7 @@ tags:
 
 ## TL;DR
 
-A command form links a form to a command by its **type**. [Arc's `CommandForm`](https://cratis.io/arc/frontend/react/command-form/) owns one instance of the generated command, and you write the fields that bind to its properties. Validation, errors under the right field and execution state come with it. [Cratis Components](https://cratis.io/components/commandform/) builds fields, dialogs and steppers on top. Everything is typed from the C# command to the field, which means the compiler tells you when you got it wrong. It checks that a property exists, though, not that the control you picked fits it.
+A command form links a form to a command by its **type**. [Arc's `CommandForm`](https://www.cratis.io/arc/frontend/react/command-form/) owns one instance of the generated command, and you write the fields that bind to its properties. Validation, errors under the right field and execution state come with it. [Cratis Components](https://www.cratis.io/components/commandform/) builds fields, dialogs and steppers on top. Everything is typed from the C# command to the field, which means the compiler tells you when you got it wrong. It checks that a property exists, though, not that the control you picked fits it.
 
 ## Most of a form isn't the fields
 
@@ -59,7 +59,7 @@ export class AddBookValidator extends CommandValidator<IAddBook> {
 }
 ```
 
-Rules defined once in C# end up in the browser. The [validation post](/validation-all-the-way-down/) goes into where a rule can live and which rejections reach a field. Now the form. This is a dialog, built with [Cratis Components](https://cratis.io/components/commanddialog/):
+Rules defined once in C# end up in the browser. The [validation post](/validation-all-the-way-down/) goes into where a rule can live and which rejections reach a field. Now the form. This is a dialog, built with [Cratis Components](https://www.cratis.io/components/commanddialog/):
 
 ```tsx
 import { CommandDialog } from '@cratis/components/CommandDialog';
@@ -79,7 +79,7 @@ export const AddBookDialog = () => (
 );
 ```
 
-That's the whole thing. No state, no `onChange`, no error handling, no submit handler. `CommandDialog` creates the command instance, the fields bind to its properties through the accessor, and the dialog runs the command when you confirm. The [CommandForm docs](https://cratis.io/components/commandform/) describe what a field binds to, and [Arc's own `CommandForm`](https://cratis.io/arc/frontend/react/command-form/) is what's underneath if you want the form without a dialog.
+That's the whole thing. No state, no `onChange`, no error handling, no submit handler. `CommandDialog` creates the command instance, the fields bind to its properties through the accessor, and the dialog runs the command when you confirm. The [CommandForm docs](https://www.cratis.io/components/commandform/) describe what a field binds to, and [Arc's own `CommandForm`](https://www.cratis.io/arc/frontend/react/command-form/) is what's underneath if you want the form without a dialog.
 
 ![A diagram titled You write the fields. On the left a card reads: you write, the fields, one typed accessor each. On the right four rows list what comes with it: the command instance, validation from your C# rules, errors under the right field, and execution and busy state.](./who-writes-what-in-a-form.png)
 
@@ -125,7 +125,7 @@ A form in a dialog is only one way to use it, and Components has a few others on
 
 *Dialogs, steppers and generated forms all sit on the same command form.*
 
-`CommandStepper` and `StepperCommandDialog` split one command over several named steps, for [a multi-step form](https://cratis.io/components/multi-step-form/). And when you don't want to write a field per property at all, `AutoCommandForm` generates them from the command's own properties:
+`CommandStepper` and `StepperCommandDialog` split one command over several named steps, for [a multi-step form](https://www.cratis.io/components/multi-step-form/). And when you don't want to write a field per property at all, `AutoCommandForm` generates them from the command's own properties:
 
 ```tsx
 import { AutoCommandForm } from '@cratis/components/CommandForm';
@@ -139,7 +139,7 @@ export const AddBookForm = () => (
 );
 ```
 
-A string gets an `InputTextField`, a number a `NumberField`, a boolean a `CheckboxField` and a date a `CalendarField`. Fields are the same components you'd write by hand, and [you can register your own](https://cratis.io/components/commandform/auto-command-form/) for other types.
+A string gets an `InputTextField`, a number a `NumberField`, a boolean a `CheckboxField` and a date a `CalendarField`. Fields are the same components you'd write by hand, and [you can register your own](https://www.cratis.io/components/commandform/auto-command-form/) for other types.
 
 ## Where it stops
 
@@ -163,4 +163,4 @@ npm install
 npm run build
 ```
 
-Then rename a property in the C# command and build again. Watching the frontend build point at the field you forgot is the quickest way I know of to see what "typed all the way" means. If you want to go further, the [Components tutorial](https://cratis.io/components/tutorial/) builds a live list-and-detail screen, and Part 9 covers how the rest of the dialog's behavior is built.
+Then rename a property in the C# command and build again. Watching the frontend build point at the field you forgot is the quickest way I know of to see what "typed all the way" means. If you want to go further, the [Components tutorial](https://www.cratis.io/components/tutorial/) builds a live list-and-detail screen, and Part 9 covers how the rest of the dialog's behavior is built.

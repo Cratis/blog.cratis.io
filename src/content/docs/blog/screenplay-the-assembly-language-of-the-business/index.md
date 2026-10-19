@@ -22,7 +22,7 @@ Think about what IL actually did for .NET. C#, F# and VB all compile down to the
 
 The thing is, the business side of software has never had that. We've had whiteboards, sticky notes, Miro boards, Word documents, Jira epics and a lot of very good intentions. None of them are something a compiler can check, a tool can read, or a pull request can diff. So the moment the code exists, the model starts drifting away from it.
 
-That's what [Screenplay](https://cratis.io/screenplay/) is for, and over the last couple of weeks it really clicked for me what it has become: **the assembly language of the business**.
+That's what [Screenplay](https://www.cratis.io/screenplay/) is for, and over the last couple of weeks it really clicked for me what it has become: **the assembly language of the business**.
 
 ## A quick recap of what Screenplay is
 
@@ -62,7 +62,7 @@ If you want the language tour, Sindre did a great job with that in [Screenplay: 
 
 ![A diagram titled One language in the middle. On the left, in a group labeled Written by: People, AI assistants, Studio, C# code and Live systems, each with an arrow into a central box labeled Screenplay, .play. From that box, arrows go to a group on the right labeled Read by: Event models, Running apps, Generated code and Diagnostics.](./screenplay-hub.png)
 
-That picture is the whole point of this post. On the left are all the ways a Screenplay document comes into existence. A person writes it in an editor. An AI assistant proposes it through the Screenplay MCP server. [Cratis Studio](https://cratis.io/studio/) exports it from the board you've been modeling on together. The Cratis CLI generates it from Arc, Marten or Wolverine source code with [`cratis screenplay generate`](https://cratis.io/cli/reference/screenplay/). And [Prologue](https://cratis.io/cli/reference/prologue/) interprets one from what an existing system is observed doing. On the right are the things that read it. Same file format in the middle, every single time.
+That picture is the whole point of this post. On the left are all the ways a Screenplay document comes into existence. A person writes it in an editor. An AI assistant proposes it through the Screenplay MCP server. [Cratis Studio](https://www.cratis.io/studio/) exports it from the board you've been modeling on together. The Cratis CLI generates it from Arc, Marten or Wolverine source code with [`cratis screenplay generate`](https://www.cratis.io/cli/reference/screenplay/). And [Prologue](https://www.cratis.io/cli/reference/prologue/) interprets one from what an existing system is observed doing. On the right are the things that read it. Same file format in the middle, every single time.
 
 Exactly like IL. Nobody on the left has to know who's on the right.
 
@@ -107,7 +107,7 @@ Once the board was a package, it could go anywhere. And it went to a lot of plac
 
 ## Open a .play file, get a board
 
-The [Screenplay VS Code extension](https://cratis.io/screenplay/vscode/) now opens `.play` files on the event model board by default. It's the same board as Studio, with modules and features across the top, a column per slice, the personas as rows with screens drawn as small prototypes in them, and the Given/When/Then specifications hanging underneath each slice.
+The [Screenplay VS Code extension](https://www.cratis.io/screenplay/vscode/) now opens `.play` files on the event model board by default. It's the same board as Studio, with modules and features across the top, a column per slice, the personas as rows with screens drawn as small prototypes in them, and the Given/When/Then specifications hanging underneath each slice.
 
 ```shell
 code --install-extension cratis.screenplay
@@ -127,11 +127,11 @@ Zoom out and you get the whole application in one picture. A picture of the syst
 
 This is the one that made me smile the most.
 
-The [Screenplay MCP server](https://cratis.io/screenplay/mcp/) has been around for a bit, letting an assistant explore a model, find declarations, find gaps in your specifications and *propose* changes that a person reviews and applies. Over the last week it gained a bunch of new capabilities. It now picks its workspace by itself (from the folder you name, the folder your client offers, or the folder you started it in), it ships as [desktop bundles for Claude Desktop and a local plugin for ChatGPT Desktop](https://cratis.io/screenplay/mcp/install/), and the CLI can install and update those for you with `cratis screenplay mcp install`. It guides the assistant towards valid models *before* it proposes anything, and it can propose typed repairs for some diagnostics instead of just complaining about them.
+The [Screenplay MCP server](https://www.cratis.io/screenplay/mcp/) has been around for a bit, letting an assistant explore a model, find declarations, find gaps in your specifications and *propose* changes that a person reviews and applies. Over the last week it gained a bunch of new capabilities. It now picks its workspace by itself (from the folder you name, the folder your client offers, or the folder you started it in), it ships as [desktop bundles for Claude Desktop and a local plugin for ChatGPT Desktop](https://www.cratis.io/screenplay/mcp/install/), and the CLI can install and update those for you with `cratis screenplay mcp install`. It guides the assistant towards valid models *before* it proposes anything, and it can propose typed repairs for some diagnostics instead of just complaining about them.
 
 And it can draw.
 
-The server now offers the board as an [MCP App](https://modelcontextprotocol.io/extensions/apps/overview), a view the host renders right inside the conversation, through a tool called `visualize-model`. In [hosts that render MCP Apps](https://cratis.io/screenplay/mcp/view/), like Claude Desktop and GitHub Copilot in VS Code, you can just say *"Show me the application as an event model board"* and there it is. While it's on screen it follows the files on disk, so when the assistant applies a change or you edit a file by hand, the board catches up on its own.
+The server now offers the board as an [MCP App](https://modelcontextprotocol.io/extensions/apps/overview), a view the host renders right inside the conversation, through a tool called `visualize-model`. In [hosts that render MCP Apps](https://www.cratis.io/screenplay/mcp/view/), like Claude Desktop and GitHub Copilot in VS Code, you can just say *"Show me the application as an event model board"* and there it is. While it's on screen it follows the files on disk, so when the assistant applies a change or you edit a file by hand, the board catches up on its own.
 
 The part I find really powerful is the what-if. Ask the assistant to sketch something without changing anything:
 
@@ -154,7 +154,7 @@ This changes the conversation with an assistant quite a bit. Instead of reading 
 
 Now for the other direction. Everything so far is about a Screenplay someone, or something, wrote. But what about the code you already have?
 
-In [Arc](https://cratis.io/arc/), we've added `Cratis.Arc.Screenplay.Embedded`. During compilation it analyzes your commands, events, read models, projections and reactors, generates Screenplay documents from them, one for the assembly and one per module and feature, and embeds them in your assembly. Generation errors fail the build rather than embedding something the Screenplay compiler would reject. The `Cratis` metapackage includes it, and `UseCratis()` maps a read-only explorer at `/.cratis/event-model/` for a Debug-built application running in Development. You don't have to do anything.
+In [Arc](https://www.cratis.io/arc/), we've added `Cratis.Arc.Screenplay.Embedded`. During compilation it analyzes your commands, events, read models, projections and reactors, generates Screenplay documents from them, one for the assembly and one per module and feature, and embeds them in your assembly. Generation errors fail the build rather than embedding something the Screenplay compiler would reject. The `Cratis` metapackage includes it, and `UseCratis()` maps a read-only explorer at `/.cratis/event-model/` for a Debug-built application running in Development. You don't have to do anything.
 
 Here's the explorer in a fresh application from the template (`dotnet new cratis`), where I replaced the sample feature with a small library (adding books, borrowing and returning them, registering members and a reactor welcoming them) and ran it with `dotnet run`.
 
@@ -168,7 +168,7 @@ This is source-derived documentation, not a view of live data. It shows what you
 
 The board is honest about what it can't draw. See those warnings at the top? The analysis found things a board card can't express, like a reaction whose body is code, or property mappings on a produced event, and instead of quietly dropping them it tells you. The **Source** tab always gives you the full generated Screenplay.
 
-And being a Debug build in Development isn't authorization. The explorer exposes your application's structure, so the [docs](https://cratis.io/arc/backend/csharp/embedded-event-model/) cover turning it off or putting a policy on it if that instance is reachable by anyone but you. Turning it off is one line, and a policy goes on the route group:
+And being a Debug build in Development isn't authorization. The explorer exposes your application's structure, so the [docs](https://www.cratis.io/arc/backend/csharp/embedded-event-model/) cover turning it off or putting a policy on it if that instance is reachable by anyone but you. Turning it off is one line, and a policy goes on the route group:
 
 ```csharp
 builder.Services.AddCratisEventModelViewer(options => options.Enabled = false);
@@ -184,7 +184,7 @@ One thing I ran into while writing this: a project that pulls in `Microsoft.Code
 
 Now, starting an application just to look at its model is a bit much. Especially when the model is the thing you wanted to look at *before* you set up its database.
 
-So the Cratis CLI got [`cratis view`](https://cratis.io/cli/reference/view/). Run it in the folder of a `.csproj` and it serves the very same explorer from your machine and opens a browser on it.
+So the Cratis CLI got [`cratis view`](https://www.cratis.io/cli/reference/view/). Run it in the folder of a `.csproj` and it serves the very same explorer from your machine and opens a browser on it.
 
 ```shell
 cratis view
@@ -206,7 +206,7 @@ Let me get back to the IL thing, because I think it's the real story here and no
 
 None of what I've shown you required the tools to know about each other. VS Code doesn't know about Arc. The MCP server doesn't know about the CLI's `view` command. Arc doesn't know about Studio. They all speak Screenplay, and they all draw it with the same board package. Every new thing that can *produce* a `.play` file gets every viewer for free, and every new viewer works for every producer. That's exactly the leverage IL gave .NET.
 
-It goes the other way too. Screenplay is what [`cratis run`](https://cratis.io/cli/reference/run/) boots into a live sandbox, and what `cratis render` turns into an application. The more things that can read and write the format, the more valuable each `.play` file becomes.
+It goes the other way too. Screenplay is what [`cratis run`](https://www.cratis.io/cli/reference/run/) boots into a live sandbox, and what `cratis render` turns into an application. The more things that can read and write the format, the more valuable each `.play` file becomes.
 
 Which is also why so much of the last couple of weeks went into the language itself. Applications composed from many files through imports, events declared inline where they're produced, optional values written as `Type optional`, deterministic clocks, reactions, triggers and captures. On top of that you can now write down event sources and streams, external systems and command operations, and handler implementation intent, although those are syntax only for now: the compiler and the editors understand them, but nothing executes them yet. Studio exports more of its model to Screenplay and says out loud what it couldn't carry. An intermediate language is only as good as what it can express, and every one of those makes it a little more complete.
 
@@ -216,8 +216,8 @@ I've spent most of my career building platforms for developers, and the one thin
 
 If you want to give it a go:
 
-- Install the [VS Code extension](https://cratis.io/screenplay/vscode/) and open a `.play` file. The [Screenplay samples](https://github.com/Cratis/Screenplay/tree/main/Samples) are a good start, Library in particular.
-- Run [`cratis view`](https://cratis.io/cli/reference/view/) in one of your Arc projects and look at the model you've already written.
-- Connect the [Screenplay MCP server](https://cratis.io/screenplay/mcp/install/) to Claude Desktop or Copilot in VS Code, and ask it to show you the board.
+- Install the [VS Code extension](https://www.cratis.io/screenplay/vscode/) and open a `.play` file. The [Screenplay samples](https://github.com/Cratis/Screenplay/tree/main/Samples) are a good start, Library in particular.
+- Run [`cratis view`](https://www.cratis.io/cli/reference/view/) in one of your Arc projects and look at the model you've already written.
+- Connect the [Screenplay MCP server](https://www.cratis.io/screenplay/mcp/install/) to Claude Desktop or Copilot in VS Code, and ask it to show you the board.
 
 And if you build something that reads or writes Screenplay, I'd love to hear about it. That's kind of the whole point.

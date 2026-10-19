@@ -1,6 +1,6 @@
 ---
 title: "When Arc says no · Decisions that hold, Part 5"
-description: "Read protection refuses a command in two ways: a 400 when what it read changed, and a 500 when the code reads something it cannot guard. What each refusal means, how a UI should treat it, what the build reports first, and the caller's severity threshold that lets a rule say yes under Off."
+description: "Read protection refuses a command with a 400 when what it read changed, or a 500 when it reads something it cannot guard. What each means and how to act."
 date: 2026-10-30T09:00:00Z
 authors: sindre
 excerpt: "Read protection says no in two ways. A 400 means something the command read changed: read again and decide. A 500 means the code reads something Arc can't guard: change the code. And under Off, a caller can turn a validator's no into a yes."
@@ -152,7 +152,7 @@ An immediate append is refused for a reason that has nothing to do with reads: i
 Discoverable validator 'BorrowBookValidator' cannot run while read protection is On because Arc did not construct it for this invocation. Let convention discovery register it as transient; do not use a scoped, singleton, factory or instance registration.
 ```
 
-Any of the read-model-parameter rows can also be a read you only use as context; then mark it `[Unprotected("why")]`, as the next section shows. An `IMongoCollection<T>` can't be marked that way: the collection itself is refused, so take the read model as an `[Unprotected("why")]` parameter instead. Arc's [refusals page](https://cratis.io/arc/backend/csharp/chronicle/consistency/refusals/) has the full list, including scopes, nested commands and declarations.
+Any of the read-model-parameter rows can also be a read you only use as context; then mark it `[Unprotected("why")]`, as the next section shows. An `IMongoCollection<T>` can't be marked that way: the collection itself is refused, so take the read model as an `[Unprotected("why")]` parameter instead. Arc's [refusals page](https://www.cratis.io/arc/backend/csharp/chronicle/consistency/refusals/) has the full list, including scopes, nested commands and declarations.
 
 A `500` carries its message in `exceptionMessages`, not in `validationResults`. In Development that's the text above. Elsewhere, for model-bound commands, `ArcOptions.ExposeExceptionDetails` is `false` by default, and the caller gets this instead:
 
@@ -236,7 +236,7 @@ export async function borrowIgnoringErrors(isbn: string, member: string) {
 }
 ```
 
-For a book whose last copy is out, Arc drops the validator's "No copies of this book are available.", `Handle()` runs, and `BookBorrowed` is appended for a book with no copy on the shelf. This is documented behaviour: severities are there for warnings a user can confirm, and Arc's [severity filtering](https://cratis.io/arc/backend/csharp/commands/validation-severity-filtering/) page says not to use them for integrity. A command can declare a floor the caller can't lower with `[BlockOnValidationSeverity]`, but only if somebody remembers to add it to every command with a rule that must hold.
+For a book whose last copy is out, Arc drops the validator's "No copies of this book are available.", `Handle()` runs, and `BookBorrowed` is appended for a book with no copy on the shelf. This is documented behaviour: severities are there for warnings a user can confirm, and Arc's [severity filtering](https://www.cratis.io/arc/backend/csharp/commands/validation-severity-filtering/) page says not to use them for integrity. A command can declare a floor the caller can't lower with `[BlockOnValidationSeverity]`, but only if somebody remembers to add it to every command with a rule that must hold.
 
 Under `On`, both are closed, the second from Arc 22.108.0. The read is fresh and guarded, so a stale value gives a `400 ReadChanged` instead of a yes. And a command that declares read protection On, in the project or on the command, gets an `Error` floor: `Error` and `Unknown` results block whatever threshold the caller sends, and the caller can only let warnings and information through, which is what the threshold is for. The floor follows the declaration, so lowering `ReadProtection:MaximumMode` at runtime removes the guard but not the floor. A command with its own `[BlockOnValidationSeverity]` keeps that policy instead, so a `Warning` floor still blocks warnings. Commands declared `Off` or `Measure`, without such an attribute, keep the caller's threshold as before.
 
@@ -275,15 +275,15 @@ At runtime it's refused with `ReadRefusedWhileReadsAreProtected`, a `500` with t
 
 | Diagnostic | Severity | Reports |
 | --- | --- | --- |
-| [ARCCHR0024](https://cratis.io/arc/backend/csharp/chronicle/code-analysis/arcchr0024/) | Warning | A read-model parameter whose shape can't be protected |
-| [ARCCHR0028](https://cratis.io/arc/backend/csharp/chronicle/code-analysis/arcchr0028/) | Warning | A Chronicle read under `On` that isn't proven protected |
-| [ARCCHR0033](https://cratis.io/arc/backend/csharp/chronicle/code-analysis/arcchr0033/) | Warning | An aggregate and a read-model parameter of the same source |
-| [ARCCHR0023](https://cratis.io/arc/backend/csharp/chronicle/code-analysis/arcchr0023/) | Warning | A read-model lookup key that isn't proven |
-| [ARCCHR0029](https://cratis.io/arc/backend/csharp/chronicle/code-analysis/arcchr0029/) | Error | Conflicting read-protection declarations on one command |
-| [ARCCHR0031](https://cratis.io/arc/backend/csharp/chronicle/code-analysis/arcchr0031/) | Error | An invalid `[LookUpBy]` |
-| [ARCCHR0037](https://cratis.io/arc/backend/csharp/chronicle/code-analysis/arcchr0037/) | Error | A per-stream read model the command isn't routed to |
-| [ARCCHR0011](https://cratis.io/arc/backend/csharp/chronicle/code-analysis/arcchr0011/) | Info | Under `Off`, a plain read model in a command that produces events |
-| [ARCCHR0012](https://cratis.io/arc/backend/csharp/chronicle/code-analysis/arcchr0012/) | Info (Warning under `On`) | An immediate append that bypasses a protected decision |
+| [ARCCHR0024](https://www.cratis.io/arc/backend/csharp/chronicle/code-analysis/arcchr0024/) | Warning | A read-model parameter whose shape can't be protected |
+| [ARCCHR0028](https://www.cratis.io/arc/backend/csharp/chronicle/code-analysis/arcchr0028/) | Warning | A Chronicle read under `On` that isn't proven protected |
+| [ARCCHR0033](https://www.cratis.io/arc/backend/csharp/chronicle/code-analysis/arcchr0033/) | Warning | An aggregate and a read-model parameter of the same source |
+| [ARCCHR0023](https://www.cratis.io/arc/backend/csharp/chronicle/code-analysis/arcchr0023/) | Warning | A read-model lookup key that isn't proven |
+| [ARCCHR0029](https://www.cratis.io/arc/backend/csharp/chronicle/code-analysis/arcchr0029/) | Error | Conflicting read-protection declarations on one command |
+| [ARCCHR0031](https://www.cratis.io/arc/backend/csharp/chronicle/code-analysis/arcchr0031/) | Error | An invalid `[LookUpBy]` |
+| [ARCCHR0037](https://www.cratis.io/arc/backend/csharp/chronicle/code-analysis/arcchr0037/) | Error | A per-stream read model the command isn't routed to |
+| [ARCCHR0011](https://www.cratis.io/arc/backend/csharp/chronicle/code-analysis/arcchr0011/) | Info | Under `Off`, a plain read model in a command that produces events |
+| [ARCCHR0012](https://www.cratis.io/arc/backend/csharp/chronicle/code-analysis/arcchr0012/) | Info (Warning under `On`) | An immediate append that bypasses a protected decision |
 
 The diagnostics say "not proven" for a reason. They see what's visible in the code, and some refusals depend on how a model is registered at runtime, so a clean build doesn't mean no command will be refused. `Info` diagnostics are easy to miss in a build log. Raise ARCCHR0011 in a project with commands still under `Off`. ARCCHR0012 only fires for commands that are `On`, use decision reads or carry `[ProtectedDecision]`, and raising it makes the `[ProtectedDecision]` and decision-read cases warnings too, so an immediate append there shows up at build time rather than at runtime:
 
@@ -306,7 +306,7 @@ With warnings treated as errors, each of them then fails the build instead of sc
 - **A rule must hold whatever the caller sends:** run the command under `On` (Arc 22.108.0 or later). Under `Off` or `Measure`, add `[BlockOnValidationSeverity]` to it.
 :::
 
-The [refusals page](https://cratis.io/arc/backend/csharp/chronicle/consistency/refusals/) lists every refusal with its message, [Reads](https://cratis.io/arc/backend/csharp/chronicle/consistency/reads/) explains what each kind of read becomes, and the frontend's [command result](https://cratis.io/arc/frontend/core/commands/command-result/) page covers reasons and details. The next part is about getting an application that already runs from `Off` to `On`, by finding these refusals with `Measure` before they reach a user.
+The [refusals page](https://www.cratis.io/arc/backend/csharp/chronicle/consistency/refusals/) lists every refusal with its message, [Reads](https://www.cratis.io/arc/backend/csharp/chronicle/consistency/reads/) explains what each kind of read becomes, and the frontend's [command result](https://www.cratis.io/arc/frontend/core/commands/command-result/) page covers reasons and details. The next part is about getting an application that already runs from `Off` to `On`, by finding these refusals with `Measure` before they reach a user.
 
 *The examples need Arc 22.108.0 or later and Chronicle 19.68.0 or later.*
 

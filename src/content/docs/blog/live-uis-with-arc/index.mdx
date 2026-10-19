@@ -22,7 +22,7 @@ The author screen needs two things: a list of authors that shows a new one witho
 
 ## A live query is a return type
 
-A C# [model-bound query](https://cratis.io/arc/backend/csharp/queries/model-bound/) is a static method on a `[ReadModel]` record. Returning `ISubject<IEnumerable<T>>`, or `ISubject<T>` for one item, makes it an [observable query](https://cratis.io/arc/backend/csharp/queries/model-bound/observable-queries/). The Ideas board in the Cratis Samples repository keeps its ideas in memory, in one store for the whole process and not one per tenant, and observes them:
+A C# [model-bound query](https://www.cratis.io/arc/backend/csharp/queries/model-bound/) is a static method on a `[ReadModel]` record. Returning `ISubject<IEnumerable<T>>`, or `ISubject<T>` for one item, makes it an [observable query](https://www.cratis.io/arc/backend/csharp/queries/model-bound/observable-queries/). The Ideas board in the Cratis Samples repository keeps its ideas in memory, in one store for the whole process and not one per tenant, and observes them:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
@@ -150,7 +150,7 @@ The return type alone doesn't open a connection. The client decides whether it w
 
 For `ObserveIdeas`, the proxy generator writes an `ObservableQueryFor<Idea[]>` class. A parameterless query over a list gets a `use(sorting?)` hook that returns the result and a function to change the sorting. It also gets `useWithPaging`, `useSuspense`, `useSuspenseWithPaging`, `useChangeStream` and a `when(condition)` helper. Rename a property in C#, rebuild, and the generated types and every field accessor that used the old name stop compiling until you fix them, the same way commands behave in [*Arc: commands and queries without the plumbing*](/arc-commands-and-queries/).
 
-Arc's [real-time tutorial](https://cratis.io/arc/tutorial/real-time/) includes a two-tab test. Open the app in two browser tabs connected to the same backend process, add a book in one, and the other updates without a reload. That test covers the tutorial's own path. A write from a second backend process is a separate case, and it depends on where the data lives.
+Arc's [real-time tutorial](https://www.cratis.io/arc/tutorial/real-time/) includes a two-tab test. Open the app in two browser tabs connected to the same backend process, add a book in one, and the other updates without a reload. That test covers the tutorial's own path. A write from a second backend process is a separate case, and it depends on where the data lives.
 
 ![Screen recording of two windows showing the same name list. In the left window a name is typed into the Register dialog. As soon as it is submitted, the new row appears in the right window too, without a reload. A second name follows the same way.](./app-40-observable-query-live.gif)
 
@@ -162,7 +162,7 @@ The samples show two paths, and they differ in what sits between the command and
 
 In the .NET Ideas board there's no event store. The command's `Handle(IdeaStore store)` calls `store.Capture(...)`, which pushes a new list into the `BehaviorSubject`. The query returns that same subject, so every subscriber gets the new list, the hub sends it to the browser and the hook re-renders. The command writes to a current-state store, and the query observes that same store.
 
-With Chronicle and MongoDB, the chain is longer. In .NET, this is the author list from Cratis's [full-app walkthrough](https://cratis.io/build-a-full-app/), with the name typed as `AuthorName`:
+With Chronicle and MongoDB, the chain is longer. In .NET, this is the author list from Cratis's [full-app walkthrough](https://www.cratis.io/build-a-full-app/), with the name typed as `AuthorName`:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
@@ -260,7 +260,7 @@ For EF Core in .NET, an observed `DbSet` gets in-process notifications from Arc'
 
 ## How the result travels
 
-Two settings on `<Arc>`, `queryTransportMethod` and `queryDirectMode`, choose the [transport](https://cratis.io/arc/frontend/react/queries/observable-query-multiplexing/), and they're independent of each other:
+Two settings on `<Arc>`, `queryTransportMethod` and `queryDirectMode`, choose the [transport](https://www.cratis.io/arc/frontend/react/queries/observable-query-multiplexing/), and they're independent of each other:
 
 | Transport | Direct mode | What happens |
 |---|---|---|
@@ -305,9 +305,9 @@ The result carries `data`, `isSuccess`, `isReady`, `isAuthorized`, `isValid`, `h
 
 `ObserveSingle` and `ObserveById` emit `null` when the document is gone, including when it was removed through `[RemovedWith<T>]`, and the subscription stays open. Guard with `hasData` or `isReady` before you read a property.
 
-Each `<Arc>` mount keeps a [query instance cache](https://cratis.io/arc/frontend/react/queries/query-instance-caching/), keyed by the query name and its arguments. Components that use the same query with the same arguments share one subscription. When the last of them unmounts, the subscription stays open for `queryCacheRetentionMs`, 30,000 ms by default, so going back to a screen doesn't start from empty. It isn't an isolation boundary between users.
+Each `<Arc>` mount keeps a [query instance cache](https://www.cratis.io/arc/frontend/react/queries/query-instance-caching/), keyed by the query name and its arguments. Components that use the same query with the same arguments share one subscription. When the last of them unmounts, the subscription stays open for `queryCacheRetentionMs`, 30,000 ms by default, so going back to a screen doesn't start from empty. It isn't an isolation boundary between users.
 
-[`useChangeStream(getKey)`](https://cratis.io/arc/frontend/react/queries/change-stream/) gives you what was added, replaced and removed since the last result.
+[`useChangeStream(getKey)`](https://www.cratis.io/arc/frontend/react/queries/change-stream/) gives you what was added, replaced and removed since the last result.
 
 On the generated proxy of the author list, the key accessor turns each item's id into a stable string:
 
@@ -322,7 +322,7 @@ Arc computes that change set by comparing snapshots, on the server or in the cli
 
 Authorization for an observable query runs once, when the subscription is established. The attributes from [*Arc: commands and queries without the plumbing*](/arc-commands-and-queries/) are checked then, and the verdict doesn't expire on its own when a token does or when a role is revoked. Keep-alive pings stop proxies from dropping the connection, and the client reconnects by itself, so a subscription can outlive the session that opened it.
 
-For re-checking during a long subscription, Arc has [emission guards](https://cratis.io/arc/backend/csharp/queries/observable-query-emission-guards/). A class implementing `IGuardObservableQueryEmission` is discovered by convention, and Arc asks it about every emission on every transport, the hub, direct WebSocket and direct SSE alike. It answers `Allow`, `Suppress` for a single emission, or `DenyAndTerminate`. Guards cover streaming emissions only, not the HTTP snapshot. On a WebSocket the principal is the one from the handshake. A guard that throws counts as `DenyAndTerminate`. A filter can capture a serializable `QueryContext.SubscriptionScope` after the filters succeed and before the query runs, and the guard gets a fresh copy of it for each emission. An application without a guard pays nothing per emission. Controller-based queries always get a null subscription scope.
+For re-checking during a long subscription, Arc has [emission guards](https://www.cratis.io/arc/backend/csharp/queries/observable-query-emission-guards/). A class implementing `IGuardObservableQueryEmission` is discovered by convention, and Arc asks it about every emission on every transport, the hub, direct WebSocket and direct SSE alike. It answers `Allow`, `Suppress` for a single emission, or `DenyAndTerminate`. Guards cover streaming emissions only, not the HTTP snapshot. On a WebSocket the principal is the one from the handshake. A guard that throws counts as `DenyAndTerminate`. A filter can capture a serializable `QueryContext.SubscriptionScope` after the filters succeed and before the query runs, and the guard gets a fresh copy of it for each emission. An application without a guard pays nothing per emission. Controller-based queries always get a null subscription scope.
 
 A guard that ends the stream once the caller's session is gone looks like this, where `ISessions` is your application's own session store and not an Arc API:
 
@@ -356,7 +356,7 @@ public class SessionMustStillBeActive(ISessions sessions) : IGuardObservableQuer
 
 ## The form
 
-After each build, Arc's [proxy generator](https://cratis.io/arc/backend/csharp/proxy-generation/) writes a TypeScript version of the command, and [Components](https://cratis.io/components/) binds a form to it. Following the Components [form recipe](https://cratis.io/components/building-a-form/), the form looks like this. `RegisterAuthor` is the generated proxy class, not something you write:
+After each build, Arc's [proxy generator](https://www.cratis.io/arc/backend/csharp/proxy-generation/) writes a TypeScript version of the command, and [Components](https://www.cratis.io/components/) binds a form to it. Following the Components [form recipe](https://www.cratis.io/components/building-a-form/), the form looks like this. `RegisterAuthor` is the generated proxy class, not something you write:
 
 ```tsx
 <CommandDialog<RegisterAuthor>
@@ -380,7 +380,7 @@ The generated validator is a partial copy, with the omissions and dropped condit
 
 ### What CommandDialog does for you
 
-A [`CommandDialog`](https://cratis.io/components/commanddialog/) takes the command's constructor. It creates the command, validates it and keeps the confirm button disabled until client validation passes. On confirm it runs the command and shows a busy state, with the buttons and fields disabled and a spinner. Server field errors land on their fields, and a success closes the dialog with `DialogResult.Ok`. Cancel, the close button, Escape and a click on the backdrop close it with `Cancelled` and fire no callback.
+A [`CommandDialog`](https://www.cratis.io/components/commanddialog/) takes the command's constructor. It creates the command, validates it and keeps the confirm button disabled until client validation passes. On confirm it runs the command and shows a busy state, with the buttons and fields disabled and a spinner. Server field errors land on their fields, and a success closes the dialog with `DialogResult.Ok`. Cancel, the close button, Escape and a click on the backdrop close it with `Cancelled` and fire no callback.
 
 The Ideas board's dialog seeds a value that no field shows, the new idea's id.
 
@@ -404,13 +404,13 @@ A generated proxy starts with every property unset, and a required `Guid` isn't 
 
 With `autoServerValidate`, the dialog also calls the command's `/validate` route once local checks have settled, after 500 ms by default. The option has `Throttle` in its name and behaves as a debounce. The preflight's limits, including the name race it can't prevent, are in [*Validation all the way down*](/validation-all-the-way-down/).
 
-The rule for choosing is in Components' own [guide](https://cratis.io/components/choosing-a-component/). If confirming the dialog executes a generated command, use `CommandDialog`. If the dialog only gathers values and hands them back, use `Dialog`.
+The rule for choosing is in Components' own [guide](https://www.cratis.io/components/choosing-a-component/). If confirming the dialog executes a generated command, use `CommandDialog`. If the dialog only gathers values and hands them back, use `Dialog`.
 
-Arc also has [dialogs without Components](https://cratis.io/arc/frontend/react/dialogs/). `useDialog<TResponse, TInput>(Component)` returns three elements: the wrapper to render, a function that shows the dialog and the dialog's context. Showing it resolves to a `DialogResult` and an optional response. `DialogResult` has `None`, `Ok`, `Yes`, `No` and `Cancelled`. `useConfirmationDialog` resolves to a bare `DialogResult`. Arc draws no dialog itself, and `DialogComponents` is where you supply the confirmation and busy renderers. One dialog hook stores one pending result, so don't open the same one twice at once.
+Arc also has [dialogs without Components](https://www.cratis.io/arc/frontend/react/dialogs/). `useDialog<TResponse, TInput>(Component)` returns three elements: the wrapper to render, a function that shows the dialog and the dialog's context. Showing it resolves to a `DialogResult` and an optional response. `DialogResult` has `None`, `Ok`, `Yes`, `No` and `Cancelled`. `useConfirmationDialog` resolves to a bare `DialogResult`. Arc draws no dialog itself, and `DialogComponents` is where you supply the confirmation and busy renderers. One dialog hook stores one pending result, so don't open the same one twice at once.
 
 ## When a screen has behavior
 
-The board wraps its component in `withViewModel`. [Arc's MVVM support](https://cratis.io/arc/frontend/react/mvvm/using-view-model/) makes the view model an `@injectable()` class from tsyringe, observable through MobX, and the view re-renders when a property it read changes.
+The board wraps its component in `withViewModel`. [Arc's MVVM support](https://www.cratis.io/arc/frontend/react/mvvm/using-view-model/) makes the view model an `@injectable()` class from tsyringe, observable through MobX, and the view re-renders when a property it read changes.
 
 In the Ideas board, the whole view model is this:
 
@@ -443,7 +443,7 @@ Filtering the list that's already loaded is view behavior, so it lives in the vi
 
 `withViewModel` observes only the render of the component it wraps. A child component that reads observable view-model state directly sits outside that boundary and won't re-render when the state changes. Pass plain values down as props, or wrap the child in `observer()` from `@cratis/arc.react.mvvm`.
 
-A view model can ask the user something through `IDialogs`, with `show`, `showConfirmation` and `showBusyIndicator`, and the view registers the dialogs it can show. The [MVVM `useDialog`](https://cratis.io/arc/frontend/react/mvvm/dialogs/) takes a request type and a component and returns two elements, the wrapper and the function that shows it, which is one fewer than the base hook. Arc's own advice is to stay with plain hooks unless a screen has substantial behavior.
+A view model can ask the user something through `IDialogs`, with `show`, `showConfirmation` and `showBusyIndicator`, and the view registers the dialogs it can show. The [MVVM `useDialog`](https://www.cratis.io/arc/frontend/react/mvvm/dialogs/) takes a request type and a component and returns two elements, the wrapper and the function that shows it, which is one fewer than the base hook. Arc's own advice is to stay with plain hooks unless a screen has substantial behavior.
 
 ## Tables and pages
 
@@ -461,9 +461,9 @@ export function LiveAuthors() {
 }
 ```
 
-`AllAuthors` is the generated proxy for the Chronicle-backed query above. The [table](https://cratis.io/components/datatables/data-table-for-observable-query/) needs a parent with a definite height, which is why the example wraps it in a 480-pixel box. Set `dataKey`, or the selection is lost when an update arrives. Server paging is 20 rows per page. Sorting, column filters and the global search all work on the page that's loaded, so filtering across the whole result belongs in query arguments, before paging.
+`AllAuthors` is the generated proxy for the Chronicle-backed query above. The [table](https://www.cratis.io/components/datatables/data-table-for-observable-query/) needs a parent with a definite height, which is why the example wraps it in a 480-pixel box. Set `dataKey`, or the selection is lost when an update arrives. Server paging is 20 rows per page. Sorting, column filters and the global search all work on the page that's loaded, so filtering across the whole result belongs in query arguments, before paging.
 
-`DataPage` puts a table like that into a page with an action bar and a resizable details panel. `DataPage.MenuItems` holds the actions, and `disableOnUnselected` ties an action to having a row selected. Components' [list-screen recipe](https://cratis.io/components/list-screen-with-actions/) wires a live table to two `CommandDialog` actions, and with Chronicle the new row arrives once the projection has updated the read model. Grouping, row expansion and controlled server-side sorting aren't part of the Components tables.
+`DataPage` puts a table like that into a page with an action bar and a resizable details panel. `DataPage.MenuItems` holds the actions, and `disableOnUnselected` ties an action to having a row selected. Components' [list-screen recipe](https://www.cratis.io/components/list-screen-with-actions/) wires a live table to two `CommandDialog` actions, and with Chronicle the new row arrives once the projection has updated the read model. Grouping, row expansion and controlled server-side sorting aren't part of the Components tables.
 
 Components needs React 19, and `@cratis/arc` and `@cratis/arc.react` in the range from 20.3.1 up to, but not including, 23.
 

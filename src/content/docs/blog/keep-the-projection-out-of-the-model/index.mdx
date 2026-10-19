@@ -1,5 +1,6 @@
 ---
 title: "Keep the projection out of the model"
+description: "Fluent projections with IProjectionFor<T> keep the mapping beside a plain read model instead of on it. Same engine as model-bound, a different trade-off."
 date: 2026-10-13T09:00:00Z
 authors: einar
 excerpt: "Model-bound projections put the mapping on the read model. Fluent projections keep it beside the model, in IProjectionFor<T>. Same engine, a different trade-off, and how both differ from a reducer."
@@ -29,13 +30,13 @@ So this post is about the other option: what it is, when it earns its keep, and 
 
 Every projection answers the same question: given these [events](/events-are-facts/), what does the read model look like? The two styles only disagree on where you write the answer.
 
-With [model-bound projections](https://cratis.io/chronicle/projections/model-bound/) the answer is attributes on the read model itself. With [declarative projections](https://cratis.io/chronicle/projections/declarative/) the read model is an ordinary type, and a separate class implementing `IProjectionFor<TReadModel>` uses a builder to say how events map onto it.
+With [model-bound projections](https://www.cratis.io/chronicle/projections/model-bound/) the answer is attributes on the read model itself. With [declarative projections](https://www.cratis.io/chronicle/projections/declarative/) the read model is an ordinary type, and a separate class implementing `IProjectionFor<TReadModel>` uses a builder to say how events map onto it.
 
 What happens next is identical. [*From event to read model*](/from-event-to-read-model/) walks through how all the ways of writing a projection converge: the client turns what you wrote into a projection definition, the kernel stores it, and the projection engine applies it to events and writes the result to the sink. The engine never knows which style you picked. Which means the choice is about *you*, and the people who'll read this code later.
 
 ## The same book, both ways
 
-Chronicle's documentation has a deliberately small example in its [guide to choosing a read-model style](https://cratis.io/chronicle/projections/choosing-a-read-model-style/): a book is registered, borrowed and returned. These are the three events. The tabs on this page stay in sync, so pick your language once.
+Chronicle's documentation has a deliberately small example in its [guide to choosing a read-model style](https://www.cratis.io/chronicle/projections/choosing-a-read-model-style/): a book is registered, borrowed and returned. These are the three events. The tabs on this page stay in sync, so pick your language once.
 
 {/* group:book */}
 
@@ -401,7 +402,7 @@ Now look at the Kotlin and Java tabs of the model-bound example. That's not me s
 
 ## When the attributes pile up
 
-The book is a gentle example. Here is one where the attributes start to hurt: an order with line items that get added, adjusted and removed. This is the model-bound version, adapted from the [children documentation](https://cratis.io/chronicle/projections/model-bound/children/).
+The book is a gentle example. Here is one where the attributes start to hurt: an order with line items that get added, adjusted and removed. This is the model-bound version, adapted from the [children documentation](https://www.cratis.io/chronicle/projections/model-bound/children/).
 
 {/* group:order */}
 
@@ -855,7 +856,7 @@ Notice what's missing, too. `UnitPrice` has no mapping. Auto-mapping is on by de
 - **A read model you can read.** A plain record that says what a screen or an API will see, and nothing about how it was built. The docs call this out as the point of the fluent style: the read model stays free of Chronicle attributes.
 - **Room for the harder parts.** Joins, nested children, event context and transformations all have a home in the builder, and the docs recommend declarative projections for exactly those shapes.
 - **A projection you can share.** The docs list sharing one projection definition across several read models as a reason to go declarative.
-- **The same tests.** A [`ReadModelScenario`](https://cratis.io/chronicle/testing/read-models/scenario/) discovers a model-bound projection, an `IProjectionFor<T>` or a reducer for the read model type on its own, so switching styles doesn't mean rewriting the specification.
+- **The same tests.** A [`ReadModelScenario`](https://www.cratis.io/chronicle/testing/read-models/scenario/) discovers a model-bound projection, an `IProjectionFor<T>` or a reducer for the read model type on its own, so switching styles doesn't mean rewriting the specification.
 
 ## What it costs
 
@@ -871,7 +872,7 @@ This is the one I most want to get straight, because "fluent" and "reducer" both
 
 A fluent projection is still a **declaration**. You describe what each event does to the read model, and Chronicle runs that description for you in the projection engine, inside the kernel. The operations on offer are a short list: set, add, subtract, increment, decrement, count and clear.
 
-A [reducer](https://cratis.io/chronicle/reducers/) is **code**. It's an `IReducerFor<TModel>` in your application with one method per event. Chronicle sends it the event and the current state, and it returns the next state. The kernel streams events to it and stores whatever it returns. Here is the same book once more, this time as a reducer:
+A [reducer](https://www.cratis.io/chronicle/reducers/) is **code**. It's an `IReducerFor<TModel>` in your application with one method per event. Chronicle sends it the event and the current state, and it returns the next state. The kernel streams events to it and stores whatever it returns. Here is the same book once more, this time as a reducer:
 
 {/* group:book */}
 
@@ -1186,4 +1187,4 @@ That's what makes the choice cheap. Start with attributes. If it stops reading w
 
 Model-bound and fluent aren't rivals. They're the same engine with the mapping in two different places, and the right one is whichever leaves the next person able to read the read model, or the mapping, without a detour. I said fluent gets undersold. More precisely, it's what you reach for when cohesion has stopped paying for itself.
 
-If you want the full reference, the docs have a page for [declarative projections](https://cratis.io/chronicle/projections/declarative/) and one for [model-bound projections](https://cratis.io/chronicle/projections/model-bound/). The next post, [*Stop filtering on status*](/stop-filtering-on-status/), takes the same two styles into a feature that works in both: projection variants.
+If you want the full reference, the docs have a page for [declarative projections](https://www.cratis.io/chronicle/projections/declarative/) and one for [model-bound projections](https://www.cratis.io/chronicle/projections/model-bound/). The next post, [*Stop filtering on status*](/stop-filtering-on-status/), takes the same two styles into a feature that works in both: projection variants.

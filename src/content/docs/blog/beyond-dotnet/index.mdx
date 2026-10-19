@@ -1,5 +1,6 @@
 ---
 title: "Event sourcing beyond .NET: Kotlin, Java, TypeScript, Elixir · Script to stage, Part 12"
+seoTitle: "Event sourcing beyond .NET: Kotlin, Java, TypeScript, Elixir"
 description: "Event sourcing beyond .NET: Chronicle clients for Kotlin, Java, TypeScript and Elixir, Arc on Spring Boot and Node.js, and the defaults that differ."
 date: 2026-09-30T09:12:00Z
 authors: sindre
@@ -22,9 +23,9 @@ That's one line in a table of differences, and it matters the day a second team 
 
 ## One contract, several ecosystems
 
-Not every team is on .NET, and not every service in one system should have to be. Arc's [HTTP contract](https://cratis.io/arc/http-contract/) is shared across three server implementations, and each generates TypeScript proxies for the frontend, though each has gaps of its own.
+Not every team is on .NET, and not every service in one system should have to be. Arc's [HTTP contract](https://www.cratis.io/arc/http-contract/) is shared across three server implementations, and each generates TypeScript proxies for the frontend, though each has gaps of its own.
 
-On the JVM, [Arc for Kotlin](https://cratis.io/arc/backend/kotlin/) is a Spring Boot implementation for Kotlin and Java, published to Maven Central. The same command and its event, in each language:
+On the JVM, [Arc for Kotlin](https://www.cratis.io/arc/backend/kotlin/) is a Spring Boot implementation for Kotlin and Java, published to Maven Central. The same command and its event, in each language:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
@@ -138,7 +139,7 @@ export class RegisterTask {
 }
 ```
 
-Chronicle has its own set of [clients](https://cratis.io/chronicle-clients/): a first-class .NET SDK, and clients for TypeScript, Kotlin/Java (JVM) and Elixir, over whichever storage provider each deployment chooses. Services in one system can use different clients against the same kernel. The clients aren't interchangeable, though. The default concurrency check, `ExpectingNoMatchingEvent`, decision reads and some erasure options differ, and [where the clients differ](https://cratis.io/chronicle/clients/where-the-clients-differ/) lists the gaps. [Event sourcing in any language](https://blog.cratis.io/event-sourcing-in-any-language/) explains the shared contract underneath.
+Chronicle has its own set of [clients](https://www.cratis.io/chronicle-clients/): a first-class .NET SDK, and clients for TypeScript, Kotlin/Java (JVM) and Elixir, over whichever storage provider each deployment chooses. Services in one system can use different clients against the same kernel. The clients aren't interchangeable, though. The default concurrency check, `ExpectingNoMatchingEvent`, decision reads and some erasure options differ, and [where the clients differ](https://www.cratis.io/chronicle/clients/where-the-clients-differ/) lists the gaps. [Event sourcing in any language](https://blog.cratis.io/event-sourcing-in-any-language/) explains the shared contract underneath.
 
 ![A diagram titled One contract, several ecosystems. On the left, three server boxes: Arc on ASP.NET Core, Arc on Spring Boot, and Arc on Node.js with Express, Fastify and Hono. All three connect to one central box, the Arc HTTP contract, which connects to Generated TypeScript proxies and then React and Components on the right. Below, in a frame labeled Chronicle, a Chronicle kernel box sits beside four client chips: .NET, TypeScript, Kotlin and Java, and Elixir.](./one-contract-many-ecosystems.png)
 
@@ -148,11 +149,11 @@ Two things are shared and everything else belongs to a language. The Chronicle k
 
 ## Arc on the JVM
 
-[Arc for Kotlin](https://cratis.io/arc/backend/kotlin/) is MIT-licensed and published to Maven Central as `io.cratis:arc`. It runs on the Spring Boot servlet stack, where auto-configuration registers the HTTP, Server-Sent Events and optional WebSocket endpoints. Java gets the same treatment as Kotlin, with plain-Java samples and Java tabs in the docs for the same features. A handler can be an ordinary function, a Kotlin `suspend` function or a method returning a Java `CompletionStage`.
+[Arc for Kotlin](https://www.cratis.io/arc/backend/kotlin/) is MIT-licensed and published to Maven Central as `io.cratis:arc`. It runs on the Spring Boot servlet stack, where auto-configuration registers the HTTP, Server-Sent Events and optional WebSocket endpoints. Java gets the same treatment as Kotlin, with plain-Java samples and Java tabs in the docs for the same features. A handler can be an ordinary function, a Kotlin `suspend` function or a method returning a Java `CompletionStage`.
 
 A command is a `@Command` class with a `handle()` method, and a query is a companion or static method on a `@ReadModel` type. KSP generates the handlers at compile time, so nothing is found by reflection when the application runs. Routes come from names, and `CreateTask` becomes `POST /api/create-task`. The package segments to leave out of a route are set twice, once in the Gradle plugin as `cratisArc.endpoints.segmentsToSkip` and once at runtime as `cratis.arc.endpoints.segments-to-skip-for-route`. If the two disagree, the starter refuses to start. [*Arc gotchas*](/arc-gotchas/) covers names doing the mapping on .NET. On the JVM, a mismatch is caught at startup.
 
-A query stays live by returning something that emits. In Kotlin that's a `Flow` or a `StateFlow`. In Java it's a JDK `Flow.Publisher` or Arc's `ObservableState<T>`, and with the optional `arc-rxjava3` artifact it can be an RxJava 3 `Observable`. The [observable queries guide](https://cratis.io/arc/backend/kotlin/guides/observable-queries/) covers the JVM side. Each of these keeps the tasks in one value for the whole process, not one per tenant:
+A query stays live by returning something that emits. In Kotlin that's a `Flow` or a `StateFlow`. In Java it's a JDK `Flow.Publisher` or Arc's `ObservableState<T>`, and with the optional `arc-rxjava3` artifact it can be an RxJava 3 `Observable`. The [observable queries guide](https://www.cratis.io/arc/backend/kotlin/guides/observable-queries/) covers the JVM side. Each of these keeps the tasks in one value for the whole process, not one per tenant:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
@@ -232,13 +233,13 @@ Validation is Jakarta Bean Validation, with reusable concept and model validator
 
 ### Events from a command
 
-Chronicle is optional on the JVM as well. `io.cratis:arc` has no Chronicle dependency, and an application can sit on JPA, MongoDB or plain services. For an event-sourced application the one dependency to take is `io.cratis:cratis`, which pulls in Arc, its Spring wiring and the [Chronicle integration](https://cratis.io/arc/backend/kotlin/guides/chronicle/).
+Chronicle is optional on the JVM as well. `io.cratis:arc` has no Chronicle dependency, and an application can sit on JPA, MongoDB or plain services. For an event-sourced application the one dependency to take is `io.cratis:cratis`, which pulls in Arc, its Spring wiring and the [Chronicle integration](https://www.cratis.io/arc/backend/kotlin/guides/chronicle/).
 
 With it, a command returns an event and Arc appends it, as `CreateTask` does above. `@EventType` on the event is required. Arc's Chronicle integration treats only `@EventType` values as events. A collection or routed wrapper that contains anything else fails before anything is appended, and a single unannotated value isn't appended at all. Arc for Kotlin's plain example returns a `TaskCreated` with no annotation, which is fine there because that sample has no event log, and wrong the moment Chronicle is involved. The Chronicle sample also gives every event property a default, as `TaskCreated` above does with `val title: TaskTitle = TaskTitle("")`, and the Chronicle client's own examples declare events the same way.
 
 `@CommandKey` is required too. It names the event source, and a command without one gets back a validation result with `reasonDetail: "commandKey"`, because Arc won't guess which event source you meant. Events returned inside one outermost command are staged and committed with a single `appendMany` call, which fails closed if the event store, the namespace or the correlation doesn't match. That makes it a commit barrier for the event log. Chronicle, JPA and MongoDB can't join one atomic transaction, and cross-store transactions aren't planned.
 
-Failures come back as validation results. A broken [constraint](https://cratis.io/chronicle/constraints/) has the reason `constraintViolation`, and a [concurrency](https://cratis.io/chronicle/events/concurrency/) failure has `concurrencyViolation` with the expected and actual sequence numbers. When a decision depends on something the command read, `EventsWithConcurrencyScopes` sets an exact scope per event source. A Chronicle read model can be a handler parameter with no annotation, resolved by the command key and the tenant's store, and read-model values go through Chronicle's release step before a query hands them out.
+Failures come back as validation results. A broken [constraint](https://www.cratis.io/chronicle/constraints/) has the reason `constraintViolation`, and a [concurrency](https://www.cratis.io/chronicle/events/concurrency/) failure has `concurrencyViolation` with the expected and actual sequence numbers. When a decision depends on something the command read, `EventsWithConcurrencyScopes` sets an exact scope per event source. A Chronicle read model can be a handler parameter with no annotation, resolved by the command key and the tenant's store, and read-model values go through Chronicle's release step before a query hands them out.
 
 A reactor can pass a registered command to Arc's real pipeline through `ChronicleCommandSideEffectHandler`, and gets no roles unless it declares `@ExecuteCommandsAsSystem`. For specs, `CommandScenario` finds an in-memory event log through `ServiceLoader`, so a command spec runs with no kernel. [*Testing with Arc and Chronicle*](/testing-with-arc-and-chronicle/) follows the same idea on .NET.
 
@@ -260,7 +261,7 @@ A successful append means the fact is stored. The read model catches up asynchro
 
 ## Chronicle in TypeScript
 
-`@cratis/chronicle` is on npm. Its artifacts are decorators, such as `@eventType` for an event and `@projection` or `@reducer` for a read model. An append goes from a `ChronicleClient` to an `EventStore` to its `EventLog`. The [appending example](https://cratis.io/chronicle/events/appending/) looks like this:
+`@cratis/chronicle` is on npm. Its artifacts are decorators, such as `@eventType` for an event and `@projection` or `@reducer` for a read model. An append goes from a `ChronicleClient` to an `EventStore` to its `EventLog`. The [appending example](https://www.cratis.io/chronicle/events/appending/) looks like this:
 
 ```typescript
 @eventType()
@@ -311,7 +312,7 @@ The client needs Elixir 1.18 or later and a kernel with contracts 19.19 or later
 
 ## Arc for TypeScript, from source
 
-[Arc for TypeScript](https://cratis.io/arc/backend/typescript/getting-started/) is an early source preview of a TypeScript command and query server on Node.js. Its packages aren't on npm, its version starts with 0, and its APIs can change. You run it from a clone, for example with `yarn workspace @cratis/arc.core.sample.tasks start`. Next to the `RegisterTask` command above, the Tasks sample has a live query:
+[Arc for TypeScript](https://www.cratis.io/arc/backend/typescript/getting-started/) is an early source preview of a TypeScript command and query server on Node.js. Its packages aren't on npm, its version starts with 0, and its APIs can change. You run it from a clone, for example with `yarn workspace @cratis/arc.core.sample.tasks start`. Next to the `RegisterTask` command above, the Tasks sample has a live query:
 
 ```typescript
 @readModel()
@@ -332,7 +333,7 @@ The Chronicle integration, `@cratis/arc.chronicle`, is experimental. It appends 
 
 ## Where the clients differ
 
-These are the [differences between the clients](https://cratis.io/chronicle/clients/where-the-clients-differ/) that change what your code has to do:
+These are the [differences between the clients](https://www.cratis.io/chronicle/clients/where-the-clients-differ/) that change what your code has to do:
 
 | | .NET | Kotlin and Java | TypeScript | Elixir |
 |---|---|---|---|---|
@@ -344,7 +345,7 @@ These are the [differences between the clients](https://cratis.io/chronicle/clie
 | Reactors and replay | `[OnceOnly]`, `[Replay]` | `@OnceOnly`, `@Replay` | `@onceOnly()`, `@replay()` | `once_only:`, `handle_replay/2` |
 | Delivery identity for reactors | `ReactorDelivery.Id` | Build your own key | Build your own key | `delivery_id` in the event context |
 
-An explicit [concurrency scope](https://cratis.io/chronicle/events/concurrency/) looks like this on each client:
+An explicit [concurrency scope](https://www.cratis.io/chronicle/events/concurrency/) looks like this on each client:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
@@ -499,7 +500,7 @@ end
 </TabItem>
 </Tabs>
 
-An append that depends on an earlier read needs an explicit scope on every client. The .NET default only catches an append that lands between its own read of the tail and its write, and the first append into an empty scope isn't checked unless you opt in. Outside .NET, an append without a scope isn't checked at all. The subject row matters for [personal data](https://cratis.io/chronicle/concepts/subject/): outside .NET and Elixir, pass the subject explicitly whenever it isn't the event source, and in Elixir name the field that holds it with `subject:` on the event type. [*Personal data in an event log*](/personal-data-in-an-event-log/) explains what the subject decides. A reactor that needs a stable key for its side effects has one on .NET and in Elixir, and elsewhere you build it from the event store, the namespace, the sequence, the reactor and the position, as [*Reacting to facts*](/reacting-to-facts/) describes. Seeding behaves differently per client as well, in what it targets and how it handles duplicates.
+An append that depends on an earlier read needs an explicit scope on every client. The .NET default only catches an append that lands between its own read of the tail and its write, and the first append into an empty scope isn't checked unless you opt in. Outside .NET, an append without a scope isn't checked at all. The subject row matters for [personal data](https://www.cratis.io/chronicle/concepts/subject/): outside .NET and Elixir, pass the subject explicitly whenever it isn't the event source, and in Elixir name the field that holds it with `subject:` on the event type. [*Personal data in an event log*](/personal-data-in-an-event-log/) explains what the subject decides. A reactor that needs a stable key for its side effects has one on .NET and in Elixir, and elsewhere you build it from the event store, the namespace, the sequence, the reactor and the position, as [*Reacting to facts*](/reacting-to-facts/) describes. Seeding behaves differently per client as well, in what it targets and how it handles duplicates.
 
 ![A diagram titled The same fact in four languages, four cards in a two-by-two grid: C#, Kotlin, TypeScript and Elixir. Each card shows the event-type declaration: [EventType] on a record AuthorRegistered in C#, @EventType on a data class TaskCreated in Kotlin, @eventType() on a class OrderPlaced in TypeScript, and use Chronicle.Events.EventType with the label defstruct with typed defaults in Elixir. Under each card a chip names the default concurrency on append: optimistic tail check for C#, none for Kotlin, TypeScript and Elixir. A band along the bottom reads: Concurrency on append, by default.](./same-fact-four-languages.png)
 
@@ -507,7 +508,7 @@ An append that depends on an earlier read needs an explicit scope on every clien
 
 ## Storage is the server's choice
 
-Chronicle Server's [storage provider](https://cratis.io/chronicle/hosting/configuration/storage/) is `MongoDB` by default. The others are `PostgreSql`, `MsSql`, `Sqlite`, which is embedded and file-based, and `InMemory`, which is ephemeral and non-durable. The provider is a server setting, and no client, in any language, sees which one it is.
+Chronicle Server's [storage provider](https://www.cratis.io/chronicle/hosting/configuration/storage/) is `MongoDB` by default. The others are `PostgreSql`, `MsSql`, `Sqlite`, which is embedded and file-based, and `InMemory`, which is ephemeral and non-durable. The provider is a server setting, and no client, in any language, sees which one it is.
 
 The client chooses the read-model sink, not the server's provider. Every client registers read models against the MongoDB sink unless you set the default sink type, and the sinks don't behave the same. On the SQL sink each read model gets a table, with a JSON column for collections, and `[Index]` creates no index there. Only MongoDB creates them. A live Chronicle read model in the UI is documented on MongoDB, where Arc watches it through change streams. Arc's EF Core observation sees writes from other processes only on PostgreSQL and SQL Server, with provider setup, and not on SQLite.
 
@@ -519,7 +520,7 @@ On .NET, Arc's queries can read from MongoDB, or from a relational database thro
 
 ## Starting on the JVM
 
-The [templates](https://cratis.io/templates/) create JVM applications too, with `dotnet new cratis --language Kotlin` or `--language Java`. [`cratis new`](https://cratis.io/cli/new/) does the same without the .NET SDK. Either way the JVM path needs JDK 17.
+The [templates](https://www.cratis.io/templates/) create JVM applications too, with `dotnet new cratis --language Kotlin` or `--language Java`. [`cratis new`](https://www.cratis.io/cli/new/) does the same without the .NET SDK. Either way the JVM path needs JDK 17.
 
 In a clone of the Arc for Kotlin repository, `./Samples/run.sh` starts the Kotlin sample with in-memory storage and the React frontend on port 5173. `--language java` switches to Java, `--database mongodb` to MongoDB, and `--chronicle` starts a development kernel pinned by digest. The Chronicle sample runs backend-only. There are four samples, Kotlin and Java, each with and without Chronicle, and they're applications you run from source.
 

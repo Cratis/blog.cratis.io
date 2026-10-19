@@ -13,7 +13,7 @@ Choosing an event sourcing foundation for a .NET system is a long-lived decision
 
 We wanted something more useful — for you and, honestly, for us. So we compiled a comparison where every factual row names the exact versions compared and is reproducible from public documentation and released packages. Where our own product appears, the same rules apply, including the limitations.
 
-The full matrix lives on cratis.io, and that page is the source of truth: **[Event sourcing in .NET: comparing KurrentDB, Marten, and Cratis Chronicle](https://cratis.io/compare-event-sourcing-dotnet/)**. This post is the walk-through.
+The full matrix lives on cratis.io, and that page is the source of truth: **[Event sourcing in .NET: comparing KurrentDB, Marten, and Cratis Chronicle](https://www.cratis.io/compare-event-sourcing-dotnet/)**. This post is the walk-through.
 
 ## The rules we set ourselves
 
@@ -32,19 +32,19 @@ If a comparison cannot survive those rules, it is marketing, not a comparison.
 
 **[Marten](https://martendb.io)** is a .NET library that turns PostgreSQL into a document and event store. It runs inside your application process, leans on PostgreSQL's JSON support and ACID compliance, and has rich projection support — inline, async, and live. MIT licensed; PostgreSQL is a prerequisite and .NET is the boundary.
 
-**[Cratis Chronicle](https://cratis.io/chronicle/)** is an event-sourcing database and processing runtime: a separate server with a first-class client SDK for .NET and released TypeScript, Java/Kotlin (JVM), and Elixir client packages. MIT licensed. It pairs with Arc for CQRS and generated TypeScript proxies, and a React component library.
+**[Cratis Chronicle](https://www.cratis.io/chronicle/)** is an event-sourcing database and processing runtime: a separate server with a first-class client SDK for .NET and released TypeScript, Java/Kotlin (JVM), and Elixir client packages. MIT licensed. It pairs with Arc for CQRS and generated TypeScript proxies, and a React component library.
 
-The [canonical matrix](https://cratis.io/compare-event-sourcing-dotnet/) records the exact versions compared and cites every row. Check its baseline against the release you plan to use.
+The [canonical matrix](https://www.cratis.io/compare-event-sourcing-dotnet/) records the exact versions compared and cites every row. Check its baseline against the release you plan to use.
 
 ## You're choosing an ecosystem, not only a database
 
 Here is the part most comparisons skip: none of these tools lives alone. The event store is the center of a decision, but rarely the whole of it — around every store sits the layer you build applications with, the tooling you operate with, and the path events take to the rest of your architecture. Comparing the stores cell by cell and stopping there would miss where much of your time actually goes.
 
-The [comparison page](https://cratis.io/compare-event-sourcing-dotnet/) also explains where these products sit within their ecosystems. The distinction matters: adjacent products are not features of the event store itself.
+The [comparison page](https://www.cratis.io/compare-event-sourcing-dotnet/) also explains where these products sit within their ecosystems. The distinction matters: adjacent products are not features of the event store itself.
 
 - **KurrentDB** documents a server-side Connectors subsystem — pre-installed and enabled by default — that runs catch-up subscriptions and pushes filtered or transformed events to external systems through sinks, with a documented catalog covering Elasticsearch, HTTP, Kafka, MongoDB, RabbitMQ, and Serilog.
 - **Marten** is one member of JasperFx's [Critter Stack](https://jasperfx.net), described by its maintainers as one family of .NET tools for event sourcing, document storage, and messaging: Wolverine for messaging and web development, Polecat, Fisher, Weasel, Alba, and CritterWatch alongside Marten itself. Wolverine's documented persistent inbox/outbox messaging belongs in an evaluation that includes those responsibilities.
-- **Cratis Chronicle** is part of the Cratis ecosystem: [Arc](https://cratis.io/arc/) for CQRS with generated TypeScript proxies, [Components](https://cratis.io/components/) for React, the [CLI](https://cratis.io/cli/) and the Web Workbench for operating the store, released clients for .NET, TypeScript, JVM, and Elixir, and free [AI skills, rules, and diagnostics](https://cratis.io/ai/) that teach an assistant the platform's conventions.
+- **Cratis Chronicle** is part of the Cratis ecosystem: [Arc](https://www.cratis.io/arc/) for CQRS with generated TypeScript proxies, [Components](https://www.cratis.io/components/) for React, the [CLI](https://www.cratis.io/cli/) and the Web Workbench for operating the store, released clients for .NET, TypeScript, JVM, and Elixir, and free [AI skills, rules, and diagnostics](https://www.cratis.io/ai/) that teach an assistant the platform's conventions.
 
 None of this makes any tool better. It changes what you are evaluating. If you pick a store, you are also picking — or committing to build — everything around it: ask what surrounds each candidate, who maintains it, and how much of it you would otherwise write yourself. The comparison page's sources let you check those ecosystem relationships alongside the product capabilities.
 
@@ -63,6 +63,12 @@ None of these questions has a universal answer. A team that answers "PostgreSQL 
 
 ## Verify us
 
-Every row on the [comparison page](https://cratis.io/compare-event-sourcing-dotnet/) carries its source and retrieval date precisely so you do not have to take our word for it. Open the cited documentation, check the cell, and if you find one that no longer matches its source, [tell us](https://cratis.io/feedback/) — we will re-verify and fix it.
+Every row on the [comparison page](https://www.cratis.io/compare-event-sourcing-dotnet/) carries its source and retrieval date precisely so you do not have to take our word for it. Open the cited documentation, check the cell, and if you find one that no longer matches its source, [tell us](https://www.cratis.io/feedback/) — we will re-verify and fix it.
 
 That is the comparison we wished existed when we started. Use it, argue with it, and hold us to the refresh promise.
+
+## Related posts
+
+- [Event sourcing in .NET with Chronicle](/event-sourcing-in-dotnet-with-chronicle/): build the same application end to end once you have chosen.
+- [The Cratis ecosystem at a glance](/the-cratis-ecosystem-at-a-glance/): what is in the stack beyond the event store.
+- [Event sourcing with MongoDB, PostgreSQL and SQL Server](/event-sourcing-with-mongodb-postgresql-and-sql-server/): which database sits under Chronicle.

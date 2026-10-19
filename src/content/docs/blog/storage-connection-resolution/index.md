@@ -1,6 +1,7 @@
 ---
 title: "Where does each tenant's data live? Storage connection resolution in Chronicle and Arc"
-description: "Let your platform decide which server, database and identity a tenant uses. How Chronicle and Arc ask for a connection instead of deriving one, with a runnable example that works with Chronicle alone, with Arc, and with a client you write yourself."
+seoTitle: "Where each tenant's data lives: connection resolution"
+description: "Let your platform choose the server, database and identity a tenant uses. How Chronicle and Arc ask for a connection, with a runnable example."
 date: 2026-10-17
 authors: einar
 excerpt: "Chronicle and Arc used to derive database names and connect with one credential. Now they can ask. This post shows how the question and the answer work, and wires one example through a Chronicle kernel, an Arc application and a plain client with no Arc in it."
@@ -42,7 +43,7 @@ The resolver answers with any of these, and every part is optional:
 
 Arc and Chronicle share this model, and it has two slots: `Connection` decides where to connect and `Identity` decides who connects. They apply what's configured, then what the `Connection` slot resolved, then what the `Identity` slot resolved, and a later part wins. That's how the common split becomes a configuration choice. Keep the server in configuration and fetch only the credential, or the other way around.
 
-Each slot takes one of four resolvers: `Default` leaves things alone, `Template` fills in a naming rule such as `tenant-{tenant}`, `Http` calls an endpoint you write, and `Custom` is your own code behind `IConnectionResolver`. The [Arc docs](https://cratis.io/arc/backend/csharp/tenancy/connection-resolution/) cover them all, and Chronicle's [storage connection resolution](https://cratis.io/chronicle/hosting/configuration/storage-connection-resolution/) page covers what the kernel asks and answers, including SQL storage and schemas.
+Each slot takes one of four resolvers: `Default` leaves things alone, `Template` fills in a naming rule such as `tenant-{tenant}`, `Http` calls an endpoint you write, and `Custom` is your own code behind `IConnectionResolver`. The [Arc docs](https://www.cratis.io/arc/backend/csharp/tenancy/connection-resolution/) cover them all, and Chronicle's [storage connection resolution](https://www.cratis.io/chronicle/hosting/configuration/storage-connection-resolution/) page covers what the kernel asks and answers, including SQL storage and schemas.
 
 ## The contract is plain REST
 
@@ -66,7 +67,7 @@ This is an answer that places a tenant in its own database with its own login:
 }
 ```
 
-`204 No Content` means "keep the configured connection", and any other status except `200` fails the connection. That's the whole [connection resolution contract](https://cratis.io/arc/connection-resolution-contract/), which also covers caching and security and ships an OpenAPI description. Because the contract doesn't mention Arc, it's the seam for the last part of this post.
+`204 No Content` means "keep the configured connection", and any other status except `200` fails the connection. That's the whole [connection resolution contract](https://www.cratis.io/arc/connection-resolution-contract/), which also covers caching and security and ships an OpenAPI description. Because the contract doesn't mention Arc, it's the seam for the last part of this post.
 
 ## The example
 
@@ -418,7 +419,7 @@ If you're on Kotlin, TypeScript, Elixir or anything else, the contract is the th
 - **It doesn't authorize anyone.** The `initech` row is the example. A tenant header or tenant id selects a destination, and checking membership is your job before any tenant-scoped work.
 - **It doesn't move data.** Changing the resolution of an existing database points Chronicle or Arc at a new place, and the old data stays where it was. In Arc, a resolved `Database` replaces the default `{Database}+{tenant}` naming entirely, including for the default tenant, so switching is a data migration.
 - **It doesn't make secrets safe by itself.** The endpoint's answer holds credentials: serve it over HTTPS, authenticate the caller, and prefer short-lived access tokens with an `expiresAt` over long-lived passwords. The example uses plain HTTP and a key in a header because it runs on one machine.
-- **It doesn't replace the rest of your isolation.** Arc's tenant isolation is a separate concern from where a connection goes, and the [Arc tenancy docs](https://cratis.io/arc/backend/csharp/tenancy/) keep the two apart.
+- **It doesn't replace the rest of your isolation.** Arc's tenant isolation is a separate concern from where a connection goes, and the [Arc tenancy docs](https://www.cratis.io/arc/backend/csharp/tenancy/) keep the two apart.
 
 ## What to take from this
 
@@ -426,4 +427,4 @@ If your platform already knows where each tenant lives, you no longer have to be
 
 Then decide how much of the client you want to own. Arc gives you the caching, the scoping and the pooling for free. A hand-written client gives you the same placement in a few dozen lines and with whatever driver you already use.
 
-The pages to read next are [Arc's connection resolution](https://cratis.io/arc/backend/csharp/tenancy/connection-resolution/), the [MongoDB page](https://cratis.io/arc/backend/csharp/mongodb/connection-resolution/), [Chronicle's storage connection resolution](https://cratis.io/chronicle/hosting/configuration/storage-connection-resolution/) and the [contract](https://cratis.io/arc/connection-resolution-contract/). Tell me where it's still confusing on [Discord](https://discord.gg/kt4AMpV8WV).
+The pages to read next are [Arc's connection resolution](https://www.cratis.io/arc/backend/csharp/tenancy/connection-resolution/), the [MongoDB page](https://www.cratis.io/arc/backend/csharp/mongodb/connection-resolution/), [Chronicle's storage connection resolution](https://www.cratis.io/chronicle/hosting/configuration/storage-connection-resolution/) and the [contract](https://www.cratis.io/arc/connection-resolution-contract/). Tell me where it's still confusing on [Discord](https://discord.gg/kt4AMpV8WV).

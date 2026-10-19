@@ -74,7 +74,7 @@ A person picks the duplicate-names issue and sets how far it may go, for example
 
 ### Investigation and plan
 
-The agent does one unit of work at a time in a worker Cratis Direct launches for it, while Cratis Direct keeps the state, the sequence and the capacity. Each journey is a stream of events in [Chronicle](https://cratis.io/chronicle/), the event store the rest of this series is about, so its history is the record. No screen can set a stage directly, and what happened can be read back in order.
+The agent does one unit of work at a time in a worker Cratis Direct launches for it, while Cratis Direct keeps the state, the sequence and the capacity. Each journey is a stream of events in [Chronicle](https://www.cratis.io/chronicle/), the event store the rest of this series is about, so its history is the record. No screen can set a stage directly, and what happened can be read back in order.
 
 With the ceiling at the plan, the journey stops once the plan has passed its gate. That's where a person finds out what the agent intends to change for the duplicate names, before any code exists. They can raise the ceiling to implementation, or leave a comment, and the comment steers the next stage. A running worker can also be watched in a live console and talked to.
 

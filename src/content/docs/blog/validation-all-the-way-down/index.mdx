@@ -1,5 +1,6 @@
 ---
 title: "Validation in a CQRS app, from browser to event log · Script to stage, Part 7"
+seoTitle: "Validation in a CQRS app, from browser to event log"
 description: "Where validation rules live in a Cratis app, from the browser to Chronicle's append: what each layer guarantees and which errors reach a form field."
 date: 2026-09-30T09:07:00Z
 authors: sindre
@@ -28,7 +29,7 @@ A Cratis application has several places a rule can live, from the TypeScript the
 
 ## A rule that belongs to the value
 
-That a name isn't empty and has at most 200 characters is true of an author name wherever it appears. In Arc, that kind of rule goes on the [concept](https://cratis.io/arc/scenarios/validate-a-command/):
+That a name isn't empty and has at most 200 characters is true of an author name wherever it appears. In Arc, that kind of rule goes on the [concept](https://www.cratis.io/arc/scenarios/validate-a-command/):
 
 <Tabs syncKey="language">
 <TabItem label="C#">
@@ -143,7 +144,7 @@ end
 
 Arc walks the whole command, nested models and collection items included, and runs the validator registered for each value's type. A rule on `AuthorName` therefore covers every command and every query argument that carries an author name, including the ones nobody has written yet. A failure is reported on the field that holds the value, `name`, and not on the concept's inner value, in all three Arc implementations. In .NET, FluentValidation's default message still names the inner value, as in `The length of 'Value' must be 200 characters or fewer.`, which is why the C# rules above carry their own messages.
 
-The walk has two edges. In .NET it skips a member that's null, so a concept rule never sees an absent `AuthorName?`, and requiring a value is the command's job. A concept rule also sees one value at a time. A rule that compares two fields, or that applies to one command only, goes in a [`CommandValidator<T>`](https://cratis.io/arc/backend/csharp/commands/validation/). When one command really does need a concept unchecked, it opts out for that one property, with `IgnoreConceptRules()` in .NET, `.ignoreConceptRules()` in TypeScript and a `ConceptValidationExclusion` registration on the JVM.
+The walk has two edges. In .NET it skips a member that's null, so a concept rule never sees an absent `AuthorName?`, and requiring a value is the command's job. A concept rule also sees one value at a time. A rule that compares two fields, or that applies to one command only, goes in a [`CommandValidator<T>`](https://www.cratis.io/arc/backend/csharp/commands/validation/). When one command really does need a concept unchecked, it opts out for that one property, with `IgnoreConceptRules()` in .NET, `.ignoreConceptRules()` in TypeScript and a `ConceptValidationExclusion` registration on the JVM.
 
 ## What the browser gets
 
@@ -155,19 +156,19 @@ After a backend build, the proxy generator copies the rules it can express into 
 | Kotlin and Java | Literal rules in a `FluentModelValidator<T>`, and Jakarta constraint annotations | `ConceptValidator`, `CommandValidator` and `ModelValidator` rules |
 | TypeScript | Literal, unconditional `ruleFor` chains, including rules on direct concept fields | `when`, `unless`, `must`, `mustAsync` |
 
-A .NET rule inside `When` or `Unless` can be copied without its condition, and the browser then applies it every time. With a .NET or TypeScript backend, both name rules reach the browser from the concept. On the JVM the concept validator above runs on the server only, and [browser rules](https://cratis.io/arc/backend/kotlin/guides/validation/) come from a `FluentModelValidator<T>` or Jakarta annotations on the command's members. Arc for TypeScript reports a diagnostic for each rule [it keeps on the server](https://cratis.io/arc/backend/typescript/proxy-generation/validation/).
+A .NET rule inside `When` or `Unless` can be copied without its condition, and the browser then applies it every time. With a .NET or TypeScript backend, both name rules reach the browser from the concept. On the JVM the concept validator above runs on the server only, and [browser rules](https://www.cratis.io/arc/backend/kotlin/guides/validation/) come from a `FluentModelValidator<T>` or Jakarta annotations on the command's members. Arc for TypeScript reports a diagnostic for each rule [it keeps on the server](https://www.cratis.io/arc/backend/typescript/proxy-generation/validation/).
 
 In the browser, Arc's `CommandForm` runs the generated validator and shows the message under the field. The `cratis` template, the starting application that `dotnet new cratis` or `cratis new` scaffolds (see [*Cratis: from script to stage, and the long run*](/from-the-edge-to-the-event-log/#start-it-from-nothing-to-a-running-skeleton)), comes with a register dialog that keeps its confirm button disabled while a rule fails. [*Cratis Components, the React layer*](/cratis-components-the-react-layer/) walks through that dialog. Anyone can call the route without the browser, so the server runs every rule again. [*Arc gotchas*](/arc-gotchas/) lists the other ways the copy can drift from the original.
 
 ## The server, in order
 
-Arc runs a command through authorization, validation, `Provide()` and `Handle()`, in that [order](https://cratis.io/arc/backend/csharp/commands/command-pipeline/). In all three implementations, authorization is decided before any validator runs, so a caller who isn't allowed gets a 403 (401 when authentication itself fails) with no validation detail, even when the command is also invalid. In .NET the body says `isAuthorized: false` and carries an empty `validationResults` list.
+Arc runs a command through authorization, validation, `Provide()` and `Handle()`, in that [order](https://www.cratis.io/arc/backend/csharp/commands/command-pipeline/). In all three implementations, authorization is decided before any validator runs, so a caller who isn't allowed gets a 403 (401 when authentication itself fails) with no validation detail, even when the command is also invalid. In .NET the body says `isAuthorized: false` and carries an empty `validationResults` list.
 
 Validators can take constructor dependencies from the command's scope. With Arc's read protection On, a read model in a validator's constructor is folded fresh and guards the command's append, and the validator has to be registered by convention so Arc can build it for each command. In .NET, validation runs as two filters, one for data annotations and one for FluentValidation, which covers the command validator and the walk over concept validators. Every rule in the walk runs, so a form gets all of a command's problems in one response. A filter that fails stops the chain, and the next filter doesn't run.
 
 Data annotations have a catch for forms. Arc reports their member as the C# property name, `Name`, and the form matches members exactly against the field's name, `name`. A data-annotation failure from the server therefore doesn't appear under the field, and in the `cratis` template's dialog it doesn't appear at all: the request returns 400 and the dialog stays open without a message. The same goes for a validation result you build yourself with `nameof(Name)`, because Arc sends members you name as written ([Cratis/Arc#2945](https://github.com/Cratis/Arc/issues/2945)). Concept and command validators report `name`.
 
-Each result has a [severity](https://cratis.io/arc/backend/csharp/commands/validation-severity-filtering/). Errors block by default, and warnings and information don't. In .NET, a caller can move that line with the `X-Allowed-Severity` header, and it moves both ways: a header value of `3` removes error results too, so a command whose only problems are errors runs, unless the command carries `[BlockOnValidationSeverity]`, which sets a floor the header can't lower:
+Each result has a [severity](https://www.cratis.io/arc/backend/csharp/commands/validation-severity-filtering/). Errors block by default, and warnings and information don't. In .NET, a caller can move that line with the `X-Allowed-Severity` header, and it moves both ways: a header value of `3` removes error results too, so a command whose only problems are errors runs, unless the command carries `[BlockOnValidationSeverity]`, which sets a floor the header can't lower:
 
 ```csharp
 using Cratis.Arc.Commands.ModelBound;
@@ -183,11 +184,11 @@ public record SubmitApplication(string Name)
 
 Arc for TypeScript accepts the header too but caps it at warning, so errors always block there. A validator therefore holds for callers that send the request the way the form does. A rule that has to hold for every caller belongs where the change is stored. For the author name, that's Chronicle.
 
-Every command also gets a [`/validate` route](https://cratis.io/arc/backend/csharp/commands/command-validation/), which a form can call before the user confirms. It runs authorization and validation and stops. `Provide()` and `Handle()` don't run, nothing is appended, and so no constraint is checked. Posting a taken name to the `cratis` template's `/validate` route returns 200 with `isValid: true`. A passing check reserves nothing, and the real call can still fail.
+Every command also gets a [`/validate` route](https://www.cratis.io/arc/backend/csharp/commands/command-validation/), which a form can call before the user confirms. It runs authorization and validation and stops. `Provide()` and `Handle()` don't run, nothing is appended, and so no constraint is checked. Posting a taken name to the `cratis` template's `/validate` route returns 200 with `isValid: true`. A passing check reserves nothing, and the real call can still fail.
 
 ## Rejecting in Provide and Handle
 
-Some rules need data the command has to fetch first. `Provide()` runs after validation, fetches or creates what `Handle()` needs, and can stop the command with a [validation result](https://cratis.io/arc/scenarios/provide-data-to-a-command/) instead. Arc's own example is a loan assessment that needs a credit score:
+Some rules need data the command has to fetch first. `Provide()` runs after validation, fetches or creates what `Handle()` needs, and can stop the command with a [validation result](https://www.cratis.io/arc/scenarios/provide-data-to-a-command/) instead. Arc's own example is a loan assessment that needs a credit score:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
@@ -276,7 +277,7 @@ The member is the string `applicant` in every tab, because that's the field name
 
 ## State is a snapshot unless it's protected
 
-A rule about current state reads a read model, and Arc can [hand one](https://cratis.io/arc/backend/csharp/chronicle/read-models/injecting-into-commands/) to a validator, `Provide()` or `Handle()`, found by the command's key. With read protection Off, the default, what arrives is a snapshot, and another request can append between the read and the write. With `<CratisReadProtection>On</CratisReadProtection>`, a read-model parameter is folded fresh from the event log and guards the append for that key. Neither makes a name unique: two registrations of the same name are two different keys, so the uniqueness rule isn't a validator either way.
+A rule about current state reads a read model, and Arc can [hand one](https://www.cratis.io/arc/backend/csharp/chronicle/read-models/injecting-into-commands/) to a validator, `Provide()` or `Handle()`, found by the command's key. With read protection Off, the default, what arrives is a snapshot, and another request can append between the read and the write. With `<CratisReadProtection>On</CratisReadProtection>`, a read-model parameter is folded fresh from the event log and guards the append for that key. Neither makes a name unique: two registrations of the same name are two different keys, so the uniqueness rule isn't a validator either way.
 
 In .NET, a command can also opt in on its own with `[ProtectedDecision]`, which changes what a `DecisionRead<T>` parameter in `Provide()` or `Handle()` means. The read is enrolled in the command's Chronicle unit of work, and if an event that would change it is appended for the same key before the command commits, the command fails with a `concurrencyViolation` result and appends nothing. Arc doesn't re-run it. Outside read protection On, such a command's validator stays parameterless. Renaming a ledger shows the shape:
 
@@ -303,9 +304,9 @@ Outside read protection On, a `[ProtectedDecision]` command refuses validators t
 
 Chronicle checks every append, whichever client or command sends it.
 
-The first check is the shape. The kernel validates the event's content against the [JSON schema](https://cratis.io/chronicle/events/appending/) registered for that event type and generation. A mismatch comes back as a constraint violation of type `Schema`, named `SchemaValidation`, with the path of the property in its details. Through an Arc command it reaches the client as a 400 with `reason: "constraintViolation"`, `reasonDetail: "SchemaValidation"`, no member, and a message that names the property. A `null` in an event property that isn't nullable gets past every Arc layer when no validator checks it, and the append refuses it here. The schema holds properties and their types, so the 200-character limit, which lives in a validator, isn't part of it. A client also can't change the schema of a generation that's already stored. Registering an incompatible one fails, and a new shape needs a new generation, as [*Year two*](/four-changes-in-year-two/) describes. The Elixir client builds the schema from the struct's field defaults, and a field without a typed default can make an append fail with `expected string but got number`.
+The first check is the shape. The kernel validates the event's content against the [JSON schema](https://www.cratis.io/chronicle/events/appending/) registered for that event type and generation. A mismatch comes back as a constraint violation of type `Schema`, named `SchemaValidation`, with the path of the property in its details. Through an Arc command it reaches the client as a 400 with `reason: "constraintViolation"`, `reasonDetail: "SchemaValidation"`, no member, and a message that names the property. A `null` in an event property that isn't nullable gets past every Arc layer when no validator checks it, and the append refuses it here. The schema holds properties and their types, so the 200-character limit, which lives in a validator, isn't part of it. A client also can't change the schema of a generation that's already stored. Registering an incompatible one fails, and a new shape needs a new generation, as [*Year two*](/four-changes-in-year-two/) describes. The Elixir client builds the schema from the struct's field defaults, and a field without a typed default can make an append fail with `expected string but got number`.
 
-The second is the [constraints](https://cratis.io/chronicle/constraints/). The uniqueness rule is one attribute on the event:
+The second is the [constraints](https://www.cratis.io/chronicle/constraints/). The uniqueness rule is one attribute on the event:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
@@ -401,11 +402,11 @@ The constraints you declare come in two kinds, a unique property and one event o
 
 The kernel's own message names the event type and the member and leaves the value out, because a value worth keeping unique usually identifies someone. The .NET, Kotlin, Java and TypeScript clients replace it with the declared message, and fill `{PropertyName}` and `{PropertyValue}` from the violation's details. The Elixir client replaces it too, with a `message:` string or a `{Module, :function}` callback that reads the violation's details, and returns the violations inside `{:error, {:constraint_violations, violations}}`.
 
-Two more checks need nothing on the event. An append into an event stream that's been [closed](https://cratis.io/chronicle/closing-streams/) fails with a `StreamClosed` violation, and closing a stream is a call in the .NET and Elixir clients. An append that carries a concurrency scope fails when matching events were appended after the read it was decided on, and by default the first append into a scope isn't checked at all.
+Two more checks need nothing on the event. An append into an event stream that's been [closed](https://www.cratis.io/chronicle/closing-streams/) fails with a `StreamClosed` violation, and closing a stream is a call in the .NET and Elixir clients. An append that carries a concurrency scope fails when matching events were appended after the read it was decided on, and by default the first append into a scope isn't checked at all.
 
 ## Back to the field
 
-Every layer on the server answers with the same [command result](https://cratis.io/arc/http-contract/). Authorization failures get 403, validation results of any kind get 400, and exceptions get 500, and when a result carries more than one, 403 wins over 400 and 400 over 500. The taken name comes back as a 400 with this body, trimmed to the parts that matter here:
+Every layer on the server answers with the same [command result](https://www.cratis.io/arc/http-contract/). Authorization failures get 403, validation results of any kind get 400, and exceptions get 500, and when a result carries more than one, 403 wins over 400 and 400 over 500. The taken name comes back as a 400 with this body, trimmed to the parts that matter here:
 
 ```json
 {

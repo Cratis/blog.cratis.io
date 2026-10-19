@@ -1,5 +1,6 @@
 ---
 title: "Running Chronicle in production: storage, security, backup · Script to stage, Part 18"
+seoTitle: "Running Chronicle in production: storage, security, backup"
 description: "Run Chronicle in production: what the image needs to start, how storage affects read models, client trust defaults, tracing limits and backup order."
 date: 2026-09-30T09:18:00Z
 authors: sindre
@@ -22,7 +23,7 @@ On a laptop, the author feature ran on one development container. In production 
 
 ## What the production image won't start without
 
-The [production guide](https://cratis.io/chronicle/hosting/production/) names three settings the production path needs, and a missing certificate stops it at startup. Every setting can come from `/app/chronicle.json` or from an environment variable with the `Cratis__Chronicle__` prefix, and the [environment variable wins](https://cratis.io/chronicle/hosting/configuration/configuration-precedence/) when both are set:
+The [production guide](https://www.cratis.io/chronicle/hosting/production/) names three settings the production path needs, and a missing certificate stops it at startup. Every setting can come from `/app/chronicle.json` or from an environment variable with the `Cratis__Chronicle__` prefix, and the [environment variable wins](https://www.cratis.io/chronicle/hosting/configuration/configuration-precedence/) when both are set:
 
 ```bash
 docker run -d \
@@ -38,15 +39,15 @@ docker run -d \
   cratis/chronicle:19.33.3
 ```
 
-The storage connection defaults to an empty string, so there's nothing to fall back to. An unset storage type means MongoDB. The TLS certificate is for port 35000, where gRPC for the clients and HTTP/1.1 for the REST API, the Workbench, OAuth and the health endpoint share one TLS port. The [encryption certificate](https://cratis.io/chronicle/hosting/encryption-certificate/) protects the signing and encryption keys of the internal OAuth authority. You can do without it only when that authority isn't in use, either because you've pointed Chronicle at an external authority or turned the `oAuthAuthority` feature off, and encrypting a value later still needs a certificate. A certificate path that points at a missing file stops startup with `EncryptionCertificateFileNotFound`, so a typo can't leave you running without one.
+The storage connection defaults to an empty string, so there's nothing to fall back to. An unset storage type means MongoDB. The TLS certificate is for port 35000, where gRPC for the clients and HTTP/1.1 for the REST API, the Workbench, OAuth and the health endpoint share one TLS port. The [encryption certificate](https://www.cratis.io/chronicle/hosting/encryption-certificate/) protects the signing and encryption keys of the internal OAuth authority. You can do without it only when that authority isn't in use, either because you've pointed Chronicle at an external authority or turned the `oAuthAuthority` feature off, and encrypting a value later still needs a certificate. A certificate path that points at a missing file stops startup with `EncryptionCertificateFileNotFound`, so a typo can't leave you running without one.
 
-Pin the version, as above. `latest` floats, and so does the image [Aspire](https://cratis.io/chronicle/hosting/aspire/) picks for you. In publish mode, `AddCratisChronicle()` selects the production image whatever else you configure, so it needs `WithTlsCertificate` and `WithEncryptionCertificate` before it'll start, and `WithImageTag` to stop two deployments of the same AppHost from landing on different versions.
+Pin the version, as above. `latest` floats, and so does the image [Aspire](https://www.cratis.io/chronicle/hosting/aspire/) picks for you. In publish mode, `AddCratisChronicle()` selects the production image whatever else you configure, so it needs `WithTlsCertificate` and `WithEncryptionCertificate` before it'll start, and `WithImageTag` to stop two deployments of the same AppHost from landing on different versions.
 
-The production image is built on a chiseled .NET base with no shell, `curl` or `wget`. A Docker `HEALTHCHECK` runs inside the container, so it fails every time and reports a healthy Chronicle as unhealthy. Probe `/health` from your orchestrator instead. If the prober can't handle the TLS certificate, `Cratis__Chronicle__Health__Port=8080` and `Cratis__Chronicle__Health__Tls=false` give it a plain HTTP [health port](https://cratis.io/chronicle/hosting/configuration/health-endpoint/). That port serves the other HTTP/1.1 endpoints as well unless you set `health.exclusive`, so keep it internal.
+The production image is built on a chiseled .NET base with no shell, `curl` or `wget`. A Docker `HEALTHCHECK` runs inside the container, so it fails every time and reports a healthy Chronicle as unhealthy. Probe `/health` from your orchestrator instead. If the prober can't handle the TLS certificate, `Cratis__Chronicle__Health__Port=8080` and `Cratis__Chronicle__Health__Tls=false` give it a plain HTTP [health port](https://www.cratis.io/chronicle/hosting/configuration/health-endpoint/). That port serves the other HTTP/1.1 endpoints as well unless you set `health.exclusive`, so keep it internal.
 
 ## Choosing where the events live
 
-Chronicle has pluggable [storage providers](https://cratis.io/chronicle/hosting/configuration/storage/): MongoDB, which is the default, PostgreSQL, SQL Server and SQLite. The kernel creates and migrates its own tables on the SQL databases, so there's no schema for you to run. What changes with the choice:
+Chronicle has pluggable [storage providers](https://www.cratis.io/chronicle/hosting/configuration/storage/): MongoDB, which is the default, PostgreSQL, SQL Server and SQLite. The kernel creates and migrates its own tables on the SQL databases, so there's no schema for you to run. What changes with the choice:
 
 | Storage type | What to know |
 | --- | --- |
@@ -58,7 +59,7 @@ Chronicle has pluggable [storage providers](https://cratis.io/chronicle/hosting/
 
 The MongoDB in the production guide's Compose file has no authentication and is published on loopback only. Authentication and TLS for the database, or a managed replica set, are yours to add.
 
-On the SQL databases, the [SQL sink](https://cratis.io/chronicle/sinks/) creates each read model's table on first use and updates only the columns that changed. It doesn't create the indexes a read model declares with `[Index]`. Only the MongoDB sink does that today, so an `[Index]` on the `Author` read model isn't created on PostgreSQL, and you add that index to the table yourself.
+On the SQL databases, the [SQL sink](https://www.cratis.io/chronicle/sinks/) creates each read model's table on first use and updates only the columns that changed. It doesn't create the indexes a read model declares with `[Index]`. Only the MongoDB sink does that today, so an `[Index]` on the `Author` read model isn't created on PostgreSQL, and you add that index to the table yourself.
 
 The sink is chosen by the client, separately from the kernel's storage, and every Chronicle client registers read models against the MongoDB sink unless you tell it otherwise. With the kernel on PostgreSQL, SQL Server or SQLite, set the default sink to SQL in the application as well:
 
@@ -137,15 +138,15 @@ end
 </TabItem>
 </Tabs>
 
-The storage choice also decides whether you can add a second node. The [clustering](https://cratis.io/chronicle/hosting/configuration/clustering/) types are `Localhost`, the default, and `MongoDB`, which keeps cluster membership in MongoDB storage. PostgreSQL, SQL Server and SQLite have no clustering type of their own, so a cluster of more than one node needs MongoDB storage. The default has a trap of its own, two servers pointed at one database forming two clusters without an error, and [*Chronicle jobs, scale and performance*](/chronicle-jobs-scale-and-performance/) walks through it.
+The storage choice also decides whether you can add a second node. The [clustering](https://www.cratis.io/chronicle/hosting/configuration/clustering/) types are `Localhost`, the default, and `MongoDB`, which keeps cluster membership in MongoDB storage. PostgreSQL, SQL Server and SQLite have no clustering type of their own, so a cluster of more than one node needs MongoDB storage. The default has a trap of its own, two servers pointed at one database forming two clusters without an error, and [*Chronicle jobs, scale and performance*](/chronicle-jobs-scale-and-performance/) walks through it.
 
 We'd pick MongoDB, since both a second node and declared indexes need it, unless your organization already runs one of the SQL databases and doesn't run MongoDB. SQLite fits one kernel on one machine.
 
 ## Who gets to connect
 
-[Authentication](https://cratis.io/chronicle/hosting/configuration/authentication/) is on by default, served by Chronicle's built-in OAuth authority unless you configure an external one. The production image creates the administrator without a password and lets the first person to open the Workbench set it. Keep port 35000 unreachable until that's done, or supply the password from your secret store through the `Cratis__Chronicle__Authentication__AdminUser__*` settings.
+[Authentication](https://www.cratis.io/chronicle/hosting/configuration/authentication/) is on by default, served by Chronicle's built-in OAuth authority unless you configure an external one. The production image creates the administrator without a password and lets the first person to open the Workbench set it. Keep port 35000 unreachable until that's done, or supply the password from your secret store through the `Cratis__Chronicle__Authentication__AdminUser__*` settings.
 
-Services connect as applications, which are OAuth clients with a client ID and secret. You can create them in the Workbench, with `cratis chronicle applications add`, or declare them in the [`clients` section](https://cratis.io/chronicle/hosting/configuration/client-bootstrap/) of the configuration, where the secret is hashed when it loads. A declared application whose client ID already exists is skipped, so changing its secret in the configuration doesn't change the one Chronicle holds. Removing it in the Workbench or with the CLI lasts until the next restart, when the kernel creates it again from the configuration, so to revoke a declared application, take it out of the configuration as well. In `chronicle.json`, declared applications look like this:
+Services connect as applications, which are OAuth clients with a client ID and secret. You can create them in the Workbench, with `cratis chronicle applications add`, or declare them in the [`clients` section](https://www.cratis.io/chronicle/hosting/configuration/client-bootstrap/) of the configuration, where the secret is hashed when it loads. A declared application whose client ID already exists is skipped, so changing its secret in the configuration doesn't change the one Chronicle holds. Removing it in the Workbench or with the CLI lasts until the next restart, when the kernel creates it again from the configuration, so to revoke a declared application, take it out of the configuration as well. In `chronicle.json`, declared applications look like this:
 
 ```json
 {
@@ -166,7 +167,7 @@ The application puts its own credentials in the connection string, `chronicle://
 
 Chronicle has no operator roles. The kernel's authorization asks one question, whether the caller is authenticated, so every user and every application you create can do everything the API and the Workbench allow. Create a user for each person and an application for each service, so you can revoke one without touching the rest.
 
-The client side has a default to change too. Every Chronicle client uses TLS unless told otherwise, and by default it [accepts any server certificate](https://cratis.io/chronicle/configuration/tls/), which is what lets a development client talk to the self-signed certificate of the development image. Against a production kernel, turn validation on with `skipTlsValidation=false`:
+The client side has a default to change too. Every Chronicle client uses TLS unless told otherwise, and by default it [accepts any server certificate](https://www.cratis.io/chronicle/configuration/tls/), which is what lets a development client talk to the self-signed certificate of the development image. Against a production kernel, turn validation on with `skipTlsValidation=false`:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
@@ -234,17 +235,17 @@ end
 </TabItem>
 </Tabs>
 
-Two settings look like shortcuts and aren't meant for a network. `auth=none` in a .NET connection string only works against a server with authentication turned off, and a server like that answers every call from anyone who can reach its port, with every event and every read model. It exists for a kernel embedded next to its own client in one throwaway process. [TLS on the server](https://cratis.io/chronicle/hosting/configuration/tls/) can be switched off only for a private backend behind an HTTPS proxy that forwards everything as cleartext HTTP/2, and that setup needs an external authority, because the internal one doesn't serve its token endpoint over cleartext. The .NET client's client-credentials mode can't use an external authority, so it doesn't work behind such a proxy.
+Two settings look like shortcuts and aren't meant for a network. `auth=none` in a .NET connection string only works against a server with authentication turned off, and a server like that answers every call from anyone who can reach its port, with every event and every read model. It exists for a kernel embedded next to its own client in one throwaway process. [TLS on the server](https://www.cratis.io/chronicle/hosting/configuration/tls/) can be switched off only for a private backend behind an HTTPS proxy that forwards everything as cleartext HTTP/2, and that setup needs an external authority, because the internal one doesn't serve its token endpoint over cleartext. The .NET client's client-credentials mode can't use an external authority, so it doesn't work behind such a proxy.
 
-Values in events that are secret without being personal, such as a partner's API key, get `[Encrypted]`, which encrypts them at rest under keys that no erasure can reach. [Security](https://cratis.io/chronicle/security/) explains how it differs from `[PII]`, and [*Personal data in an event log*](/personal-data-in-an-event-log/) covers the personal side.
+Values in events that are secret without being personal, such as a partner's API key, get `[Encrypted]`, which encrypts them at rest under keys that no erasure can reach. [Security](https://www.cratis.io/chronicle/security/) explains how it differs from `[PII]`, and [*Personal data in an event log*](/personal-data-in-an-event-log/) covers the personal side.
 
 ## What you can watch
 
-The kernel is instrumented whether or not anything collects it. Set `OTEL_EXPORTER_OTLP_ENDPOINT` and it exports [OpenTelemetry](https://cratis.io/chronicle/hosting/configuration/open-telemetry/) metrics, traces and logs over OTLP, with `OTEL_EXPORTER_OTLP_PROTOCOL`, `OTEL_EXPORTER_OTLP_HEADERS` and `OTEL_SERVICE_NAME` (default `Chronicle`) for the rest. Without the endpoint, nothing leaves the process.
+The kernel is instrumented whether or not anything collects it. Set `OTEL_EXPORTER_OTLP_ENDPOINT` and it exports [OpenTelemetry](https://www.cratis.io/chronicle/hosting/configuration/open-telemetry/) metrics, traces and logs over OTLP, with `OTEL_EXPORTER_OTLP_PROTOCOL`, `OTEL_EXPORTER_OTLP_HEADERS` and `OTEL_SERVICE_NAME` (default `Chronicle`) for the rest. Without the endpoint, nothing leaves the process.
 
 The metrics come from four meters: `Cratis.Chronicle`, `Microsoft.Orleans`, `Grpc.AspNetCore.Server` and the .NET runtime. The server also records further internal counters that the configuration reference doesn't list.
 
-The application has telemetry of its own. In .NET, Arc publishes command, query and identity spans under the [`Cratis.Arc`](https://cratis.io/arc/backend/csharp/observability/) source, and the Chronicle client publishes its append, unit-of-work, reactor and reducer spans under `Cratis.Chronicle.Client`. Neither reaches an exporter until the application subscribes to it. The Chronicle client's ASP.NET Core package, `Cratis.Chronicle.AspNetCore`, has one helper for this, `AddCratisChronicleInstrumentation()`, which registers the client's source on the tracer. Arc has no counterpart and no single call sets up both, so the application names `Cratis.Arc` itself. One that registers only `Cratis.Arc` never exports a client append span:
+The application has telemetry of its own. In .NET, Arc publishes command, query and identity spans under the [`Cratis.Arc`](https://www.cratis.io/arc/backend/csharp/observability/) source, and the Chronicle client publishes its append, unit-of-work, reactor and reducer spans under `Cratis.Chronicle.Client`. Neither reaches an exporter until the application subscribes to it. The Chronicle client's ASP.NET Core package, `Cratis.Chronicle.AspNetCore`, has one helper for this, `AddCratisChronicleInstrumentation()`, which registers the client's source on the tracer. Arc has no counterpart and no single call sets up both, so the application names `Cratis.Arc` itself. One that registers only `Cratis.Arc` never exports a client append span:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
@@ -265,7 +266,7 @@ builder.Services.AddOpenTelemetry()
 </TabItem>
 <TabItem label="Kotlin">
 
-Arc for Kotlin and Java [reports through Micrometer](https://cratis.io/arc/backend/kotlin/guides/observability/) once you add its observability starter. The Chronicle client for the JVM reports spans under the `io.cratis.chronicle` scope through whatever OpenTelemetry the application registered globally, with no setup of its own.
+Arc for Kotlin and Java [reports through Micrometer](https://www.cratis.io/arc/backend/kotlin/guides/observability/) once you add its observability starter. The Chronicle client for the JVM reports spans under the `io.cratis.chronicle` scope through whatever OpenTelemetry the application registered globally, with no setup of its own.
 
 ```kotlin
 dependencies {
@@ -276,7 +277,7 @@ dependencies {
 </TabItem>
 <TabItem label="Java">
 
-Arc for Kotlin and Java [reports through Micrometer](https://cratis.io/arc/backend/kotlin/guides/observability/) once you add its observability starter. The Chronicle client for the JVM reports spans under the `io.cratis.chronicle` scope through whatever OpenTelemetry the application registered globally, with no setup of its own.
+Arc for Kotlin and Java [reports through Micrometer](https://www.cratis.io/arc/backend/kotlin/guides/observability/) once you add its observability starter. The Chronicle client for the JVM reports spans under the `io.cratis.chronicle` scope through whatever OpenTelemetry the application registered globally, with no setup of its own.
 
 ```kotlin
 dependencies {
@@ -349,7 +350,7 @@ A Chronicle deployment can't be restored from a database backup alone. The datab
 
 *A database backup is the second of three things to restore.*
 
-Restore the [certificate ring](https://cratis.io/chronicle/hosting/encryption-certificate/) first, in the shape it had at backup time, including every previous certificate that was live then. Restore the storage second. The [compliance key store](https://cratis.io/chronicle/hosting/configuration/compliance-storage/) comes third, when one is configured, restored to the storage's point in time and never to an earlier one. The fence that records an erasure is kept in the key store beside the keys, so a key store restored from earlier than the storage still holds the key of anyone erased in between, with no fence to refuse it. Their personal data reads again, and an erasure already reported as complete is undone. The same key store is missing the keys of subjects created since its backup, and their personal data reads back as empty strings, the same as a completed erasure. Restored from later than the storage, it keeps the deletions and fences of the erasures made in between, and those erasures hold. [*Personal data in an event log*](/personal-data-in-an-event-log/) covers the key store itself. Then start one node and read `GET /diagnostics/encryption-certificates`. A key reported with the role `Retired` means the ring is missing a certificate the restored data needs.
+Restore the [certificate ring](https://www.cratis.io/chronicle/hosting/encryption-certificate/) first, in the shape it had at backup time, including every previous certificate that was live then. Restore the storage second. The [compliance key store](https://www.cratis.io/chronicle/hosting/configuration/compliance-storage/) comes third, when one is configured, restored to the storage's point in time and never to an earlier one. The fence that records an erasure is kept in the key store beside the keys, so a key store restored from earlier than the storage still holds the key of anyone erased in between, with no fence to refuse it. Their personal data reads again, and an erasure already reported as complete is undone. The same key store is missing the keys of subjects created since its backup, and their personal data reads back as empty strings, the same as a completed erasure. Restored from later than the storage, it keeps the deletions and fences of the erasures made in between, and those erasures hold. [*Personal data in an event log*](/personal-data-in-an-event-log/) covers the key store itself. Then start one node and read `GET /diagnostics/encryption-certificates`. A key reported with the role `Retired` means the ring is missing a certificate the restored data needs.
 
 Nothing about a wrong order reports itself at restore time. The data is there, and nothing can read it. So a certificate stays in the backup set for as long as the oldest backup you'd still restore, which is longer than it stays in the ring. Losing the certificates can't be recovered from.
 
@@ -357,9 +358,9 @@ Rotating the certificate is forward only. You make the new certificate active, l
 
 ## Upgrades
 
-Chronicle raises its major version for a breaking change to any published surface, whether the wire contract, a .NET API or observable behavior, and [Every major version](https://cratis.io/chronicle/upgrading/major-versions/) lists what each boundary changed. Most boundaries are compile-time changes you fix once. Three concerned data already written, 6 to 7, 10 to 11 and 13 to 14, and skipping past one doesn't skip its consequence. Before crossing one, take a backup of a kind you've already restored from once, and rehearse the upgrade on a copy. Two releases are there to step over, 14.0.0 and 17.0.0, where the `.0.1` is the real start of the major.
+Chronicle raises its major version for a breaking change to any published surface, whether the wire contract, a .NET API or observable behavior, and [Every major version](https://www.cratis.io/chronicle/upgrading/major-versions/) lists what each boundary changed. Most boundaries are compile-time changes you fix once. Three concerned data already written, 6 to 7, 10 to 11 and 13 to 14, and skipping past one doesn't skip its consequence. Before crossing one, take a backup of a kind you've already restored from once, and rehearse the upgrade on a copy. Two releases are there to step over, 14.0.0 and 17.0.0, where the `.0.1` is the real start of the major.
 
-Within a major, each build is checked against every released minor of that major, so a .NET client and a kernel that differ only in minor are expected to work together. The Java, Kotlin, TypeScript and Elixir clients have version numbers of their own. Across a major, [upgrade the kernel and the clients together](https://cratis.io/chronicle/upgrading/). The .NET, Java, Kotlin and TypeScript clients check at connect that their wire contract and the server's are compatible, and a mismatch fails the connection. The Elixir client runs the check before it sends an append, and a mismatch fails the append. In .NET, `skipCompatibilityCheck=true` turns the check off, as a temporary escape hatch that trades a clear failure at connect for a less obvious one later.
+Within a major, each build is checked against every released minor of that major, so a .NET client and a kernel that differ only in minor are expected to work together. The Java, Kotlin, TypeScript and Elixir clients have version numbers of their own. Across a major, [upgrade the kernel and the clients together](https://www.cratis.io/chronicle/upgrading/). The .NET, Java, Kotlin and TypeScript clients check at connect that their wire contract and the server's are compatible, and a mismatch fails the connection. The Elixir client runs the check before it sends an append, and a mismatch fails the append. In .NET, `skipCompatibilityCheck=true` turns the check off, as a temporary escape hatch that trades a clear failure at connect for a less obvious one later.
 
 The kernel upgrades its own stored state with patches it applies at startup, in version order, and only forward. Starting an older kernel against patched storage doesn't undo them, so rolling back means restoring the backup you took before the upgrade. Upgrading doesn't rewrite the events you've already appended.
 
@@ -376,7 +377,7 @@ cratis chronicle diagnose -n acme
 cratis chronicle failed-partitions list -n acme
 ```
 
-Leave out `-n` and these commands look at the active context's namespace, or `Default` when the context doesn't set one, and Acme's authors aren't in `Default`. [*The Cratis CLI, from diagnose to llm-context*](/the-cratis-cli/) follows a failed partition from [`diagnose`](https://cratis.io/cli/chronicle/diagnose/) to the retry, and [*Chronicle Workbench, screen by screen*](/chronicle-workbench/) shows the same partition in the [Workbench](https://cratis.io/chronicle/workbench/), labelled with the author's ID.
+Leave out `-n` and these commands look at the active context's namespace, or `Default` when the context doesn't set one, and Acme's authors aren't in `Default`. [*The Cratis CLI, from diagnose to llm-context*](/the-cratis-cli/) follows a failed partition from [`diagnose`](https://www.cratis.io/cli/chronicle/diagnose/) to the retry, and [*Chronicle Workbench, screen by screen*](/chronicle-workbench/) shows the same partition in the [Workbench](https://www.cratis.io/chronicle/workbench/), labelled with the author's ID.
 
 The operator can't go from that failed partition to the trace of the command that registered the author, because that trace stopped at the append.
 

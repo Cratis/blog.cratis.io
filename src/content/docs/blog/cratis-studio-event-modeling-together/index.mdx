@@ -24,7 +24,7 @@ In Studio, the author feature starts as a handful of sticky notes and can end as
 
 ## The wall ends up as a photo
 
-[Event modeling](https://cratis.io/event-modeling/) happens in a room, or on a call, with a product owner, someone who knows the domain and a couple of developers arguing about what actually happens in the business. Someone photographs the wall of sticky notes that comes out of it and retypes part of it into a tool, and by the time the first slice is built, the model, the conversation and the code have started to drift apart.
+[Event modeling](https://www.cratis.io/event-modeling/) happens in a room, or on a call, with a product owner, someone who knows the domain and a couple of developers arguing about what actually happens in the business. Someone photographs the wall of sticky notes that comes out of it and retypes part of it into a tool, and by the time the first slice is built, the model, the conversation and the code have started to drift apart.
 
 The author feature shows where it goes wrong. Someone at the wall asks whether two organizations can each have an author with the same name. The answer, that names are unique within an organization, is the rule the whole feature turns on, and on the wall it's a yellow note with a question mark. It's hard to read in the photo and easy to lose in the retyping, and it tends to come back later as a bug report.
 
@@ -44,7 +44,7 @@ In a remote workshop everyone's cursor is on the same board, so the facilitator 
 
 We think the model and the code belong together. A model nothing is generated from goes stale, and code nobody can trace back to a model is hard to review, whether a person or an agent wrote it. Studio keeps the two coupled. The team works on one model, the model is text you can diff, and the code for a slice is generated from it into your repository.
 
-The commands, events and read models on the canvas are the concepts [Arc](https://cratis.io/arc/) and [Chronicle](https://cratis.io/chronicle/) run. The text form is [Screenplay](https://cratis.io/screenplay/), the event-modeling language covered in [*Screenplay*](/screenplay-an-event-model-you-can-compile/), and Play and code generation go through [Stage](https://github.com/Cratis/Stage), which [*Stage and Scene*](/stage-and-scene-after-a-model-compiles/) takes apart. Studio is where those pieces meet for a whole team.
+The commands, events and read models on the canvas are the concepts [Arc](https://www.cratis.io/arc/) and [Chronicle](https://www.cratis.io/chronicle/) run. The text form is [Screenplay](https://www.cratis.io/screenplay/), the event-modeling language covered in [*Screenplay*](/screenplay-an-event-model-you-can-compile/), and Play and code generation go through [Stage](https://github.com/Cratis/Stage), which [*Stage and Scene*](/stage-and-scene-after-a-model-compiles/) takes apart. Studio is where those pieces meet for a whole team.
 
 ## The author feature, from board to commit
 
@@ -153,7 +153,7 @@ Scope it like any tool that can write. [*AI across the stack*](/ai-across-the-cr
 
 Studio isn't in a request's path. It works on the model and generates code into your repository. It uses the pieces the rest of this series describes. Its text form is Screenplay, Play and code generation run through Stage, and the generated code runs on Arc and Chronicle. You don't need Studio to use any of them, and modeling in Studio doesn't require adopting the rest of the stack. Stage is experimental, and some features inside Studio are labeled preview or experimental.
 
-[Prologue](https://cratis.io/prologue/), which drafts a model from a running system, has a place in Studio too for systems that already exist, and it's experimental there as well. [*Prologue*](/prologue-a-first-model-of-an-existing-system/) covers what it does and what it can't know.
+[Prologue](https://www.cratis.io/prologue/), which drafts a model from a running system, has a place in Studio too for systems that already exist, and it's experimental there as well. [*Prologue*](/prologue-a-first-model-of-an-existing-system/) covers what it does and what it can't know.
 
 When signup opens, the author feature makes a good first board: brainstorm it with the people who know the domain, transfer the events that hold up into the event model, add the example about duplicate names, and export it as Screenplay.
 

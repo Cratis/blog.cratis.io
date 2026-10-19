@@ -13,7 +13,7 @@ import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 ## TL;DR
 
-A [constraint](https://cratis.io/chronicle/constraints/) is a rule the Chronicle kernel checks when an event is appended, before it's committed. It's how you say "this username is taken" without racing a read model, and it's Chronicle's concrete tool for the idea behind the Dynamic Consistency Boundary: the decision, not an aggregate, decides what has to be consistent. A violation comes back as an outcome of the append, not as an exception.
+A [constraint](https://www.cratis.io/chronicle/constraints/) is a rule the Chronicle kernel checks when an event is appended, before it's committed. It's how you say "this username is taken" without racing a read model, and it's Chronicle's concrete tool for the idea behind the Dynamic Consistency Boundary: the decision, not an aggregate, decides what has to be consistent. A violation comes back as an outcome of the append, not as an exception.
 
 ## Two commands, one username
 
@@ -31,7 +31,7 @@ The traditional fix is to tighten the consistency scope until the race goes away
 
 ## The boundary belongs to the decision
 
-The [Dynamic Consistency Boundary](https://cratis.io/chronicle/dynamic-consistency-boundary/) (DCB) flips the usual arrangement. Instead of "here's my aggregate, every decision about it gets serialized", it says: for *this* decision, take exactly the facts the decision depends on, keep those consistent, and let everything else stay independent. The boundary is drawn per decision, at runtime, and it can be narrower or wider than any aggregate would have been.
+The [Dynamic Consistency Boundary](https://www.cratis.io/chronicle/dynamic-consistency-boundary/) (DCB) flips the usual arrangement. Instead of "here's my aggregate, every decision about it gets serialized", it says: for *this* decision, take exactly the facts the decision depends on, keep those consistent, and let everything else stay independent. The boundary is drawn per decision, at runtime, and it can be narrower or wider than any aggregate would have been.
 
 ![A diagram titled The boundary follows the decision. Two frames side by side. A fixed boundary holds One user's events, one aggregate, and Everyone else's emails, outside the boundary. The decision's boundary holds Every registered email, what the decision needs, with an arrow to Is this email free?, one decision, one boundary. A line underneath reads: The boundary follows the decision.](./boundary-follows-the-decision.png)
 
@@ -47,7 +47,7 @@ Chronicle supports three kinds:
 
 - A **unique property** constraint keeps a value unique across all events of one or more event types. The username case, or an order reference.
 - A **unique event type** constraint allows only one event of a given type per event source. The `UserRegistered` case, where a second registration for the same person should simply be impossible.
-- A **closing stream** constraint closes a stream when an event of a given type is appended, so later appends to it are rejected. It's a bit of a different animal, and the [docs cover it](https://cratis.io/chronicle/constraints/).
+- A **closing stream** constraint closes a stream when an event of a given type is appended, so later appends to it are rejected. It's a bit of a different animal, and the [docs cover it](https://www.cratis.io/chronicle/constraints/).
 
 One thing to know about scope: a constraint is checked within the event sequence the event is appended to, in the namespace it's appended in. Each tenant gets its own set of unique values, and a constraint doesn't reach across event sequences.
 
@@ -218,7 +218,7 @@ class UniqueProjectName implements IConstraint {
 
 *Claimed by one event, released by another.*
 
-There's a subtlety worth knowing. A unique value belongs to an event source, not to a single append. The same event source can append its current value again without a violation, and if it claims a different value, the new one replaces the old claim and frees it. That's what you want for a username, and the [docs on unique properties](https://cratis.io/chronicle/constraints/model-bound/unique/) show how to keep every value reserved if you need that instead.
+There's a subtlety worth knowing. A unique value belongs to an event source, not to a single append. The same event source can append its current value again without a violation, and if it claims a different value, the new one replaces the old claim and frees it. That's what you want for a username, and the [docs on unique properties](https://www.cratis.io/chronicle/constraints/model-bound/unique/) show how to keep every value reserved if you need that instead.
 
 ## The violation is an outcome, not an exception
 
@@ -250,7 +250,7 @@ Constraints run in the kernel and keep state. The kernel maintains an index of t
 
 The constraint types are deliberately narrow: uniqueness, and closing a stream. Chronicle doesn't evaluate arbitrary predicates at append time. For a rule like "a project may not have more than ten active milestones", which spans several events and isn't about uniqueness, constraints aren't the tool. [Part 5](/rules-that-hold-when-you-write/) covers the concurrency scopes and decision reads that are. Be a little suspicious of a rule like that in any case. Ask yourself whether it's really a write-time invariant, or a process with events of its own. And honestly, narrow is a feature here. It's what lets the check run inside the append against the store itself.
 
-The model-bound form is the one the docs prefer for most cases. The declarative form is where the clients differ: C#, TypeScript and Elixir have the full API including `RemovedWith`, and Kotlin and Java have a narrower one. The enforcement is identical everywhere, because it lives in the kernel. The sugar differs per client, and the [constraint docs](https://cratis.io/chronicle/constraints/declarative/) are explicit about it.
+The model-bound form is the one the docs prefer for most cases. The declarative form is where the clients differ: C#, TypeScript and Elixir have the full API including `RemovedWith`, and Kotlin and Java have a narrower one. The enforcement is identical everywhere, because it lives in the kernel. The sugar differs per client, and the [constraint docs](https://www.cratis.io/chronicle/constraints/declarative/) are explicit about it.
 
 ## Trying it
 
@@ -291,4 +291,4 @@ Run `dotnet test`. That's the whole mechanism in two appends. For the real thing
 
 If you're evaluating event sourcing, the invariant question is a good probe to bring to any stack. Ask where the uniqueness check runs, what happens when two commands race, and what the loser of the race sees. If the answer involves reading a model first, keep looking.
 
-Constraints move the *check* to the right place. The judgment stays with you: which rules to enforce, which events release a value, and what your code does when the answer is no. The [constraint docs](https://cratis.io/chronicle/constraints/) cover the rest, and the [Dynamic Consistency Boundary](https://cratis.io/chronicle/dynamic-consistency-boundary/) page puts constraints in their wider context.
+Constraints move the *check* to the right place. The judgment stays with you: which rules to enforce, which events release a value, and what your code does when the answer is no. The [constraint docs](https://www.cratis.io/chronicle/constraints/) cover the rest, and the [Dynamic Consistency Boundary](https://www.cratis.io/chronicle/dynamic-consistency-boundary/) page puts constraints in their wider context.

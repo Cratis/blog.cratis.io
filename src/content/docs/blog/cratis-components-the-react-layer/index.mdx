@@ -14,7 +14,7 @@ tags:
 
 *[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 09 of 26*
 
-The dialog that registers a name in the `cratis` template has one field and no event handlers. It still keeps its button disabled while validation fails, shows a spinner while the command runs, puts a server's rejection under the field it names and closes only when the command succeeds. Two packages share that work. Arc's React package runs the command and holds the form state, and [Cratis Components](https://cratis.io/components/) draws the dialog, the field and the buttons around it.
+The dialog that registers a name in the `cratis` template has one field and no event handlers. It still keeps its button disabled while validation fails, shows a spinner while the command runs, puts a server's rejection under the field it names and closes only when the command succeeds. Two packages share that work. Arc's React package runs the command and holds the form state, and [Cratis Components](https://www.cratis.io/components/) draws the dialog, the field and the buttons around it.
 
 The `cratis` template, which `dotnet new cratis` and `cratis new` both scaffold (see [*Cratis: from script to stage, and the long run*](/from-the-edge-to-the-event-log/#start-it-from-nothing-to-a-running-skeleton)), already has the two screens the author feature needs, a list page and a register dialog, and both are built with Components 4. [*Live UIs*](/live-uis-with-arc/) covered the live query behind the list and the props of `CommandDialog`.
 
@@ -47,7 +47,7 @@ export const App = () => (
 );
 ```
 
-`<Arc>` is what the generated proxies run against, and [`CratisComponentsProvider`](https://cratis.io/components/getting-started/) doesn't replace it. The Components provider holds the locale, the labels Components renders itself, an optional renderer and, with `toaster`, the region where notifications appear. `DialogComponents` is Arc's, and it registers Components' `ConfirmationDialog` and `BusyIndicatorDialog` as the renderers behind Arc's `useConfirmationDialog` and `useBusyIndicator`, because Arc [draws no dialog itself](https://cratis.io/arc/frontend/react/dialogs/). The template splits this between `.frontend/main.tsx` and `App.tsx`. Its `main.tsx` mounts `CratisComponentsProvider` with `toaster` inside `<Arc>`, so the toasts further down show in a template app without further setup:
+`<Arc>` is what the generated proxies run against, and [`CratisComponentsProvider`](https://www.cratis.io/components/getting-started/) doesn't replace it. The Components provider holds the locale, the labels Components renders itself, an optional renderer and, with `toaster`, the region where notifications appear. `DialogComponents` is Arc's, and it registers Components' `ConfirmationDialog` and `BusyIndicatorDialog` as the renderers behind Arc's `useConfirmationDialog` and `useBusyIndicator`, because Arc [draws no dialog itself](https://www.cratis.io/arc/frontend/react/dialogs/). The template splits this between `.frontend/main.tsx` and `App.tsx`. Its `main.tsx` mounts `CratisComponentsProvider` with `toaster` inside `<Arc>`, so the toasts further down show in a template app without further setup:
 
 ```tsx
 ReactDOM.createRoot(document.getElementById('root')!).render(
@@ -99,7 +99,7 @@ export const RegisterAuthorDialog = () => {
 };
 ```
 
-`RegisterNewAuthor` isn't written by hand. After each build, Arc's [proxy generator](https://cratis.io/arc/backend/csharp/proxy-generation/) writes a class for the C# `[Command]` record, and the template ships the one for its `Register` command. It looks like this:
+`RegisterNewAuthor` isn't written by hand. After each build, Arc's [proxy generator](https://www.cratis.io/arc/backend/csharp/proxy-generation/) writes a class for the C# `[Command]` record, and the template ships the one for its `Register` command. It looks like this:
 
 ```typescript
 export class RegisterNewAuthor extends Command<IRegisterNewAuthor, Guid> implements IRegisterNewAuthor {
@@ -127,11 +127,11 @@ The compiler checks `command => command.name` against the generated class. At ru
 
 The `Guid` in `Command<IRegisterNewAuthor, Guid>` is the response type. In C#, the template's handler creates the new id and returns it with the event, so the command responds with the new id as a `Guid` from `@cratis/fundamentals`, and `onSuccess` receives it. The Kotlin and Java templates take the id from the client instead, as a `@CommandKey` on the command, the way `RegisterAuthor` does. Their dialog adds `initialValues={{ id: crypto.randomUUID() }}`, a UUID string made in the browser, and imports the command from `Api/`, where the Gradle plugin writes the proxies.
 
-The confirm button is focused when the dialog opens. With a required field the button starts disabled, so a held Enter key can't confirm an empty form. A command with no input, such as a delete, has nothing to keep the button disabled, and [the `CommandDialog` guide](https://cratis.io/components/commanddialog/) recommends `initialFocus={DialogInitialFocus.Cancel}` for those.
+The confirm button is focused when the dialog opens. With a required field the button starts disabled, so a held Enter key can't confirm an empty form. A command with no input, such as a delete, has nothing to keep the button disabled, and [the `CommandDialog` guide](https://www.cratis.io/components/commanddialog/) recommends `initialFocus={DialogInitialFocus.Cancel}` for those.
 
 ## When the name is taken
 
-A registration that reuses a taken name passes every client rule, so the rejection comes from the server, after **Register** is clicked. The template has no uniqueness rule. The author feature needs one, and in the template it's a Chronicle [constraint](https://cratis.io/chronicle/constraints/) on the event, `[property: Unique(message: "That name is already registered.")]` on the `Name` of the `Registered` record. [*Rules that hold when you write*](/rules-that-hold-when-you-write/) explains why the check has to live at the append. A rule that spans more than one event type goes in a class that implements `IConstraint`, the [declarative form](https://cratis.io/chronicle/constraints/declarative/), where the constraint takes the class name unless `WithName` gives it another. The attribute form looks like this, with its own message:
+A registration that reuses a taken name passes every client rule, so the rejection comes from the server, after **Register** is clicked. The template has no uniqueness rule. The author feature needs one, and in the template it's a Chronicle [constraint](https://www.cratis.io/chronicle/constraints/) on the event, `[property: Unique(message: "That name is already registered.")]` on the `Name` of the `Registered` record. [*Rules that hold when you write*](/rules-that-hold-when-you-write/) explains why the check has to live at the append. A rule that spans more than one event type goes in a class that implements `IConstraint`, the [declarative form](https://www.cratis.io/chronicle/constraints/declarative/), where the constraint takes the class name unless `WithName` gives it another. The attribute form looks like this, with its own message:
 
 ```csharp
 using Cratis.Chronicle.Events;
@@ -145,7 +145,7 @@ With the same attribute on the template's `Registered` record, carrying the mess
 
 1. Chronicle refuses the append. The violation carries the constraint's name, a message, and details that name the property and the value that clashed.
 2. The .NET client replaces the kernel's message with the one the constraint declared. Without a declared message, the text reads like "Event '…' on member 'name' violated a unique constraint on sequence number …", which is written for a developer. A declared message can use `{PropertyName}` and `{PropertyValue}` placeholders.
-3. Arc's Chronicle integration turns each violation into a [validation result](https://cratis.io/arc/frontend/core/validation/results/). The command route answers with HTTP 400 and one result, with the message "That name is already registered.", the member `name`, the reason `constraintViolation` and the reason detail `Name`, which is the constraint's name. An unnamed `[Unique]` takes the property's name. Code that needs to know which rule failed compares `reasonDetail` and leaves the message alone.
+3. Arc's Chronicle integration turns each violation into a [validation result](https://www.cratis.io/arc/frontend/core/validation/results/). The command route answers with HTTP 400 and one result, with the message "That name is already registered.", the member `name`, the reason `constraintViolation` and the reason detail `Name`, which is the constraint's name. An unnamed `[Unique]` takes the property's name. Code that needs to know which rule failed compares `reasonDetail` and leaves the message alone.
 4. The command result has `isSuccess` and `isValid` both false. `CommandDialog` calls `onFailed` and `onValidationFailure` if you passed them, puts the result on the form and stays open.
 5. The form matches the result's members against each field's property name. The member is `name`, the field is bound to `name`, and the message appears under the Name field.
 
@@ -159,7 +159,7 @@ The field also gets `aria-invalid="true"` and an `aria-describedby` that points 
 
 *The path a constraint violation takes from the kernel to the Name field, in .NET.*
 
-Step 5 works because two names match. The member comes from the event's property, and it reaches a field only when the command has a property with the same name, as `Register.Name` and `Registered.Name` do. A validation result that matches no field has no built-in place on the form. [`CommandForm`](https://cratis.io/arc/frontend/react/command-form/) shows field errors and a form-level panel for exceptions, and that panel shows a safe default sentence, never the exception text. For a rule that doesn't map to one field, handle `onValidationFailure` yourself, or show it as a notification.
+Step 5 works because two names match. The member comes from the event's property, and it reaches a field only when the command has a property with the same name, as `Register.Name` and `Registered.Name` do. A validation result that matches no field has no built-in place on the form. [`CommandForm`](https://www.cratis.io/arc/frontend/react/command-form/) shows field errors and a form-level panel for exceptions, and that panel shows a safe default sentence, never the exception text. For a rule that doesn't map to one field, handle `onValidationFailure` yourself, or show it as a notification.
 
 `autoServerValidate` calls the `/validate` route; [*Validation all the way down*](/validation-all-the-way-down/) explains why it can't catch this duplicate before the user confirms.
 
@@ -195,13 +195,13 @@ export const AuthorsPage = ({ onRegister }: AuthorsPageProps) => {
 };
 ```
 
-[`DataPage`](https://cratis.io/components/datapage/) checks what kind of query it got. A snapshot query gets a table that fetches when the page mounts and again when an argument or the page changes. An observable query gets a table that subscribes and updates as the server pushes results. `DataPage` doesn't let you change the page size of 20 rows. The C# template's listing is observable, so its list picks up a new name without a reload. The Kotlin and Java templates list with a plain query, `All`, so their list shows new names on its next fetch.
+[`DataPage`](https://www.cratis.io/components/datapage/) checks what kind of query it got. A snapshot query gets a table that fetches when the page mounts and again when an argument or the page changes. An observable query gets a table that subscribes and updates as the server pushes results. `DataPage` doesn't let you change the page size of 20 rows. The C# template's listing is observable, so its list picks up a new name without a reload. The Kotlin and Java templates list with a plain query, `All`, so their list shows new names on its next fetch.
 
 ![A screenshot of the cratis template's Demo page in the dark theme. An action bar with a plus icon and the word Register, then a table with Name and Id columns and two rows, Anselm Brackenridge and Odalys Verhoeven, each with a GUID in the Id column.](./template-author-list.png)
 
 *The template's list page, a DataPage over its observable listing query. The template keeps the Id column that the author version drops.*
 
-The two `icon` props differ in kind. `InputTextField` takes an element, `icon={<MdEdit />}`, and [`MenuItem`](https://cratis.io/components/datapage/menu-items/) takes the component, `icon={MdAdd}`. `MenuItem`'s `command` is called with no arguments. The action bar is flat. A `MenuItem` nested in another one is ignored without an error, and so is any child of `DataPage.MenuItems` that isn't a `MenuItem`.
+The two `icon` props differ in kind. `InputTextField` takes an element, `icon={<MdEdit />}`, and [`MenuItem`](https://www.cratis.io/components/datapage/menu-items/) takes the component, `icon={MdAdd}`. `MenuItem`'s `command` is called with no arguments. The action bar is flat. A `MenuItem` nested in another one is ignored without an error, and so is any child of `DataPage.MenuItems` that isn't a `MenuItem`.
 
 The table covers the states a list goes through. The first load shows a loading row, a refetch keeps the old rows and marks the table busy, and an empty result shows `emptyMessage`. A failed or unauthorized query shows an alert row with `failureMessage` or `unauthorizedMessage`. The server's exception text never reaches the page.
 
@@ -232,9 +232,9 @@ The wrapper from Arc's `useDialog` renders once, and the function next to it ope
 
 ## Dialogs and notifications
 
-Components' [dialog guide](https://cratis.io/components/dialogs/) sorts the choices by what the user does, and [*Live UIs*](/live-uis-with-arc/) covers the choice between `CommandDialog` and `Dialog`. `StepperCommandDialog` runs a command after several steps. A yes-or-no question goes through `useConfirmationDialog` and renders as `ConfirmationDialog`, and a blocking spinner goes through `useBusyIndicator` and renders as `BusyIndicatorDialog`. On a `Dialog`, `placement='start'` or `'end'` turns it into a side panel.
+Components' [dialog guide](https://www.cratis.io/components/dialogs/) sorts the choices by what the user does, and [*Live UIs*](/live-uis-with-arc/) covers the choice between `CommandDialog` and `Dialog`. `StepperCommandDialog` runs a command after several steps. A yes-or-no question goes through `useConfirmationDialog` and renders as `ConfirmationDialog`, and a blocking spinner goes through `useBusyIndicator` and renders as `BusyIndicatorDialog`. On a `Dialog`, `placement='start'` or `'end'` turns it into a side panel.
 
-Anything the user doesn't have to answer is a toast. With `toaster` set on the provider, `toast.success`, `toast.warn`, `toast.error` and the rest can be called from components and from plain modules. Outside a dialog, [`toastCommandResult`](https://cratis.io/components/notifications/) turns a command result into the matching toast:
+Anything the user doesn't have to answer is a toast. With `toaster` set on the provider, `toast.success`, `toast.warn`, `toast.error` and the rest can be called from components and from plain modules. Outside a dialog, [`toastCommandResult`](https://www.cratis.io/components/notifications/) turns a command result into the matching toast:
 
 ```typescript
 const result = await command.execute();
@@ -260,9 +260,9 @@ A product with its own design system leaves out `theme` and maps its values onto
 }
 ```
 
-For one component, [stable parts](https://cratis.io/components/styling/pass-through/) are the hook. Documented parts carry a `data-cratis-part` attribute, and components that support it take a typed `pt` prop with ordinary HTML attributes per part, such as a `className` for a dialog's `root` or `backdrop`. React Aria's class names and the undocumented DOM around the parts aren't styling hooks, and Components tells you not to target them.
+For one component, [stable parts](https://www.cratis.io/components/styling/pass-through/) are the hook. Documented parts carry a `data-cratis-part` attribute, and components that support it take a typed `pt` prop with ordinary HTML attributes per part, such as a `className` for a dialog's `root` or `backdrop`. React Aria's class names and the undocumented DOM around the parts aren't styling hooks, and Components tells you not to target them.
 
-In a Tailwind host such as the template, the layer order works against `pt`. `styles` declares its layers as `cratis-theme`, `cratis-components` and `cratis-utilities`, and cascade layers rank in the order they're first declared. Tailwind declares its own layers first, so the Cratis layers land after them and a component's own rule outranks a Tailwind utility you pass through `pt`. [Components' styling guide](https://cratis.io/components/styling/) fixes the order with one statement parsed before any stylesheet:
+In a Tailwind host such as the template, the layer order works against `pt`. `styles` declares its layers as `cratis-theme`, `cratis-components` and `cratis-utilities`, and cascade layers rank in the order they're first declared. Tailwind declares its own layers first, so the Cratis layers land after them and a component's own rule outranks a Tailwind utility you pass through `pt`. [Components' styling guide](https://www.cratis.io/components/styling/) fixes the order with one statement parsed before any stylesheet:
 
 ```css
 @layer properties, theme, base, cratis-theme, cratis-components, cratis-utilities, components, utilities;
@@ -272,7 +272,7 @@ An application that uses a few surfaces can import `@cratis/components/styles/ba
 
 ## Swapping the primitives
 
-By default, Components renders everything itself. Three optional packages, [renderer adapters](https://cratis.io/components/renderers/), let a set of primitives come from another library, one for MUI 9, one for PrimeReact 11 and one for PrimeReact 10 from 10.9.9. You pick one with the provider's `library` prop:
+By default, Components renders everything itself. Three optional packages, [renderer adapters](https://www.cratis.io/components/renderers/), let a set of primitives come from another library, one for MUI 9, one for PrimeReact 11 and one for PrimeReact 10 from 10.9.9. You pick one with the provider's `library` prop:
 
 ```tsx
 import { CratisComponentsProvider } from '@cratis/components';
@@ -287,15 +287,15 @@ export const Application = () => (
 
 Each adapter covers the same nine slots: button, icon button, text input, text area, checkbox, radio, switch, progress and surface. Tooltips, dropdowns, dialogs, date pickers and the paginator stay with Components, and so do the composites. Under the MUI adapter, a `DataPage` is still a `DataPage`, and only its buttons and other primitives can come from MUI. A slot the adapter doesn't declare falls back to the built-in one without a warning, and `rendererFallback='throw'` turns that into an error. Each adapter release requires exactly its own version of `@cratis/components`, so the two upgrade together. The PrimeReact 11 adapter needs the application's own `PrimeReactProvider` with the application's license key, and installing the adapter doesn't move key handling into it.
 
-When a screen needs what a vendor grid does, such as grouping, row expansion, inline editing, virtualization or sorting controlled on the server, [the adapter guide](https://cratis.io/components/renderers/unsupported/) points to a custom composition next to Components, and not to anything inside `DataPage`.
+When a screen needs what a vendor grid does, such as grouping, row expansion, inline editing, virtualization or sorting controlled on the server, [the adapter guide](https://www.cratis.io/components/renderers/unsupported/) points to a custom composition next to Components, and not to anything inside `DataPage`.
 
 ## Where a view model fits
 
-Everything above takes props, so it works the same inside a view model's view. Arc's [MVVM package](https://cratis.io/arc/frontend/react/mvvm/), `@cratis/arc.react.mvvm`, keeps screen behavior in a class that `withViewModel` binds to a component, and [*Live UIs*](/live-uis-with-arc/) walks through it with a Components dialog. The template doesn't install the package. Arc's advice is plain hooks unless a screen has substantial behavior, and a list with a register button doesn't.
+Everything above takes props, so it works the same inside a view model's view. Arc's [MVVM package](https://www.cratis.io/arc/frontend/react/mvvm/), `@cratis/arc.react.mvvm`, keeps screen behavior in a class that `withViewModel` binds to a component, and [*Live UIs*](/live-uis-with-arc/) walks through it with a Components dialog. The template doesn't install the package. Arc's advice is plain hooks unless a screen has substantial behavior, and a list with a register button doesn't.
 
 ## Upgrading from Components 3
 
-Components 3 to 4 is a breaking upgrade. Root namespace imports, rendered markup, style parts and the provider changed. The [migration guide](https://cratis.io/components/migration/3-to-4/) comes with `@cratis/components.migrator`, a development CLI that rewrites imports and a few props, and `@cratis/eslint-plugin-components`, which stops the old imports from coming back.
+Components 3 to 4 is a breaking upgrade. Root namespace imports, rendered markup, style parts and the provider changed. The [migration guide](https://www.cratis.io/components/migration/3-to-4/) comes with `@cratis/components.migrator`, a development CLI that rewrites imports and a few props, and `@cratis/eslint-plugin-components`, which stops the old imports from coming back.
 
 ## Where Components stops
 

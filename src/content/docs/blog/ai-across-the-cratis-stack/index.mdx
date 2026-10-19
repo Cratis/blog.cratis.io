@@ -34,7 +34,7 @@ For the narrow backend vertical Stage supports, `cratis render` writes the code.
 
 ## Guidance in the repository
 
-The [Cratis AI corpus](https://cratis.io/ai/) is a free, MIT-licensed set of rules, skills, agents and prompts for building with Cratis, and it's still in preview. It lives in one folder, `.cratis/ai/`, and each supported assistant gets a thin adapter that points back to it, so the guidance is installed once instead of being copied into each tool's instructions. [`cratis ai install`](https://cratis.io/ai/getting-started/) puts it into your repository:
+The [Cratis AI corpus](https://www.cratis.io/ai/) is a free, MIT-licensed set of rules, skills, agents and prompts for building with Cratis, and it's still in preview. It lives in one folder, `.cratis/ai/`, and each supported assistant gets a thin adapter that points back to it, so the guidance is installed once instead of being copied into each tool's instructions. [`cratis ai install`](https://www.cratis.io/ai/getting-started/) puts it into your repository:
 
 ```bash
 cratis ai install \
@@ -44,7 +44,7 @@ cratis ai install \
 cratis ai status
 ```
 
-It records the selection in `.cratis/ai.json` and every file with its hash in `.cratis/ai.manifest.json`, refuses to overwrite files you own, and `cratis ai status` tells you when a managed file was edited locally. [Profiles](https://cratis.io/ai/profiles/) choose the scope, such as a C# application or documentation, and rules are scoped by language, so only the languages you list install theirs. In a terminal it asks for the harnesses, profiles and languages, and in a script or an agent's own terminal you pass them as above. The Cratis templates preselect it. `cratis new` runs the sync itself, and `dotnet new` prints a reminder to run `cratis ai update`.
+It records the selection in `.cratis/ai.json` and every file with its hash in `.cratis/ai.manifest.json`, refuses to overwrite files you own, and `cratis ai status` tells you when a managed file was edited locally. [Profiles](https://www.cratis.io/ai/profiles/) choose the scope, such as a C# application or documentation, and rules are scoped by language, so only the languages you list install theirs. In a terminal it asks for the harnesses, profiles and languages, and in a script or an agent's own terminal you pass them as above. The Cratis templates preselect it. `cratis new` runs the sync itself, and `dotnet new` prints a reminder to run `cratis ai update`.
 
 That gives an assistant context about how Cratis is meant to be used, with dozens of skills for commands, projections, reactors, concepts and specs. It doesn't give it access to anything, and it doesn't make its output correct. The corpus's own checks are static and don't run anything through a model. The CLI installs the corpus from its current main unless you give it a local source.
 
@@ -60,8 +60,8 @@ Böckeler also notes that agents often ignore the instructions they're given, an
 
 - `cratis screenplay validate` rejects a broken model before any code exists, and the Stage specification runner checks the model's Given/When/Then examples against the model.
 - The compiler and the generated TypeScript proxies turn a renamed field into a compile error on both sides.
-- Arc and Chronicle's .NET client ship [Roslyn analyzers](https://cratis.io/code-analysis/) that report some misuses of their APIs as build diagnostics. They aren't specific to agents, and they treat an agent's code like anyone else's.
-- The corpus ships [hooks](https://cratis.io/ai/harnesses/) that run inside the assistant's own tool.
+- Arc and Chronicle's .NET client ship [Roslyn analyzers](https://www.cratis.io/code-analysis/) that report some misuses of their APIs as build diagnostics. They aren't specific to agents, and they treat an agent's code like anyone else's.
+- The corpus ships [hooks](https://www.cratis.io/ai/harnesses/) that run inside the assistant's own tool.
 
 The hooks are the part written with agents in mind. Each one runs on an event in the assistant's tool:
 
@@ -94,7 +94,7 @@ The CLI catalog is how an assistant learns which commands change state; [*The Cr
 
 ## Chronicle MCP: an assistant at a running store
 
-[Chronicle MCP](https://cratis.io/chronicle-mcp/) connects an assistant to a running Chronicle server, whatever client language the application uses. It ships as a container, and [an editor can start it](https://cratis.io/chronicle-mcp/getting-started/) like this:
+[Chronicle MCP](https://www.cratis.io/chronicle-mcp/) connects an assistant to a running Chronicle server, whatever client language the application uses. It ships as a container, and [an editor can start it](https://www.cratis.io/chronicle-mcp/getting-started/) like this:
 
 ```json
 {
@@ -116,7 +116,7 @@ The CLI catalog is how an assistant learns which commands change state; [*The Cr
 
 Configuration is optional. It takes explicit options first, then `CHRONICLE_CONNECTION_STRING`, then the active CLI context, and falls back to development defaults, which means the development client ID and secret when no credentials are set. Don't rely on those.
 
-It has two sets of tools. The operate side reads what the server holds, from event types and observers to failed partitions, events and read-model instances. The design-time side describes the system, lists event types that nothing consumes and [explains a causal trace](https://cratis.io/chronicle-mcp/design-time/causal-trace/), the ordered history of one event source with its correlation and causation chains. For the author feature, an assistant can read the trace behind one author and say which command appended which event. The design-time tools introspect the store before generating anything, take field names from the schema registered with each event type, and say so when the store can't answer. They never change the store, and the code they return is a proposal to review.
+It has two sets of tools. The operate side reads what the server holds, from event types and observers to failed partitions, events and read-model instances. The design-time side describes the system, lists event types that nothing consumes and [explains a causal trace](https://www.cratis.io/chronicle-mcp/design-time/causal-trace/), the ordered history of one event source with its correlation and causation chains. For the author feature, an assistant can read the trace behind one author and say which command appended which event. The design-time tools introspect the store before generating anything, take field names from the schema registered with each event type, and say so when the store can't answer. They never change the store, and the code they return is a proposal to review.
 
 The only tools that change anything are three for stopping, resuming and deleting jobs. The server marks that through MCP tool annotations, so a client can let the read-only tools run and ask before the others. It can't append, redact or replay.
 
@@ -126,7 +126,7 @@ The corpus is more careful than the server. Its Chronicle MCP skill doesn't admi
 
 ## Screenplay MCP: proposals a person applies
 
-An assistant works on the event model through the [Screenplay MCP server](https://cratis.io/screenplay/mcp/), which [`cratis screenplay mcp`](https://cratis.io/cli/reference/screenplay-mcp/) starts over stdio for one application's folder. It can read the model, list the slices that have no `then` assertion or prepare a model-aware rename. The assertion check looks at the examples people wrote, which isn't the same as executed coverage. Proposals are tied to the revision they were made against, and a stale revision means proposing again. Only an explicit `apply` (or workspace recovery) writes files, which is exactly where your client's approval prompt belongs. None of its tools run specifications, and a proposal can be valid as source while still marked as not ready to execute.
+An assistant works on the event model through the [Screenplay MCP server](https://www.cratis.io/screenplay/mcp/), which [`cratis screenplay mcp`](https://www.cratis.io/cli/reference/screenplay-mcp/) starts over stdio for one application's folder. It can read the model, list the slices that have no `then` assertion or prepare a model-aware rename. The assertion check looks at the examples people wrote, which isn't the same as executed coverage. Proposals are tied to the revision they were made against, and a stale revision means proposing again. Only an explicit `apply` (or workspace recovery) writes files, which is exactly where your client's approval prompt belongs. None of its tools run specifications, and a proposal can be valid as source while still marked as not ready to execute.
 
 For a system that already exists, a Prologue draft enters at the same point, as a proposal a person corrects.
 
@@ -151,7 +151,7 @@ Cratis Studio and Cratis Direct are applications you use in the browser, and ass
 
 ## The docs, for an assistant that asks or reads
 
-[Prompter](https://cratis.io/prompter/), still experimental, answers questions about the Cratis docs in Discord. It grounds each answer in cratis.io with citations you can follow, or declines when it can't ground an answer. Its `/issue` command files a GitHub issue only when the person asking says so, and the question text goes to two outside providers, as [its privacy page](https://cratis.io/prompter/concepts/privacy/) explains. For an assistant that reads instead of asking, cratis.io publishes [`llms.txt`](https://cratis.io/llms.txt), `llms-full.txt` and an `llms.txt` for each product, and the index says the bulk archives aren't the best default context for one question.
+[Prompter](https://www.cratis.io/prompter/), still experimental, answers questions about the Cratis docs in Discord. It grounds each answer in cratis.io with citations you can follow, or declines when it can't ground an answer. Its `/issue` command files a GitHub issue only when the person asking says so, and the question text goes to two outside providers, as [its privacy page](https://www.cratis.io/prompter/concepts/privacy/) explains. For an assistant that reads instead of asking, cratis.io publishes [`llms.txt`](https://www.cratis.io/llms.txt), `llms-full.txt` and an `llms.txt` for each product, and the index says the bulk archives aren't the best default context for one question.
 
 ## A person reviews, or sets who merges
 

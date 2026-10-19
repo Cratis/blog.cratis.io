@@ -1,6 +1,6 @@
 ---
 title: "Events are facts: naming and shaping events · Script to stage, Part 1"
-description: "How to name and shape events in event sourcing so they still read in five years, and what Chronicle stores with every event it appends."
+description: "Name and shape events so they still read in five years, and see what Chronicle stores with each one: sequence number, source, operation, cause and reason."
 date: 2026-09-30T09:01:00Z
 authors: sindre
 excerpt: "An event records something that happened, and no event is taken out of the log afterwards. How to name and shape events that still read in five years, and what Chronicle stores with each one: a sequence number, its source, the operation it belonged to, who caused it and why."
@@ -23,9 +23,9 @@ The fact has to hold up over time. In month three someone asks to be forgotten, 
 
 ## Intent, fact and state
 
-[Event sourcing](https://cratis.io/chronicle/why-event-sourcing/) changes the question a system answers. A CRUD table tells you what a row looks like now. An event log tells you what happened, in what order and why, and the audit trail is the model itself. Cratis sees event sourcing as the default architecture for information systems, and Chronicle still leaves room for the table where history carries no meaning.
+[Event sourcing](https://www.cratis.io/chronicle/why-event-sourcing/) changes the question a system answers. A CRUD table tells you what a row looks like now. An event log tells you what happened, in what order and why, and the audit trail is the model itself. Cratis sees event sourcing as the default architecture for information systems, and Chronicle still leaves room for the table where history carries no meaning.
 
-Three things in the author feature look alike and do different jobs. `RegisterAuthor` is a command, a request that can be refused because the name is taken or the user isn't allowed to make it. `AuthorRegistered` is an [event](https://cratis.io/chronicle/concepts/event/), the record that a registration did happen. The `Author` row that a list reads from is a read model, derived from the events and rebuildable from them. Because of that split, a wrong view gets fixed by correcting the [projection](https://cratis.io/chronicle/projections/) and replaying the events, and a side effect such as sending an email lives in a [reactor](https://cratis.io/chronicle/reactors/), outside the projection that a replay rebuilds.
+Three things in the author feature look alike and do different jobs. `RegisterAuthor` is a command, a request that can be refused because the name is taken or the user isn't allowed to make it. `AuthorRegistered` is an [event](https://www.cratis.io/chronicle/concepts/event/), the record that a registration did happen. The `Author` row that a list reads from is a read model, derived from the events and rebuildable from them. Because of that split, a wrong view gets fixed by correcting the [projection](https://www.cratis.io/chronicle/projections/) and replaying the events, and a side effect such as sending an email lives in a [reactor](https://www.cratis.io/chronicle/reactors/), outside the projection that a replay rebuilds.
 
 ![A diagram titled Intent, fact and state, in two sections. The first, What each one is, has three cards joined by arrows: a command, UpdateAddress, an intent that may be refused; an event, AddressChanged, a fact that stays in the log; and a read model, Address row, derived and rebuildable. The second, A nullable property is two facts, shows an OrderPlaced card with an optional Discount, with arrows to two event rows: OrderPlaced with CustomerId and Total, and DiscountApplied with Amount. A note beside them reads: CHR0012 warns, still allowed.](./intent-fact-state.png)
 
@@ -160,7 +160,7 @@ A fact also outlives the moment it was produced. A notification goes out once, t
 
 An event's name is a past-tense verb phrase in the language of the domain: `OrderPlaced`, `AddressChanged`, `AuthorRegistered`. `CreateOrder` is a command and `OrderState` is a model. If you can't name something in the past tense, it isn't an event yet. The rule sounds cosmetic until you read a log a year later, where every name is either a statement about the business or a puzzle.
 
-Each event captures one meaningful change. The kitchen-sink `CustomerUpdated`, carrying every field of the customer with most of them unchanged, forces each consumer to work out which change actually happened. `AddressChanged` says the customer moved. A CRUD habit pushes toward mirroring columns. [Modeling the decision](https://cratis.io/chronicle/concepts/modeling-events/) the business cares about gives every consumer of the event something precise to work from.
+Each event captures one meaningful change. The kitchen-sink `CustomerUpdated`, carrying every field of the customer with most of them unchanged, forces each consumer to work out which change actually happened. `AddressChanged` says the customer moved. A CRUD habit pushes toward mirroring columns. [Modeling the decision](https://www.cratis.io/chronicle/concepts/modeling-events/) the business cares about gives every consumer of the event something precise to work from.
 
 `AuthorRegistered` passes that test. Registering an author is something a librarian decides to do. Later changes keep to the same rule. A typo in the registered name is a mistake in what was recorded, and Chronicle corrects it with a revision. A pen name the author adopts a year later is something new that happened, and it gets an event and a name of its own.
 
@@ -382,7 +382,7 @@ end
 </TabItem>
 </Tabs>
 
-With two events, a projection that shows discounts listens for `DiscountApplied` and never has to ask whether a null meant "no discount" or "we forgot to send it". Chronicle's .NET [code analysis](https://cratis.io/chronicle/code-analysis/chr0012/) flags a nullable event property with rule CHR0012 as a warning, and a nullable property is still allowed. Data collection is the exception. When a form lets someone leave their middle name empty, the event records exactly what was collected, and null is the true value.
+With two events, a projection that shows discounts listens for `DiscountApplied` and never has to ask whether a null meant "no discount" or "we forgot to send it". Chronicle's .NET [code analysis](https://www.cratis.io/chronicle/code-analysis/chr0012/) flags a nullable event property with rule CHR0012 as a warning, and a nullable property is still allowed. Data collection is the exception. When a form lets someone leave their middle name empty, the event records exactly what was collected, and null is the true value.
 
 In an Arc application, a command handler returns the events and Arc's Chronicle integration appends them together, with `DiscountApplied` included only when the order has a discount:
 
@@ -520,15 +520,15 @@ For `AuthorRegistered`, the name travels by value, exactly as it was registered.
 
 ## Whose fact it is: event source and event type
 
-Every event belongs to an [event source](https://cratis.io/chronicle/concepts/event-source/), the thing its facts are about: a person, an order, an author. The event source binds a stream of facts together, much as a primary key binds a row. In the .NET client, `EventSourceId` is a concept over `string` that can also be constructed from a `Guid`. For the author feature it's the author's id, and that id turns up again and again. Projections key their read models by it unless told otherwise, and when processing fails, Chronicle retries the events of that one event source while the others carry on.
+Every event belongs to an [event source](https://www.cratis.io/chronicle/concepts/event-source/), the thing its facts are about: a person, an order, an author. The event source binds a stream of facts together, much as a primary key binds a row. In the .NET client, `EventSourceId` is a concept over `string` that can also be constructed from a `Guid`. For the author feature it's the author's id, and that id turns up again and again. Projections key their read models by it unless told otherwise, and when processing fails, Chronicle retries the events of that one event source while the others carry on.
 
-An event is identified by its [event type](https://cratis.io/chronicle/concepts/event-type/), not by its CLR type. `[EventType]` takes an optional id, which defaults to the type name, and a generation that starts at 1. Because the default id is the type name, renaming the class changes the event's identity, so a long-lived event deserves an explicit id.
+An event is identified by its [event type](https://www.cratis.io/chronicle/concepts/event-type/), not by its CLR type. `[EventType]` takes an optional id, which defaults to the type name, and a generation that starts at 1. Because the default id is the type name, renaming the class changes the event's identity, so a long-lived event deserves an explicit id.
 
-A client registers its event types with Chronicle before it appends, and each generation registers its own JSON schema. Every append is [validated against that schema](https://cratis.io/chronicle/events/appending/) before anything else happens. A payload that doesn't match comes back as a constraint violation of type `Schema`, with the path of the offending property, and the call doesn't throw. When an event's shape has to change, the new shape becomes a new generation stored beside the old one, and [*Year two*](/four-changes-in-year-two/) covers how the two are read together.
+A client registers its event types with Chronicle before it appends, and each generation registers its own JSON schema. Every append is [validated against that schema](https://www.cratis.io/chronicle/events/appending/) before anything else happens. A payload that doesn't match comes back as a constraint violation of type `Schema`, with the path of the offending property, and the call doesn't throw. When an event's shape has to change, the new shape becomes a new generation stored beside the old one, and [*Year two*](/four-changes-in-year-two/) covers how the two are read together.
 
 ## The log and its numbers
 
-Events live in [event sequences](https://cratis.io/chronicle/concepts/event-sequence/). A sequence is ordered and append-only, and each event gets the next number, which never changes afterwards. The sequence you'll append to almost every time is the event log, `IEventLog`. Chronicle also keeps outbox and inbox sequences for subscriptions between event stores, which [*Reacting to facts*](/reacting-to-facts/) takes apart.
+Events live in [event sequences](https://www.cratis.io/chronicle/concepts/event-sequence/). A sequence is ordered and append-only, and each event gets the next number, which never changes afterwards. The sequence you'll append to almost every time is the event log, `IEventLog`. Chronicle also keeps outbox and inbox sequences for subscriptions between event stores, which [*Reacting to facts*](/reacting-to-facts/) takes apart.
 
 Anything that processes events remembers how far it has come, and that position is a sequence number. A projection that has seen everything up to #41 knows its next event is #42, and a restart or a new deployment doesn't change what #42 is.
 
@@ -624,7 +624,7 @@ Behind the call, Chronicle does five things in order:
 
 Metadata you leave out gets a stored default: event source type `Default`, event stream type `All` and event stream id `Default`. Every client can supply the time the event occurred. Otherwise the server stamps it, which is what you want in almost every case. Setting `Occurred` yourself bypasses the server's clock and can break anything that relies on time ordering, so it belongs to imports and replays of existing history.
 
-[Cross-cutting properties](https://cratis.io/chronicle/events/cross-cutting-properties/) cover data that belongs on every event and in no domain method. A class implementing `ICanProvideAdditionalEventInformation` is discovered automatically, and it can add a tenant id to each append without the code that appends ever touching it. In .NET, the client adds cross-cutting properties before the event is sent.
+[Cross-cutting properties](https://www.cratis.io/chronicle/events/cross-cutting-properties/) cover data that belongs on every event and in no domain method. A class implementing `ICanProvideAdditionalEventInformation` is discovered automatically, and it can add a tenant id to each append without the code that appends ever touching it. In .NET, the client adds cross-cutting properties before the event is sent.
 
 A provider is a small class:
 
@@ -759,7 +759,7 @@ The Elixir client passes a `Chronicle.Events.EventContext` struct to `handle/2`.
 </TabItem>
 </Tabs>
 
-Most of the fields place the event in the log and in time, down to the event store and namespace it lives in. `Subject` defaults to the event source id. The namespace matters for the author feature, because with Arc's Chronicle integration each tenant gets a [namespace](https://cratis.io/chronicle/concepts/namespaces/) of its own, with its own events and observers.
+Most of the fields place the event in the log and in time, down to the event store and namespace it lives in. `Subject` defaults to the event source id. The namespace matters for the author feature, because with Arc's Chronicle integration each tenant gets a [namespace](https://www.cratis.io/chronicle/concepts/namespaces/) of its own, with its own events and observers.
 
 The code that appends can set some of these fields itself. An order imported from an older system keeps the time it was placed, gets an event source type and a stream type, and carries a tag:
 
@@ -865,7 +865,7 @@ end
 </TabItem>
 </Tabs>
 
-Three of the fields are set once for an operation and then flow into every append made during it, and together they answer who did this and why. The [correlation id](https://cratis.io/chronicle/concepts/correlation-identity-causation/) ties together everything that belongs to one logical operation, such as one HTTP request or one handler invocation. When a single registration produces three events, the correlation id is how you find all three.
+Three of the fields are set once for an operation and then flow into every append made during it, and together they answer who did this and why. The [correlation id](https://www.cratis.io/chronicle/concepts/correlation-identity-causation/) ties together everything that belongs to one logical operation, such as one HTTP request or one handler invocation. When a single registration produces three events, the correlation id is how you find all three.
 
 `CausedBy` records the identity behind the change: a user, a system or a service, including on-behalf-of chains when a service acts for a person. The display name isn't part of the fact. Rename an identity and the new name shows for every event it ever caused, because the stable key is what the event stores.
 
@@ -951,7 +951,7 @@ end
 </TabItem>
 </Tabs>
 
-In a Cratis application you rarely write that yourself. [Arc's Chronicle integration](https://cratis.io/arc/backend/csharp/chronicle/commands/causation/) adds the command link on its own, and in .NET and TypeScript records the command's name and its property values on every event the command appends. For `RegisterAuthor`, that puts the submitted name into the causation of `AuthorRegistered`. Those values are part of the event log. Changing the code later doesn't remove them, and they aren't encrypted under the subject's key. `[PII]` or `[NotAudited]` on a top-level command property keeps its value off new causation chains. A nested object is written as compact JSON, and marking a property inside it doesn't exclude that property. An author's name is personal data, and [*Personal data in an event log*](/personal-data-in-an-event-log/) is about exactly that problem.
+In a Cratis application you rarely write that yourself. [Arc's Chronicle integration](https://www.cratis.io/arc/backend/csharp/chronicle/commands/causation/) adds the command link on its own, and in .NET and TypeScript records the command's name and its property values on every event the command appends. For `RegisterAuthor`, that puts the submitted name into the causation of `AuthorRegistered`. Those values are part of the event log. Changing the code later doesn't remove them, and they aren't encrypted under the subject's key. `[PII]` or `[NotAudited]` on a top-level command property keeps its value off new causation chains. A nested object is written as compact JSON, and marking a property inside it doesn't exclude that property. An author's name is personal data, and [*Personal data in an event log*](/personal-data-in-an-event-log/) is about exactly that problem.
 
 ![A diagram titled Anatomy of an append. At the top left, a payload row, OrderPlaced with CustomerId and Total, points down into five numbered steps: 1 schema check, 2 event source, 3 next sequence number, 4 persist atomically, 5 update sequence state. The last step points right to a card, Stored event, #42, number never changes. It sits in a group titled Stored with every event, together with three notes: Correlation, one operation; Identity, who caused it; Causation, HTTP request to command.](./anatomy-of-an-append.png)
 
@@ -961,19 +961,19 @@ In a Cratis application you rarely write that yourself. [Arc's Chronicle integra
 
 An event sequence is append-only. No event is taken out of it and no sequence number changes. A revision is stored beside the original, and a redaction replaces the payload with a marker in the same slot.
 
-When a value was recorded wrongly, a [revision](https://cratis.io/chronicle/events/revision/) stores a corrected payload beside the original. It keeps the same event type, it's ordered after the original, and it carries the reviser's causation and identity. Observers see the latest revision, and the original stays in the history. A revision fixes data that was wrong when it was written. When something real changes in the domain, such as a registration being withdrawn, that's a new event with a name of its own.
+When a value was recorded wrongly, a [revision](https://www.cratis.io/chronicle/events/revision/) stores a corrected payload beside the original. It keeps the same event type, it's ordered after the original, and it carries the reviser's causation and identity. Observers see the latest revision, and the original stays in the history. A revision fixes data that was wrong when it was written. When something real changes in the domain, such as a registration being withdrawn, that's a new event with a name of its own.
 
-[Redaction](https://cratis.io/chronicle/events/redaction/) goes further and replaces the payload with an `EventRedacted` marker while keeping the slot. The sequence number, the event type, the time it occurred, the correlation, the identities that caused it, and the types and times of its causation links all remain. The original causation values, the revision history and the hashes don't. Copies made before the redaction, such as database oplogs and backups, still hold the original. Keeping the slot matters because every observer's offset is a sequence number, so the numbers after a redacted event mean exactly what they meant before. Redaction and erasure are covered in [*Personal data in an event log*](/personal-data-in-an-event-log/), and the choice between a reversal, a revision and a redaction in [*Year two*](/four-changes-in-year-two/).
+[Redaction](https://www.cratis.io/chronicle/events/redaction/) goes further and replaces the payload with an `EventRedacted` marker while keeping the slot. The sequence number, the event type, the time it occurred, the correlation, the identities that caused it, and the types and times of its causation links all remain. The original causation values, the revision history and the hashes don't. Copies made before the redaction, such as database oplogs and backups, still hold the original. Keeping the slot matters because every observer's offset is a sequence number, so the numbers after a redacted event mean exactly what they meant before. Redaction and erasure are covered in [*Personal data in an event log*](/personal-data-in-an-event-log/), and the choice between a reversal, a revision and a redaction in [*Year two*](/four-changes-in-year-two/).
 
-[Getting events](https://cratis.io/chronicle/events/getting-events/) covers reads by event source and event types, and, in the .NET client, reads from the tail and from a checkpoint. The `AppendOperations` observable [emits after every append](https://cratis.io/chronicle/events/observing-appends/), successful or not, which is useful when a test or a tool wants to watch what the application writes.
+[Getting events](https://www.cratis.io/chronicle/events/getting-events/) covers reads by event source and event types, and, in the .NET client, reads from the tail and from a checkpoint. The `AppendOperations` observable [emits after every append](https://www.cratis.io/chronicle/events/observing-appends/), successful or not, which is useful when a test or a tool wants to watch what the application writes.
 
 ## Where the model stops
 
-Event sourcing is a choice per part of a system. A small current-state form where nobody needs the story of its changes is better served by a database table (see [when to use event sourcing](https://cratis.io/chronicle/concepts/when-to-use-event-sourcing/)). [Arc works without Chronicle](https://cratis.io/arc/arc-without-event-sourcing/) for that case, Chronicle can be used without Arc, and [the ecosystem at a glance](https://blog.cratis.io/the-cratis-ecosystem-at-a-glance/) lists the rest.
+Event sourcing is a choice per part of a system. A small current-state form where nobody needs the story of its changes is better served by a database table (see [when to use event sourcing](https://www.cratis.io/chronicle/concepts/when-to-use-event-sourcing/)). [Arc works without Chronicle](https://www.cratis.io/arc/arc-without-event-sourcing/) for that case, Chronicle can be used without Arc, and [the ecosystem at a glance](https://blog.cratis.io/the-cratis-ecosystem-at-a-glance/) lists the rest.
 
 Each decision sits in one place. The uniqueness rule sits on the event, `[PII]` goes on a value's type, and the tenant header is set once in Arc's configuration.
 
-The kernel contract is shared across Chronicle's clients, and some behavior around it lives in the client. Resolving `[Subject]` at append time happens in the .NET client and, as the `subject:` option of the event type, in the Elixir client, and only .NET has the default concurrency check; the Kotlin/Java, TypeScript and Elixir clients request none by default. [Where the clients differ](https://cratis.io/chronicle/clients/where-the-clients-differ/) lists the other gaps.
+The kernel contract is shared across Chronicle's clients, and some behavior around it lives in the client. Resolving `[Subject]` at append time happens in the .NET client and, as the `subject:` option of the event type, in the Elixir client, and only .NET has the default concurrency check; the Kotlin/Java, TypeScript and Elixir clients request none by default. [Where the clients differ](https://www.cratis.io/chronicle/clients/where-the-clients-differ/) lists the other gaps.
 
 Of all the design decisions in an event-sourced system, the events are the most expensive to change later. A projection can be fixed and replayed. An event type that merged three decisions into one field-by-field update stays in the log for as long as the log exists, and every consumer written against it inherits the guesswork.
 
