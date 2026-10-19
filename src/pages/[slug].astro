@@ -1,0 +1,35 @@
+---
+// Builds the page of a scheduled post (dated after the build time) at its
+// final /<slug>/ URL, outside the blog: it is reachable, so links from
+// published posts to later parts resolve, but `noindex,follow` and absent from
+// listings, tags, RSS, the sitemap and llms.txt. Once its date has passed the
+// loader (src/loaders/scheduledDocsLoader.ts) stops marking it, starlight-blog
+// builds it as a normal post at the same URL, and this page disappears.
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
+import { getCollection, render } from 'astro:content';
+
+export async function getStaticPaths() {
+    const scheduled = await getCollection(
+        'docs',
+        ({ id, data }) => /^blog\/[^/]+$/.test(id) && (data as { scheduled?: boolean }).scheduled === true,
+    );
+    return scheduled.map((entry) => ({ params: { slug: entry.id.replace(/^blog\//, '') }, props: { entry } }));
+}
+
+const { entry } = Astro.props;
+const { Content } = await render(entry);
+const { draft, ...frontmatter } = entry.data as Record<string, unknown>;
+---
+
+<StarlightPage
+    frontmatter={{
+        ...frontmatter,
+        title: entry.data.title,
+        pagefind: false,
+        prev: false,
+        next: false,
+        head: [{ tag: 'meta', attrs: { name: 'robots', content: 'noindex,follow' } }],
+    }}
+>
+    <Content />
+</StarlightPage>

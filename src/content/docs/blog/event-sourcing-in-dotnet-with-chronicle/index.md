@@ -24,11 +24,11 @@ The versions are pinned so you can reproduce the run exactly:
 | .NET SDK | 10.0.401 (`net10.0` target) |
 | Yarn | 4.18.1 |
 
-[Chronicle](https://cratis.io/chronicle/) and its bundled local Workbench are MIT-licensed, self-hosted software — what you run here is yours to run.
+[Chronicle](https://www.cratis.io/chronicle/) and its bundled local Workbench are MIT-licensed, self-hosted software — what you run here is yours to run.
 
 ## What you will build
 
-A small library application: a book arrives, gets borrowed, and comes back. Each of those facts is an event appended to Chronicle's event log. One read model is projected from those events — declaratively, with no update code — and a React page built on [Arc](https://cratis.io/arc/) and [Components](https://cratis.io/components/) drives it end to end: add a book, borrow it, return it, watch the table update live.
+A small library application: a book arrives, gets borrowed, and comes back. Each of those facts is an event appended to Chronicle's event log. One read model is projected from those events — declaratively, with no update code — and a React page built on [Arc](https://www.cratis.io/arc/) and [Components](https://www.cratis.io/components/) drives it end to end: add a book, borrow it, return it, watch the table update live.
 
 ## 1. Install the templates
 
@@ -40,7 +40,7 @@ dotnet new install Cratis.Templates@1.7.3
 
 ## 2. Scaffold the application
 
-One command creates a complete full-stack application — ASP.NET Core with Arc, Chronicle for the event log, MongoDB for read models, and a React frontend with generated TypeScript proxies, arranged in vertical slices. [Build a full app](https://cratis.io/build-a-full-app/) walks the same shape by hand, slice by slice, if you want to see what the template scaffolds before you touch it:
+One command creates a complete full-stack application — ASP.NET Core with Arc, Chronicle for the event log, MongoDB for read models, and a React frontend with generated TypeScript proxies, arranged in vertical slices. [Build a full app](https://www.cratis.io/build-a-full-app/) walks the same shape by hand, slice by slice, if you want to see what the template scaffolds before you touch it:
 
 ```shell
 dotnet new cratis -n Library
@@ -189,7 +189,7 @@ After the borrow, the document holds `borrowedBy: 'Jane Doe'`; after the return,
 
 ## 5. Build the page
 
-The backend's proxies are typed contracts, not documentation to copy by hand — the frontend imports them directly. One file, `Books/Books.tsx`, wires a dialog per command and a live table for the query, using [Components](https://cratis.io/components/)' `DataPage` — the same component the template's sample feature uses:
+The backend's proxies are typed contracts, not documentation to copy by hand — the frontend imports them directly. One file, `Books/Books.tsx`, wires a dialog per command and a live table for the query, using [Components](https://www.cratis.io/components/)' `DataPage` — the same component the template's sample feature uses:
 
 ```tsx
 import { useState } from 'react';
@@ -308,8 +308,14 @@ Remove the containers and the scratch folder when you are done — event data li
 docker compose down
 ```
 
-- [Build a full app](https://cratis.io/build-a-full-app/) — the same shape, walked by hand, one vertical slice at a time.
+- [Build a full app](https://www.cratis.io/build-a-full-app/) — the same shape, walked by hand, one vertical slice at a time.
 - The [C# templates](https://github.com/cratis/templates) — the four templates this post started from, with their documentation.
-- [Arc](https://cratis.io/arc/) — the CQRS application framework: commands, queries, validation, and proxy generation.
-- [Components](https://cratis.io/components/) — the React component library this post's `DataPage` and `CommandDialog` come from.
-- [Chronicle](https://cratis.io/chronicle/) — the event store and processing runtime underneath the read model, including its bundled local Workbench for inspecting the raw event log.
+- [Arc](https://www.cratis.io/arc/) — the CQRS application framework: commands, queries, validation, and proxy generation.
+- [Components](https://www.cratis.io/components/) — the React component library this post's `DataPage` and `CommandDialog` come from.
+- [Chronicle](https://www.cratis.io/chronicle/) — the event store and processing runtime underneath the read model, including its bundled local Workbench for inspecting the raw event log.
+
+## Related posts
+
+- [Choosing an event sourcing stack for .NET](/choosing-an-event-sourcing-stack-for-dotnet/): how Chronicle compares with the alternatives.
+- [Projections and read models in Chronicle and Arc](/from-event-to-read-model/): the read model in this post, explained.
+- [Getting started with Cratis](/getting-started-with-cratis/): templates, samples and tools.

@@ -1,5 +1,6 @@
 ---
 title: "Arc gotchas: validation, proxy generation and naming conventions · Script to stage, Part 15"
+seoTitle: "Arc gotchas: validation, proxies and naming conventions"
 description: "Arc gotchas: validators that differ in browser and server, a proxy folder the generator owns, and routes or event names chosen by convention."
 date: 2026-09-30T09:15:00Z
 authors: sindre
@@ -16,7 +17,7 @@ import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 *[Cratis: from script to stage, and the long run](/from-the-edge-to-the-event-log/) · Part 15 of 26*
 
-A validation rule that applies only sometimes on the server can apply every time in the browser. Arc's proxy generator copies the rules it recognizes from a C# validator into the generated TypeScript, and it doesn't copy `When` or `Unless` conditions. A rule that sat inside a condition can arrive on the client [without it](https://cratis.io/arc/backend/csharp/proxy-generation/validation/), and a form will then refuse input the server would have accepted.
+A validation rule that applies only sometimes on the server can apply every time in the browser. Arc's proxy generator copies the rules it recognizes from a C# validator into the generated TypeScript, and it doesn't copy `When` or `Unless` conditions. A rule that sat inside a condition can arrive on the client [without it](https://www.cratis.io/arc/backend/csharp/proxy-generation/validation/), and a form will then refuse input the server would have accepted.
 
 Most of what Arc saves you comes from conventions. A namespace becomes a route, a validator becomes browser rules, a property becomes a field in the generated TypeScript. Each convention makes one decision in the place that owns it, and each has an edge that's documented but easy to miss until it costs an afternoon.
 
@@ -24,7 +25,7 @@ Most of what Arc saves you comes from conventions. A namespace becomes a route, 
 
 ## Validation that runs in two places
 
-The server is where validation counts. For a command, Arc runs authorization first, then [validation](https://cratis.io/arc/backend/csharp/commands/validation/), from data annotations, FluentValidation validators and concept validators, and only then `Provide()` and `Handle()`. `POST <command-route>/validate` runs the same authorization and validation without calling the handler.
+The server is where validation counts. For a command, Arc runs authorization first, then [validation](https://www.cratis.io/arc/backend/csharp/commands/validation/), from data annotations, FluentValidation validators and concept validators, and only then `Provide()` and `Handle()`. `POST <command-route>/validate` runs the same authorization and validation without calling the handler.
 
 The browser gets a copy. At build time the proxy generator loads the compiled assembly, finds the validator for each command, creates an instance and inspects its rules, then writes the ones it can express into the generated TypeScript. In the Arc and React sample the idea title is a concept with a validator of its own:
 
@@ -120,7 +121,7 @@ A few quieter cases pass the .NET build:
 - `[CreditCard]` emits a `creditCard()` call the client rule builder doesn't implement, so the generated file fails TypeScript checking. `Required.AllowEmptyStrings` isn't projected, and messages from resource files aren't resolved.
 - On a positional record, the server's data-annotations filter reads property attributes, not constructor-parameter ones. Write `[property: Required]`.
 
-After changing a validator, open the generated file, then try one accepted and one rejected value against both the form and the server. Never patch the generated validator. When a rule must stay server-only, write it in a form the generator doesn't translate, a `Must` predicate for example. The browser rules are a convenience copy, and the server decides. [*Live UIs*](/live-uis-with-arc/) shows how forms use them, and [the proxy boundary](https://cratis.io/arc/understanding-the-proxy-boundary/) explains what crosses from C# into TypeScript.
+After changing a validator, open the generated file, then try one accepted and one rejected value against both the form and the server. Never patch the generated validator. When a rule must stay server-only, write it in a form the generator doesn't translate, a `Must` predicate for example. The browser rules are a convenience copy, and the server decides. [*Live UIs*](/live-uis-with-arc/) shows how forms use them, and [the proxy boundary](https://www.cratis.io/arc/understanding-the-proxy-boundary/) explains what crosses from C# into TypeScript.
 
 ![A diagram titled Validation, twice. A shared node at the top, One validator, has an arrow into each side. On the left, the server: Authorize, then Validate: every rule, including Must, When / Unless and checks that need a service, then Handle. On the right, the browser: the fixed subset of NotEmpty, NotNull, length, Matches, email and numeric comparisons, and a notEmpty() rule marked can become unconditional, with an arrow into it from the server's validate step. A band at the bottom reads The server decides.](./validation-twice.png)
 
@@ -138,13 +139,13 @@ There are two ways to run the generator, and their defaults differ. The MSBuild 
 </PropertyGroup>
 ```
 
-With that [output behavior](https://cratis.io/arc/backend/csharp/proxy-generation/configuration/output-behavior/), the generator recursively deletes the entire output directory, handwritten files and indexes included, before it writes the proxies. Never point it at your frontend source root.
+With that [output behavior](https://www.cratis.io/arc/backend/csharp/proxy-generation/configuration/output-behavior/), the generator recursively deletes the entire output directory, handwritten files and indexes included, before it writes the proxies. Never point it at your frontend source root.
 
-Incremental mode deletes too. After each run the generator scans the `.ts` files below its output path, finds the ones with valid generated metadata that this run didn't produce, and removes them. That's how renaming `UpdateOrder` to `ModifyOrder` gets rid of the old file. The scan covers the whole output tree, not one input assembly, so two independent generation runs writing into the same tree can each take the other's proxies for orphans. `CratisProxiesSkipFileIndexTracking` is still forwarded by the build package, and the executable ignores it. There's no supported way to turn [orphan cleanup](https://cratis.io/arc/backend/csharp/proxy-generation/file-index-tracking/) off.
+Incremental mode deletes too. After each run the generator scans the `.ts` files below its output path, finds the ones with valid generated metadata that this run didn't produce, and removes them. That's how renaming `UpdateOrder` to `ModifyOrder` gets rid of the old file. The scan covers the whole output tree, not one input assembly, so two independent generation runs writing into the same tree can each take the other's proxies for orphans. `CratisProxiesSkipFileIndexTracking` is still forwarded by the build package, and the executable ignores it. There's no supported way to turn [orphan cleanup](https://www.cratis.io/arc/backend/csharp/proxy-generation/file-index-tracking/) off.
 
 Only files with the header are eligible for that cleanup, so a handwritten file in the same folder isn't swept by it. Even so, incremental mode doesn't guarantee to preserve a mixed source tree, and a separate cleanup phase for emptied directories can remove an `index.ts`. The generator treats `index.ts` differently from its other files. It never carries the header, because it's a file you edit. The generator adds exports for the files it generated and removes exports whose target is gone, and it leaves exports for your own files for you to write.
 
-Two side effects follow from the header. It embeds the generation time, so a full regeneration that deletes files defeats the hash check and can produce Git diffs for contracts that didn't change. And tools can recognize generated files by it. The `skip-generated-proxies` processor in `@cratis/eslint-plugin-arc` [skips linting them](https://cratis.io/arc/backend/csharp/proxy-generation/linting/), and the Cratis AI write guard refuses to let an assistant edit them, as [*AI across the Cratis stack*](/ai-across-the-cratis-stack/) describes.
+Two side effects follow from the header. It embeds the generation time, so a full regeneration that deletes files defeats the hash check and can produce Git diffs for contracts that didn't change. And tools can recognize generated files by it. The `skip-generated-proxies` processor in `@cratis/eslint-plugin-arc` [skips linting them](https://www.cratis.io/arc/backend/csharp/proxy-generation/linting/), and the Cratis AI write guard refuses to let an assistant edit them, as [*AI across the Cratis stack*](/ai-across-the-cratis-stack/) describes.
 
 Arc's recommendation is to "use a dedicated, generated-only directory with one generation owner." The `cratis` template, from [*Getting started with Cratis, and the tools around it*](/getting-started-with-cratis/), and the Arc and React sample both do the opposite on purpose. They set `CratisProxiesOutputPath` to the project directory, write each proxy beside its C# source, run in incremental mode and rely on the header. It works, and it isn't the recommended arrangement. In a project set up that way, full regeneration would delete the project folder, so leave `CratisProxiesSkipOutputDeletion` at `true`.
 
@@ -158,7 +159,7 @@ Several things in Arc and Chronicle are resolved by name, with defaults that are
 
 ### Routes are computed twice
 
-A conventional route is the API prefix, the artifact's namespace with a configured number of leading segments skipped, in kebab case, and the artifact's name. A query uses its method name, not its read-model type, as the last segment. For namespace `MyApp.Orders.Registration` and command `CreateOrder`, with one segment skipped, the [route](https://cratis.io/arc/backend/csharp/proxy-generation/configuration/routing/) is `/api/orders/registration/create-order`.
+A conventional route is the API prefix, the artifact's namespace with a configured number of leading segments skipped, in kebab case, and the artifact's name. A query uses its method name, not its read-model type, as the last segment. For namespace `MyApp.Orders.Registration` and command `CreateOrder`, with one segment skipped, the [route](https://www.cratis.io/arc/backend/csharp/proxy-generation/configuration/routing/) is `/api/orders/registration/create-order`.
 
 The generator and the server each compute that route from their own settings. The Arc and React sample sets both sides, in the project file and in `Program.cs`, and the generated client for its `CaptureIdea` command in `Arc.React.Ideas.Board` carries `route = '/api/ideas/board'`:
 
@@ -271,7 +272,7 @@ With command-name skipping on, the generator restores command names when more th
 
 ### Which stream a command appends to
 
-A command that appends through Arc's [Chronicle integration](https://cratis.io/arc/backend/csharp/chronicle/commands/events/) needs an event source ID. `ICanProvideEventSourceId` wins if the command implements it. Otherwise Arc takes the first property that is an `EventSourceId`, derives from `EventSourceId<T>` or carries `[Key]`, with no preference for the typed one, so a command should have exactly one candidate. If no property matches, a new `EventSourceId` is created so the append still succeeds. A command meant to add to an existing author's stream then starts a new stream, and nothing reports an error. Each of these commands names its identity, shown without their `Handle()` methods:
+A command that appends through Arc's [Chronicle integration](https://www.cratis.io/arc/backend/csharp/chronicle/commands/events/) needs an event source ID. `ICanProvideEventSourceId` wins if the command implements it. Otherwise Arc takes the first property that is an `EventSourceId`, derives from `EventSourceId<T>` or carries `[Key]`, with no preference for the typed one, so a command should have exactly one candidate. If no property matches, a new `EventSourceId` is created so the append still succeeds. A command meant to add to an existing author's stream then starts a new stream, and nothing reports an error. Each of these commands names its identity, shown without their `Handle()` methods:
 
 ```csharp
 using Cratis.Arc.Commands.ModelBound;
@@ -291,11 +292,11 @@ public record RenameAccount(EventSourceId AccountId, string NewName);
 public record CloseAccount([Key] Guid AccountId);
 ```
 
-Returning the identity with the event, as the `cratis` template's `Register` command does with `(SomeId, Registered)`, works only for a type that derives from `EventSourceId`. A raw `Guid` in the same tuple is just a response value, and the event goes to the fallback stream. The [ARCCHR0010](https://cratis.io/arc/backend/csharp/chronicle/code-analysis/arcchr0010/) analyzer flags that shape, and ARCCHR0002 flags a command with more than one candidate property.
+Returning the identity with the event, as the `cratis` template's `Register` command does with `(SomeId, Registered)`, works only for a type that derives from `EventSourceId`. A raw `Guid` in the same tuple is just a response value, and the event goes to the fallback stream. The [ARCCHR0010](https://www.cratis.io/arc/backend/csharp/chronicle/code-analysis/arcchr0010/) analyzer flags that shape, and ARCCHR0002 flags a command with more than one candidate property.
 
 ### An event's name is its identity
 
-`[EventType]` takes an optional ID, and without one the [event type](https://cratis.io/chronicle/concepts/event-type/) is identified by its type name:
+`[EventType]` takes an optional ID, and without one the [event type](https://www.cratis.io/chronicle/concepts/event-type/) is identified by its type name:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
@@ -345,11 +346,11 @@ The Elixir client has no default: `id:` is required in `use Chronicle.Events.Eve
 </TabItem>
 </Tabs>
 
-Rename `AuthorRegistered` and the events you append from then on carry the new identity, while the ones already stored keep the old one. Give an event that has to last an explicit ID. When you add a [generation](https://cratis.io/chronicle/concepts/event-type-migrations/), put `[EventTypeGenerationFor<T>]` on the previous one. It takes the ID from the current generation's own `[EventType]`, so the two can't drift apart the way hand-typed IDs on both can. Analyzer [CHR0037](https://cratis.io/chronicle/code-analysis/chr0037/) warns when the generations a migration names don't resolve to the same event type differing only by generation. It looks at migrations, so a rename without one gets no warning from it. [*Year two*](/four-changes-in-year-two/) goes further into changing events.
+Rename `AuthorRegistered` and the events you append from then on carry the new identity, while the ones already stored keep the old one. Give an event that has to last an explicit ID. When you add a [generation](https://www.cratis.io/chronicle/concepts/event-type-migrations/), put `[EventTypeGenerationFor<T>]` on the previous one. It takes the ID from the current generation's own `[EventType]`, so the two can't drift apart the way hand-typed IDs on both can. Analyzer [CHR0037](https://www.cratis.io/chronicle/code-analysis/chr0037/) warns when the generations a migration names don't resolve to the same event type differing only by generation. It looks at migrations, so a rename without one gets no warning from it. [*Year two*](/four-changes-in-year-two/) goes further into changing events.
 
 ### Projections and proxies match by name
 
-Declarative projections [map matching names](https://cratis.io/chronicle/projections/declarative/auto-map/) by default. An event property and a read-model property map when their names match after the client's serialization naming policy is applied and the value can be assigned to the read-model property. Where they differ, you write the mapping. An event a projection only counts, increments or adds from contributes nothing to that automatic mapping. [*From event to read model*](/from-event-to-read-model/) covers the rest of it.
+Declarative projections [map matching names](https://www.cratis.io/chronicle/projections/declarative/auto-map/) by default. An event property and a read-model property map when their names match after the client's serialization naming policy is applied and the value can be assigned to the read-model property. Where they differ, you write the mapping. An event a projection only counts, increments or adds from contributes nothing to that automatic mapping. [*From event to read model*](/from-event-to-read-model/) covers the rest of it.
 
 The proxy generator collects the public properties declared directly on a command type, so a property inherited from a base record doesn't become a field in the TypeScript. Field names are the C# names in camel case.
 
@@ -396,7 +397,7 @@ Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
 </TabItem>
 </Tabs>
 
-AuthProxy strips any tenant header the caller sent and forwards the tenant it resolved as `x-cratis-tenant-id`, so an Arc behind it picks the tenant up on its defaults. A gateway that writes some other header has to be named, with `options.UseHeaderTenancy(...)` in .NET, or the tenant never arrives. A [resolver](https://cratis.io/arc/backend/csharp/tenancy/resolvers/) selects a tenant and doesn't check that the user belongs to it. [*Tenancy and identity end to end*](/tenancy-and-identity-end-to-end/) follows the header from AuthProxy to a Chronicle namespace.
+AuthProxy strips any tenant header the caller sent and forwards the tenant it resolved as `x-cratis-tenant-id`, so an Arc behind it picks the tenant up on its defaults. A gateway that writes some other header has to be named, with `options.UseHeaderTenancy(...)` in .NET, or the tenant never arrives. A [resolver](https://www.cratis.io/arc/backend/csharp/tenancy/resolvers/) selects a tenant and doesn't check that the user belongs to it. [*Tenancy and identity end to end*](/tenancy-and-identity-end-to-end/) follows the header from AuthProxy to a Chronicle namespace.
 
 ## Spotting them early
 

@@ -1,5 +1,6 @@
 ---
 title: "The Cratis CLI: diagnose, workbench and llm-context · Script to stage, Part 17"
+seoTitle: "The Cratis CLI: diagnose, workbench and llm-context"
 description: "The Cratis CLI for Chronicle: a diagnose summary, a terminal workbench for SSH sessions and a command catalog that tells agents what changes the server."
 date: 2026-09-30T09:17:00Z
 authors: sindre
@@ -16,7 +17,7 @@ tags:
 
 `cratis chronicle diagnose` exits nonzero when the server is unreachable, when a failed partition or a quarantined observer exists, or when a check couldn't run. An observer that's far behind the tail leaves the exit code at zero, and that's deliberate.
 
-The Cratis [CLI](https://cratis.io/cli/) inspects and diagnoses Chronicle from a terminal, full-screen workbench included, and it also hosts `cratis new`, `cratis ai`, `cratis screenplay` and `cratis render`.
+The Cratis [CLI](https://www.cratis.io/cli/) inspects and diagnoses Chronicle from a terminal, full-screen workbench included, and it also hosts `cratis new`, `cratis ai`, `cratis screenplay` and `cratis render`.
 
 ## Installing it
 
@@ -34,7 +35,7 @@ Completion asks the running server. `cratis completions install` sets it up for 
 
 ## When a view stops updating
 
-We built the CLI so you can ask the running system instead of comparing sequence numbers by hand. Start with [`diagnose`](https://cratis.io/cli/chronicle/diagnose/). Against a bookshop store, it prints this:
+We built the CLI so you can ask the running system instead of comparing sequence numbers by hand. Start with [`diagnose`](https://www.cratis.io/cli/chronicle/diagnose/). Against a bookshop store, it prints this:
 
 ```text
 ❯ cratis chronicle diagnose
@@ -60,7 +61,7 @@ We built the CLI so you can ask the running system instead of comparing sequence
 
 *The terminal view of a diagnose run against the author feature's store. The exit code is 3 while a partition has failed.*
 
-The failing row names the next command, and `diagnose` exits nonzero when failed partitions exist, so it works as a check in a script too. [`failed-partitions show`](https://cratis.io/cli/chronicle/failed-partitions/) then gives the exception and a short stack trace for each attempt, shown here trimmed:
+The failing row names the next command, and `diagnose` exits nonzero when failed partitions exist, so it works as a check in a script too. [`failed-partitions show`](https://www.cratis.io/cli/chronicle/failed-partitions/) then gives the exception and a short stack trace for each attempt, shown here trimmed:
 
 ```text
 FailedPartition: caadc869-1251-41d0-9063-6947eaf74043
@@ -79,7 +80,7 @@ Attempts:        5
 
 The partition is a book's ISBN, because that's the event source ID the application uses. For us it would be the author's ID. Failures are addressed by your own keys, so you can go straight from "this author is missing" to "this author's partition failed, and here's why".
 
-Behind that is Chronicle's failure model. When one partition fails, it stops and is retried with backoff while every other partition keeps going. After the configured number of attempts it's quarantined until someone looks. For a failed partition that isn't quarantined, fix the cause, then ask the [observer commands](https://cratis.io/cli/chronicle/observers/) for exactly one more attempt:
+Behind that is Chronicle's failure model. When one partition fails, it stops and is retried with backoff while every other partition keeps going. After the configured number of attempts it's quarantined until someone looks. For a failed partition that isn't quarantined, fix the cause, then ask the [observer commands](https://www.cratis.io/cli/chronicle/observers/) for exactly one more attempt:
 
 ```bash
 cratis chronicle observers retry-partition Bookshop.OverdueNotices 978-0131177055 -y
@@ -101,7 +102,7 @@ The rest of the debugging kit depends on where you are:
 
 - **In a terminal on a server.** `cratis chronicle workbench` opens a full-screen terminal dashboard over the same connection. `Ctrl+P` searches observers, event types, projections, read models and failed partitions at once, which helps because "author" isn't a name in one list. It's a thread through five of them. Actions such as replaying an observer or retrying a partition sit in place, behind a confirmation dialog. Tab completion asks the live server for observer and read-model names.
 - **In a browser.** [*Chronicle Workbench, screen by screen*](/chronicle-workbench/) covers the browser tool's views, projection preview and permissions.
-- **In your editor.** [Narrator](https://github.com/Cratis/Narrator), a [VS Code extension](https://cratis.io/tools/vscode-extension/) we still treat as experimental, browses event stores, event types, read models and observers, and pages through events. It only reads.
+- **In your editor.** [Narrator](https://github.com/Cratis/Narrator), a [VS Code extension](https://www.cratis.io/tools/vscode-extension/) we still treat as experimental, browses event stores, event types, read models and observers, and pages through events. It only reads.
 
 ## Reading an observer row
 
@@ -126,7 +127,7 @@ Two of its columns are easy to misread. `Next#` is the next sequence number the 
 
 ## Past the first retry
 
-Two flags go further than the loop above. `failed-partitions show --detailed` prints the full stack trace for every attempt, and `failed-partitions list --observer` narrows the list to one observer. The [stuck-observer scenario](https://cratis.io/cli/scenarios/fix-a-stuck-observer/) puts them in order:
+Two flags go further than the loop above. `failed-partitions show --detailed` prints the full stack trace for every attempt, and `failed-partitions list --observer` narrows the list to one observer. The [stuck-observer scenario](https://www.cratis.io/cli/scenarios/fix-a-stuck-observer/) puts them in order:
 
 ```bash
 cratis chronicle diagnose
@@ -152,7 +153,7 @@ Every command that asks for confirmation defaults to **No**. In a script or anot
 
 A deployment can leave a replay recommendation, depending on the definition change and policy described in [*From event to read model*](/from-event-to-read-model/).
 
-A filed recommendation appears in `recommendations list`, in the Recommendations row of `diagnose` and on the Workbench's Recommendations page. [`recommendations perform`](https://cratis.io/cli/chronicle/recommendations/) carries it out, which means replaying the observer, and `recommendations ignore` drops it. You can also replay directly, following [Replay a projection](https://cratis.io/cli/scenarios/replay-a-projection/):
+A filed recommendation appears in `recommendations list`, in the Recommendations row of `diagnose` and on the Workbench's Recommendations page. [`recommendations perform`](https://www.cratis.io/cli/chronicle/recommendations/) carries it out, which means replaying the observer, and `recommendations ignore` drops it. You can also replay directly, following [Replay a projection](https://www.cratis.io/cli/scenarios/replay-a-projection/):
 
 ```bash
 cratis chronicle observers list --type projection -q
@@ -190,11 +191,11 @@ Each action opens a confirmation dialog that shows only its target. The event st
 
 The CLI picks its output format from where it's running. An interactive terminal gets a table, redirected output gets JSON, and `NO_COLOR` gets tab-separated plain text. `-o table|plain|json|json-compact` chooses explicitly, and `-q` prints only identifiers, for piping into the next command.
 
-For anything automated, pick the format with `-o` and pin the CLI version the script was written against. The [output formats](https://cratis.io/cli/reference/output-formats/) are current behavior, and they aren't declared as a stable machine contract between versions.
+For anything automated, pick the format with `-o` and pin the CLI version the script was written against. The [output formats](https://www.cratis.io/cli/reference/output-formats/) are current behavior, and they aren't declared as a stable machine contract between versions.
 
 ## A command catalog for agents
 
-Once the feature runs, an assistant that helps operate it needs to know which of its actions change anything. [`cratis llm-context`](https://cratis.io/cli/reference/llm-context/) prints the CLI's command catalog as JSON, and every command states its effect, `read-only`, `local`, `mutating` or `destructive`, and whether it requires confirmation. An agent can tell observing commands from state-changing ones without keeping its own list.
+Once the feature runs, an assistant that helps operate it needs to know which of its actions change anything. [`cratis llm-context`](https://www.cratis.io/cli/reference/llm-context/) prints the CLI's command catalog as JSON, and every command states its effect, `read-only`, `local`, `mutating` or `destructive`, and whether it requires confirmation. An agent can tell observing commands from state-changing ones without keeping its own list.
 
 An entry for a destructive command looks like this:
 
@@ -210,7 +211,7 @@ An entry for a destructive command looks like this:
 }
 ```
 
-[`cratis init`](https://cratis.io/cli/getting-started/) writes that catalog into context files for the tools you use, and you refresh it after upgrading. When the CLI recognizes it's running under an agent tool, it defaults to compact JSON. Only the effect and confirmation fields are meant to stay stable between versions, so pin the CLI version if you rely on anything else.
+[`cratis init`](https://www.cratis.io/cli/getting-started/) writes that catalog into context files for the tools you use, and you refresh it after upgrading. When the CLI recognizes it's running under an agent tool, it defaults to compact JSON. Only the effect and confirmation fields are meant to stay stable between versions, so pin the CLI version if you rely on anything else.
 
 ![A diagram titled What a command does, four rows stacked from top to bottom, each naming an effect and an example: read-only, diagnose and failed-partitions show; local, context set; mutating, retry-partition; destructive, observers replay. Arrows from the first two rows lead to a bracket reading Observes or stays local. Arrows from the last two lead to a bracket reading Changes the server.](./cli-effects-for-agents.png)
 
@@ -237,7 +238,7 @@ The label informs an agent, and it enforces nothing. An agent that can run `crat
 
 ## cratis ai and the other groups
 
-`cratis ai` installs the [Cratis AI corpus](https://cratis.io/ai/), rules, skills, agents, prompts and hooks for building with Cratis, into a repository. The corpus is still in preview. It goes into `.cratis/ai/` once, and each supported assistant (Claude Code, Codex, Copilot, Cursor, OpenCode and pi) gets a thin adapter that links back to that one copy. The selection is recorded in `.cratis/ai.json` and the installed files in a manifest with hashes. `cratis ai install` runs once per repository, `cratis ai update` re-synchronizes the recorded choice after that, and `cratis ai uninstall` removes the managed content you haven't changed.
+`cratis ai` installs the [Cratis AI corpus](https://www.cratis.io/ai/), rules, skills, agents, prompts and hooks for building with Cratis, into a repository. The corpus is still in preview. It goes into `.cratis/ai/` once, and each supported assistant (Claude Code, Codex, Copilot, Cursor, OpenCode and pi) gets a thin adapter that links back to that one copy. The selection is recorded in `.cratis/ai.json` and the installed files in a manifest with hashes. `cratis ai install` runs once per repository, `cratis ai update` re-synchronizes the recorded choice after that, and `cratis ai uninstall` removes the managed content you haven't changed.
 
 ```bash
 cratis ai install      # choose what this repository needs, and install it
@@ -246,7 +247,7 @@ cratis ai status       # what is configured, installed, available, and locally m
 cratis ai uninstall    # remove unchanged Cratis-managed content
 ```
 
-The profile is the choice that matters. `cratis/application/*` is for building an application on Cratis, and `cratis/engineering/*` is for working on a Cratis framework repository itself. `install` and `update` never touch a file you own, and they leave a managed file you've edited alone unless you pass `--force`. `cratis ai status` exits nonzero when managed files were modified locally, which makes it usable as a CI check. [Getting started](https://cratis.io/ai/getting-started/) has the full selection.
+The profile is the choice that matters. `cratis/application/*` is for building an application on Cratis, and `cratis/engineering/*` is for working on a Cratis framework repository itself. `install` and `update` never touch a file you own, and they leave a managed file you've edited alone unless you pass `--force`. `cratis ai status` exits nonzero when managed files were modified locally, which makes it usable as a CI check. [Getting started](https://www.cratis.io/ai/getting-started/) has the full selection.
 
 The CLI doesn't call a language model itself. `cratis llm use` stores model-provider settings, for Anthropic, OpenAI or a local model, that tools such as Prologue read.
 

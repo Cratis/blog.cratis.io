@@ -15,17 +15,17 @@ import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 ## TL;DR
 
-A [reducer](https://cratis.io/chronicle/reducers/) is a method per event. Chronicle hands it the event and the current state of the read model, you return the next state, and Chronicle stores whatever you return. You decide the shape and the content of the read model, and storage is not your problem. It sits between a projection and a reactor, and it's what I reach for when a read model reads better as code than as a mapping.
+A [reducer](https://www.cratis.io/chronicle/reducers/) is a method per event. Chronicle hands it the event and the current state of the read model, you return the next state, and Chronicle stores whatever you return. You decide the shape and the content of the read model, and storage is not your problem. It sits between a projection and a reactor, and it's what I reach for when a read model reads better as code than as a mapping.
 
 ## Plenty of ways to get a read model
 
-Let's face it, Chronicle gives you more than one way to turn events into a read model, and that can be a bit much when you're new to it. There are [projections](https://cratis.io/chronicle/projections/), written as attributes on the read model, as a fluent builder or as text. And there are reducers. The projections are the declarative side: you describe how events map onto the model, and the engine does the rest.
+Let's face it, Chronicle gives you more than one way to turn events into a read model, and that can be a bit much when you're new to it. There are [projections](https://www.cratis.io/chronicle/projections/), written as attributes on the read model, as a fluent builder or as text. And there are reducers. The projections are the declarative side: you describe how events map onto the model, and the engine does the rest.
 
 The reducer is the imperative side. I think of it as the odd one out, and, to be honest, as the one that makes the other two easier to understand, because it shows you what the declarative ones are doing on your behalf.
 
 ## Between a projection and a reactor
 
-The easiest way to place a reducer is to put it next to its two neighbors. A projection and a reducer both build state you can query. A reactor builds nothing. It reacts to events by doing something, like notifying someone or triggering a command. Chronicle has [a page that puts all three side by side](https://cratis.io/chronicle/concepts/observer-patterns/), and this is the short version:
+The easiest way to place a reducer is to put it next to its two neighbors. A projection and a reducer both build state you can query. A reactor builds nothing. It reacts to events by doing something, like notifying someone or triggering a command. Chronicle has [a page that puts all three side by side](https://www.cratis.io/chronicle/concepts/observer-patterns/), and this is the short version:
 
 ![A diagram titled Who writes what. Three cards side by side. Projection, declarative: you describe the mapping, Chronicle stores it. Reducer, imperative: you write the fold, Chronicle stores it. Reactor, effects: you write the effect, nothing is stored. A line underneath reads: A reducer sits between the two.](./three-observers-one-choice.png)
 
@@ -238,11 +238,11 @@ end
 </TabItem>
 </Tabs>
 
-A few things in that signature are worth knowing. The method gets the event, the current state, and optionally the [`EventContext`](https://cratis.io/chronicle/reducers/event-processing/) with things like when the event occurred. The name of the method is yours to choose, because Chronicle finds the handler by the type of the first parameter. And `current` is nullable, because for the first event of an event source there is no state yet. Handle that, and you've handled the hardest part.
+A few things in that signature are worth knowing. The method gets the event, the current state, and optionally the [`EventContext`](https://www.cratis.io/chronicle/reducers/event-processing/) with things like when the event occurred. The name of the method is yours to choose, because Chronicle finds the handler by the type of the first parameter. And `current` is nullable, because for the first event of an event source there is no state yet. Handle that, and you've handled the hardest part.
 
 Two return values are special. Return `current` unchanged and the event is ignored. Return `null` and the read model is cleared, so don't use it to mean "nothing to see here". That's a mistake I'd make at least once.
 
-I should be honest about this example too. A running balance is something the projection attributes can add and subtract on their own, so it's the docs' hello world and not a reason to pick a reducer. For that, [start with a projection](https://cratis.io/chronicle/projections/).
+I should be honest about this example too. A running balance is something the projection attributes can add and subtract on their own, so it's the docs' hello world and not a reason to pick a reducer. For that, [start with a projection](https://www.cratis.io/chronicle/projections/).
 
 ## Where the attributes run out
 
@@ -496,13 +496,13 @@ export class CustomerSpendReducer {
 </TabItem>
 </Tabs>
 
-Nothing here is exotic. The decision about the tier is ordinary C#, it looks at the state we had before, and the shape of `CustomerSpend` is whatever we say it is. There's no attribute for "keep the highest tier so far", and I wouldn't want one. In C#, Kotlin and Java the reducer is an ordinary class, so the policy arrives through the constructor like any other dependency, and [the testing docs](https://cratis.io/chronicle/testing/read-models/scenario/) show how to supply one when you test it. The docs don't show that for TypeScript and Elixir yet, so in those two the policy is a plain function. The clients also differ in how they do asynchronous work: C# returns a `Task`, Kotlin uses `suspend`, and Java blocks. The TypeScript handlers are named after the event class, and don't receive the event context, which is why that tab has no timestamp. The [event processing docs](https://cratis.io/chronicle/reducers/event-processing/) cover each client's shape.
+Nothing here is exotic. The decision about the tier is ordinary C#, it looks at the state we had before, and the shape of `CustomerSpend` is whatever we say it is. There's no attribute for "keep the highest tier so far", and I wouldn't want one. In C#, Kotlin and Java the reducer is an ordinary class, so the policy arrives through the constructor like any other dependency, and [the testing docs](https://www.cratis.io/chronicle/testing/read-models/scenario/) show how to supply one when you test it. The docs don't show that for TypeScript and Elixir yet, so in those two the policy is a plain function. The clients also differ in how they do asynchronous work: C# returns a `Task`, Kotlin uses `suspend`, and Java blocks. The TypeScript handlers are named after the event class, and don't receive the event context, which is why that tab has no timestamp. The [event processing docs](https://www.cratis.io/chronicle/reducers/event-processing/) cover each client's shape.
 
-What Chronicle does for you here is everything around it. It calls the right method for each event, in order, per event source. It stores the state you return. And for a read model keyed by its event source, it handles redelivery, so an event delivered a second time after a crash doesn't change the stored state. [The docs](https://cratis.io/chronicle/concepts/observer-patterns/) spell out what "handled" means. You focus on what the read model should look like.
+What Chronicle does for you here is everything around it. It calls the right method for each event, in order, per event source. It stores the state you return. And for a read model keyed by its event source, it handles redelivery, so an event delivered a second time after a crash doesn't change the stored state. [The docs](https://www.cratis.io/chronicle/concepts/observer-patterns/) spell out what "handled" means. You focus on what the read model should look like.
 
 ## Reading is fine, doing is not
 
-Here's the part where I have to temper my own enthusiasm. A reducer can ask a collaborator a question, like the policy above. What it must not do is something to the outside world. The docs are plain about it: [projections and reducers build state, with no emails and no API calls](https://cratis.io/chronicle/concepts/observer-patterns/). That's the reactor's job, and a reactor has to be written to be safe to run more than once.
+Here's the part where I have to temper my own enthusiasm. A reducer can ask a collaborator a question, like the policy above. What it must not do is something to the outside world. The docs are plain about it: [projections and reducers build state, with no emails and no API calls](https://www.cratis.io/chronicle/concepts/observer-patterns/). That's the reactor's job, and a reactor has to be written to be safe to run more than once.
 
 My rule of thumb is to keep what a reducer depends on in-process and boring. A policy, a lookup, a calculator. And there's a reason beyond tidiness, which is replay. A read model can always be rebuilt from the events, and a rebuild starts from a clean read model and runs your reducer again for every event. So whatever you ask a dependency gets asked again.
 
@@ -529,12 +529,12 @@ dotnet add package Cratis.Chronicle.Testing
 </TabItem>
 <TabItem label="Kotlin">
 
-Add `io.cratis:chronicle` from Maven Central, and `io.cratis:chronicle-testing` and JUnit 5 for the tests. Kotlin specs that call `suspend` code also use `kotlinx-coroutines-core`. The [Kotlin client docs](https://cratis.io/chronicle/clients/kotlin/) show the Gradle and Maven setup.
+Add `io.cratis:chronicle` from Maven Central, and `io.cratis:chronicle-testing` and JUnit 5 for the tests. Kotlin specs that call `suspend` code also use `kotlinx-coroutines-core`. The [Kotlin client docs](https://www.cratis.io/chronicle/clients/kotlin/) show the Gradle and Maven setup.
 
 </TabItem>
 <TabItem label="Java">
 
-Add `io.cratis:chronicle` from Maven Central, and JUnit 5 for the tests. The [Kotlin client docs](https://cratis.io/chronicle/clients/kotlin/) cover the setup for both, because one artifact serves both.
+Add `io.cratis:chronicle` from Maven Central, and JUnit 5 for the tests. The [Kotlin client docs](https://www.cratis.io/chronicle/clients/kotlin/) cover the setup for both, because one artifact serves both.
 
 </TabItem>
 <TabItem label="Elixir">
@@ -758,4 +758,10 @@ If I had to put it in one line, I'd say: use the simplest style that keeps the i
 
 The thing I like about the reducer is how little it asks of you, and how much it leaves to you. Chronicle keeps the persistence consistent, and you get to spend your time on the shape and the content of the read model, which is the part that's actually yours.
 
-If you have a read model today that's a pile of awkward attributes, try rewriting it as a reducer and see how it reads. The [getting started guide](https://cratis.io/chronicle/reducers/getting-started/) is the place to begin, and [choosing a read model style](https://cratis.io/chronicle/projections/choosing-a-read-model-style/) compares the options with the same example in each.
+If you have a read model today that's a pile of awkward attributes, try rewriting it as a reducer and see how it reads. The [getting started guide](https://www.cratis.io/chronicle/reducers/getting-started/) is the place to begin, and [choosing a read model style](https://www.cratis.io/chronicle/projections/choosing-a-read-model-style/) compares the options with the same example in each.
+
+## Related posts
+
+- [Projections and read models in Chronicle and Arc](/from-event-to-read-model/): the projection styles a reducer is an alternative to.
+- [Keep the projection out of the model](/keep-the-projection-out-of-the-model/): fluent projections with IProjectionFor.
+- [Events are facts](/events-are-facts/): the events a reducer folds.

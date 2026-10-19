@@ -1,5 +1,6 @@
 ---
 title: "Stage and Scene: generating code from an event model · Script to stage, Part 21"
+seoTitle: "Stage and Scene: generating code from an event model"
 description: "Stage generates C# on Arc and Chronicle from a Screenplay event model and runs its examples in a sandbox; Scene maps a modelled screen to React."
 date: 2026-09-30T09:21:00Z
 authors: sindre
@@ -37,7 +38,7 @@ Stage reads Screenplay source, either one `.play` file or a folder compiled as o
 
 The renderer keeps planning apart from writing. `CratisRendering.Plan(...)` returns an `ArtifactRenderPlan` with normalized paths, the exact bytes of every file, a SHA-256 hash for each, and typed diagnostics. Planning reads no file system, process, network, environment, clock or random source. A plan that fails carries its diagnostics and no files, and only a plan whose `Success` is true is published.
 
-The [CLI](https://cratis.io/cli/reference/screenplay/) does the publishing:
+The [CLI](https://www.cratis.io/cli/reference/screenplay/) does the publishing:
 
 ```bash
 cratis render ./plays \
@@ -48,7 +49,7 @@ cratis render ./plays \
 
 `cratis render` publishes new files only after the model compiles, binds to an executable model, is admitted for execution, plans for the target and passes artifact validation. If an earlier publication was interrupted, it recovers that first. The output is deterministic, down to a manifest that records the model's semantic revision and the hash of every file. It refuses to overwrite a generated file you've edited unless you pass `--force`, and it never overwrites a file it didn't generate, with or without `--force`. It runs no Git command. `--name` sets the application's identity, while `--project-name` and `--root-namespace` change only how it's rendered.
 
-`cratis` is the only target that ships, and the [renderer-target guide](https://cratis.io/screenplay/stage/guides/build-renderer-target/) describes how another one would be built. A plan for a whole application holds the generated C# for concepts, commands, events, projections and specifications, a frontend shell, and eight backend scaffold files. An author model renders to this, scaffold files marked:
+`cratis` is the only target that ships, and the [renderer-target guide](https://www.cratis.io/screenplay/stage/guides/build-renderer-target/) describes how another one would be built. A plan for a whole application holds the generated C# for concepts, commands, events, projections and specifications, a frontend shell, and eight backend scaffold files. An author model renders to this, scaffold files marked:
 
 ```text
 out/
@@ -110,7 +111,7 @@ A successful render is a plan that validated. Building and running the generated
 
 ## Hand-written code goes in Customizations/
 
-Every render plans `Program.cs`, the project file, `appsettings.json` and the frontend shell again, so an edit to one of them is either lost or blocks the next render. The [customization guide](https://cratis.io/screenplay/stage/guides/customize-rendered-application/) gives hand-written code an unmanaged folder at the application root, `Customizations/`. The generated `Program.cs` ends like this:
+Every render plans `Program.cs`, the project file, `appsettings.json` and the frontend shell again, so an edit to one of them is either lost or blocks the next render. The [customization guide](https://www.cratis.io/screenplay/stage/guides/customize-rendered-application/) gives hand-written code an unmanaged folder at the application root, `Customizations/`. The generated `Program.cs` ends like this:
 
 ```csharp
 ConfigureServices(builder);
@@ -139,7 +140,7 @@ That makes the folder a seam for agents too. Code written by hand, by a person o
 
 ## A sandbox to poke at
 
-[`cratis run`](https://cratis.io/cli/reference/run/) starts the model before anyone renders it. It needs Docker, mounts the file or folder read-only, and starts the `cratis/stage` image, pulled on first use at the Stage version the CLI renders with, 4.24.2 for cli 3.29.0:
+[`cratis run`](https://www.cratis.io/cli/reference/run/) starts the model before anyone renders it. It needs Docker, mounts the file or folder read-only, and starts the `cratis/stage` image, pulled on first use at the Stage version the CLI renders with, 4.24.2 for cli 3.29.0:
 
 ```text
 cratis run [PATH]
@@ -168,7 +169,7 @@ docker run --rm \
     cratis/stage-specrunner:4.24.3
 ```
 
-The model-first Library model in [Cratis Samples](https://cratis.io/samples/) has a specification of this kind:
+The model-first Library model in [Cratis Samples](https://www.cratis.io/samples/) has a specification of this kind:
 
 ```screenplay
 slice StateChange AddBook
@@ -218,14 +219,14 @@ Each layer knows only the one above it. The model has no URL, CSS class, React t
 
 *Each layer knows only the one above it.*
 
-In a `.play` file, a [screen](https://cratis.io/screenplay/screens/) lives in a `StateView` slice. The lending example from [*Screenplay*](/screenplay-an-event-model-you-can-compile/) declares its screen at the level of intent, with the data and the query it comes from:
+In a `.play` file, a [screen](https://www.cratis.io/screenplay/screens/) lives in a `StateView` slice. The lending example from [*Screenplay*](/screenplay-an-event-model-you-can-compile/) declares its screen at the level of intent, with the data and the query it comes from:
 
 ```screenplay
       screen OnLoan
         data OnLoanReadModel[] via query BooksOnLoan
 ```
 
-A screen can add named sections, tables and summaries that fill a screen template's slots, or drop down to a template with inline code. It never names the layout. A [UI profile](https://cratis.io/screenplay/ui-profile/) picks the shell once per build, which keeps the screen portable between targets.
+A screen can add named sections, tables and summaries that fill a screen template's slots, or drop down to a template with inline code. It never names the layout. A [UI profile](https://www.cratis.io/screenplay/ui-profile/) picks the shell once per build, which keeps the screen portable between targets.
 
 Stage resolves a render plan for each target from the UI profile, using Scene.Engine's own rules, so the plan and the running application can't disagree about what a screen resolves to. When a target doesn't fully resolve, the plan says so with `IsComplete` set to false.
 

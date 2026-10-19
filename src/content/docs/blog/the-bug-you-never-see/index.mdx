@@ -1,6 +1,6 @@
 ---
 title: "The bug you never see · Decisions that hold, Part 1"
-description: "Almost every application checks something and then writes. Why two requests can both pass the check, why tests and default database settings rarely catch it, what the usual fixes cover and where each stops, and how to find these decisions in your own code."
+description: "Almost every app checks, then writes. Why two requests can both pass the check, why tests miss it, what the usual fixes cover, and how to find it."
 date: 2026-10-20T09:00:00Z
 authors: sindre
 excerpt: "Is there stock? Is the name free? Is the balance enough? Every check-then-act decision has a gap between the check and the write, and two requests can both pass it. Nothing throws, the tests are green, and the bad state turns up weeks later. Why that is, what the database defaults do and don't do, and how to spot it in your own code."
@@ -195,11 +195,11 @@ Put together: a constraint when the rule is uniqueness or exclusion, a condition
 
 You might expect event sourcing and CQRS to sidestep this. They make it more common.
 
-In many CQRS codebases, including the Arc style this series uses, the side that decides asks a read model: a projection built from the events. Read models are built after the fact. Chronicle's [documentation](https://cratis.io/chronicle/projections/eventual-consistency/) says it directly: "read models are updated asynchronously as events are processed", and the append returns before the projection has run. So a command that checks a read model and then appends has the same gap as `PlaceOrder`, plus the projection's lag. Two requests don't even have to overlap. A request that arrives after the first one has completed can still read the old stock and be approved.
+In many CQRS codebases, including the Arc style this series uses, the side that decides asks a read model: a projection built from the events. Read models are built after the fact. Chronicle's [documentation](https://www.cratis.io/chronicle/projections/eventual-consistency/) says it directly: "read models are updated asynchronously as events are processed", and the append returns before the projection has run. So a command that checks a read model and then appends has the same gap as `PlaceOrder`, plus the projection's lag. Two requests don't even have to overlap. A request that arrives after the first one has completed can still read the old stock and be approved.
 
 Folding the state fresh from the events doesn't close it either. A fresh read is a correct snapshot of the moment it was taken, and an append that follows it is not conditioned on it. A stream's expected version helps when the rule lives entirely in the one stream you append to. It says nothing about a read model built from other events, or about a second entity the rule depends on.
 
-Arc is no exception. With read protection Off, [which is the default](https://cratis.io/arc/backend/csharp/chronicle/consistency/), "an injected read model is a plain read, it returns a snapshot, and it guards nothing." The next part starts from exactly that command.
+Arc is no exception. With read protection Off, [which is the default](https://www.cratis.io/arc/backend/csharp/chronicle/consistency/), "an injected read model is a plain read, it returns a snapshot, and it guards nothing." The next part starts from exactly that command.
 
 What event sourcing does give you is a way to say what the decision depended on. An event log is ordered, and every event has a position. A decision can note the position before it reads, fold the events it needs, and append with a condition: only if no event that would have changed what I read has arrived since. That's not a lock. Nothing waits, and a conflict is an answer: the state changed, read again and decide again. The condition can be as narrow as the rule: the event types that build this read model, for this key. The rest of the series is about that condition, how to get one, and where it stops.
 

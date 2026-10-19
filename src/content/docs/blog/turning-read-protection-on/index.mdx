@@ -1,6 +1,7 @@
 ---
 title: "Turning read protection on in an application that already runs · Decisions that hold, Part 6"
-description: "Read protection On refuses reads it cannot guard, so an application that already runs cannot just flip it. Measure runs every command as before and reports what On would guard, refuse or reject. This is the path from Off through Measure to On, how to read the report, and how to back out."
+seoTitle: "Turning read protection on in a running application"
+description: "Read protection On refuses reads it cannot guard. Measure reports what On would guard or refuse, so a running app can move from Off to On safely."
 date: 2026-11-03T09:00:00Z
 authors: sindre
 excerpt: "You can't switch a running application to 'refuse unguarded reads' on a hunch. Measure runs every command as before and reports which reads On would guard, which it would refuse, and which appends it would reject. Here is the path from Off to On, what a real report looks like, and how to back out."
@@ -112,7 +113,7 @@ These are the categories you'll meet most:
 | `measurement_unavailable` | A measurement couldn't be taken. `reason` says why | Raise the timeouts, or ignore it |
 | `mode_lowered` | The run-time cap lowered the declared mode | See the last section |
 
-The full list, including `displacement`, `coarsened`, `self_write` and `conflict_today`, is on Arc's [Adopting read protection](https://cratis.io/arc/backend/csharp/chronicle/consistency/adopting/#reading-the-report) page.
+The full list, including `displacement`, `coarsened`, `self_write` and `conflict_today`, is on Arc's [Adopting read protection](https://www.cratis.io/arc/backend/csharp/chronicle/consistency/adopting/#reading-the-report) page.
 
 A quiet report isn't a clean bill of health. Measure doesn't currently report everything `On` would do differently: it can't tell from its observations which concurrency scopes were explicit and which were derived, and it doesn't see a nested command reading an event its outer command has staged but not committed. The absence of a category means only that Measure didn't observe it. The background scan runs on a sample, so a race that happened on an unsampled command isn't in the report either.
 
@@ -332,7 +333,7 @@ Measure reports `mode_lowered` for those commands too. The cap lowers the guard,
 - **An incident after switching to `On`:** set `ReadProtection:MaximumMode` to `Measure` or `Off`, fix the code, and remove the cap.
 :::
 
-Arc's [Adopting read protection](https://cratis.io/arc/backend/csharp/chronicle/consistency/adopting/) has the full category list and the refusal reasons, and [Pitfalls](https://cratis.io/arc/backend/csharp/chronicle/consistency/pitfalls/) covers what still fails silently once a project is `On`. [Why protection is opt-in](https://cratis.io/arc/backend/csharp/chronicle/consistency/#why-protection-is-opt-in) gives the reasons `Off` is the default.
+Arc's [Adopting read protection](https://www.cratis.io/arc/backend/csharp/chronicle/consistency/adopting/) has the full category list and the refusal reasons, and [Pitfalls](https://www.cratis.io/arc/backend/csharp/chronicle/consistency/pitfalls/) covers what still fails silently once a project is `On`. [Why protection is opt-in](https://www.cratis.io/arc/backend/csharp/chronicle/consistency/#why-protection-is-opt-in) gives the reasons `Off` is the default.
 
 The next part steps back from read protection. Not every rule needs a guarded read: uniqueness is a constraint, rich behaviour is an aggregate, and some rules are cheaper to repair than to guard.
 

@@ -1,5 +1,6 @@
 import { defineRouteMiddleware } from '@astrojs/starlight/route-data';
 import { getImage } from 'astro:assets';
+import { getCollection } from 'astro:content';
 
 // Social-preview size. Cards crop to roughly 1.91:1 on some networks; the
 // covers are 16:10, so keep the whole cover (1200x750) rather than cropping
@@ -19,6 +20,9 @@ const socialImageTags = new Set([
     'twitter:image:alt',
 ]);
 
+// A tag page with fewer posts than this is thin content: `noindex,follow`.
+const minimumPostsPerIndexedTag = 3;
+
 const landingTitle = 'Event sourcing and CQRS with Chronicle and Arc';
 
 // The whole site is the blog, so no page gets docs chrome: no left sidebar
@@ -33,6 +37,9 @@ export const onRequest = defineRouteMiddleware(async (context) => {
 
     await useCoverAsSocialPreview(context, starlightRoute);
     if (starlightRoute.id === 'blog') retitleLanding(starlightRoute);
+    applySearchTitle(starlightRoute);
+    addPublicationDates(starlightRoute);
+    await keepThinTagPagesOutOfTheIndex(starlightRoute);
 });
 
 // The generated landing is titled just "Blog"; give it a searchable title.
@@ -71,3 +78,40 @@ async function useCoverAsSocialPreview(
         { tag: 'meta', attrs: { name: 'twitter:image:alt', content: cover.alt } },
     ];
 }
+
+// A post may carry a shorter `seoTitle` for search results. Only the <title>
+// tag changes; the visible heading, og:title and the JSON-LD headline keep the
+// full title.
+function applySearchTitle(starlightRoute: App.Locals['starlightRoute']) {
+    const { seoTitle } = starlightRoute.entry.data as { seoTitle?: string };
+    if (!seoTitle) return;
+    for (const entry of starlightRoute.head) {
+        if (entry.tag === 'title') entry.content = `${seoTitle} | Cratis Blog`;
+    }
+}
+
+// Posts get `article:published_time` (and `article:modified_time` when the
+// frontmatter has `lastUpdated`); starlight-blog only puts the dates in JSON-LD.
+function addPublicationDates(starlightRoute: App.Locals['starlightRoute']) {
+    const { date, lastUpdated } = starlightRoute.entry.data as { date?: unknown; lastUpdated?: unknown };
+    if (!(date instanceof Date)) return;
+    starlightRoute.head.push({ tag: 'meta', attrs: { property: 'article:published_time', content: date.toISOString() } });
+    if (lastUpdated instanceof Date) {
+        starlightRoute.head.push({ tag: 'meta', attrs: { property: 'article:modified_time', content: lastUpdated.toISOString() } });
+    }
+}
+
+// Tag pages listing fewer than three posts are kept out of the index but their
+// links are still followed.
+async function keepThinTagPagesOutOfTheIndex(starlightRoute: App.Locals['starlightRoute']) {
+    const match = /^blog\/tags\/([^/]+)$/.exec(starlightRoute.id);
+    if (!match) return;
+    const posts = await getCollection('docs', ({ id, data }) => /^blog\/[^/]+$/.test(id) && data.draft !== true);
+    const count = posts.filter(({ data }) => (data.tags ?? []).some((tag) => tagSlug(tag) === match[1])).length;
+    if (count >= minimumPostsPerIndexedTag) return;
+    starlightRoute.head.push({ tag: 'meta', attrs: { name: 'robots', content: 'noindex,follow' } });
+}
+
+// Matches starlight-blog's tag URLs for the lowercase, hyphenated tags in use.
+const tagSlug = (tag: string) => tag.trim().toLowerCase().replace(/\s+/g, '-');
+

@@ -46,6 +46,14 @@ const publisher = {
     url: 'https://cratis.no',
     logo: { '@type': 'ImageObject', url: `${SITE}/favicon-512.png`, width: 328, height: 328 },
 };
+const website = {
+    '@type': 'WebSite',
+    '@id': `${SITE}/#website`,
+    name: 'Cratis Blog',
+    url: `${SITE}/`,
+    inLanguage: 'en',
+    publisher: { '@id': publisher['@id'] },
+};
 const { head } = Astro.locals.starlightRoute;
 const socialImage =
     head.find(({ tag, attrs }) => tag === 'meta' && attrs?.property === 'og:image')?.attrs?.content ??
@@ -68,6 +76,9 @@ for (const entry of head) {
         }
     }
     if (graph.some((thing) => thing['@type'] === 'CollectionPage')) graph.push(publisher);
+    if (graph.some((thing) => thing['@type'] === 'CollectionPage' && thing.url === `${SITE}/blog/`) && !graph.some((thing) => thing['@type'] === 'WebSite')) {
+        graph.push(website);
+    }
     entry.content = JSON.stringify(data['@graph'] ? { ...data, '@graph': graph } : data);
 }
 ---

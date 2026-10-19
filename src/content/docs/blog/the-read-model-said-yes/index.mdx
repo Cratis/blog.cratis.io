@@ -1,6 +1,6 @@
 ---
 title: "The read model said yes · Decisions that hold, Part 2"
-description: "A command that checks a read model and then appends can lend the last copy twice. With Arc's read protection On, the same validator's read is folded fresh and guards the append, and the loser gets a 400 that says nothing was written."
+description: "A command that checks a read model, then appends, can lend the last copy twice. With read protection On, the read guards the append; the loser gets a 400."
 date: 2026-10-22T09:00:00Z
 authors: sindre
 excerpt: "A command that reads a read model and then appends can approve the same last copy twice. One project setting turns that read into a guard: the same command, the same validator, and the loser of the race gets a 400 that says nothing was written."
@@ -169,7 +169,7 @@ Arc and Chronicle don't re-run the command. The read itself makes up to three at
 
 A rejection by the validator itself is a different result. "No copies of this book are available." is an ordinary rule failure, not a `concurrencyViolation`. It writes nothing, so it needs no guard.
 
-Part 5 goes through every refusal, the `500`s that mean the code can't be guarded, and how a UI tells a changed read from a field error. If you want to see the race in a test now, Arc's [Test the race](https://cratis.io/arc/backend/csharp/chronicle/consistency/scenarios/testing/) page puts a competing append between the read and the commit. Part 9 is about that.
+Part 5 goes through every refusal, the `500`s that mean the code can't be guarded, and how a UI tells a changed read from a field error. If you want to see the race in a test now, Arc's [Test the race](https://www.cratis.io/arc/backend/csharp/chronicle/consistency/scenarios/testing/) page puts a competing append between the read and the commit. Part 9 is about that.
 
 ## Where the guard stops
 
@@ -188,7 +188,7 @@ Under `On`, Arc also refuses reads it can't guard instead of running them unguar
 
 A guarded read is a fresh fold of the key's history every time. Chronicle doesn't use the materialized state, because that can lag and has no position, and nothing caches the result between commands. Each read makes two tail reads and a fold of the key's events of the model's types, and the read makes up to three attempts at the fold if events arrive during it. The first read of a model type in a process also checks the projection definition. Identical reads inside one command share one fold.
 
-In the kernel, those folds go through one projection per model type, shared by every key of that type and every tenant, so heavy use of one model type queues across keys. No benchmark for read protection is published, and the [costs section](https://cratis.io/arc/backend/csharp/chronicle/consistency/#costs) of Arc's docs gives the shape of the cost without figures. Keep guarded models flat and keys short-lived: a key per book, order, booking or period rather than one for the life of the library.
+In the kernel, those folds go through one projection per model type, shared by every key of that type and every tenant, so heavy use of one model type queues across keys. No benchmark for read protection is published, and the [costs section](https://www.cratis.io/arc/backend/csharp/chronicle/consistency/#costs) of Arc's docs gives the shape of the cost without figures. Keep guarded models flat and keys short-lived: a key per book, order, booking or period rather than one for the life of the library.
 
 ## Where to start
 
@@ -199,12 +199,12 @@ The next part takes the same command to two entities: a member may hold three lo
 :::tip[What to do when]
 - **A rule depends on stored state of one entity** (stock, status, a count): set `<CratisReadProtection>On</CratisReadProtection>` and take the read model as a `CommandValidator<T>` constructor parameter.
 - **You only want a hint on screen:** a query, or `[Unprotected("why")]` on the read. It guards nothing (Parts 5 and 7).
-- **The rule is uniqueness:** a Chronicle [constraint](https://cratis.io/chronicle/constraints/), not a guarded read (Part 7).
+- **The rule is uniqueness:** a Chronicle [constraint](https://www.cratis.io/chronicle/constraints/), not a guarded read (Part 7).
 - **Your application already runs with plain reads:** `Measure` first, then `On` (Part 6).
 - **A command comes back with `concurrencyViolation` and `ReadChanged`:** read again and let the caller decide whether to submit again.
 :::
 
-The full walkthrough is Arc's [Getting started with read protection](https://cratis.io/arc/backend/csharp/chronicle/consistency/getting-started/), and [Validators and read protection](https://cratis.io/arc/backend/csharp/chronicle/consistency/validators/) covers what a validator may take. [How read protection works](https://cratis.io/arc/backend/csharp/chronicle/consistency/how-it-works/) explains how guards are derived and merged, and [Choosing how a command's rule holds](https://cratis.io/arc/backend/csharp/chronicle/consistency/) compares read protection with constraints, aggregates, stream decisions and explicit scopes.
+The full walkthrough is Arc's [Getting started with read protection](https://www.cratis.io/arc/backend/csharp/chronicle/consistency/getting-started/), and [Validators and read protection](https://www.cratis.io/arc/backend/csharp/chronicle/consistency/validators/) covers what a validator may take. [How read protection works](https://www.cratis.io/arc/backend/csharp/chronicle/consistency/how-it-works/) explains how guards are derived and merged, and [Choosing how a command's rule holds](https://www.cratis.io/arc/backend/csharp/chronicle/consistency/) compares read protection with constraints, aggregates, stream decisions and explicit scopes.
 
 *Read protection as described here needs Arc 22.108.0 or later and Chronicle 19.68.0 or later.*
 

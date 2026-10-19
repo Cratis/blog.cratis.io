@@ -1,5 +1,6 @@
 ---
 title: "Prologue: a first event model of an existing system · Script to stage, Part 22"
+seoTitle: "A first event model of an existing system"
 description: "Prologue watches a running system, records metadata and proposes a Screenplay event model for you to correct. What it records and what an AI may change."
 date: 2026-09-30T09:22:00Z
 authors: sindre
@@ -16,19 +17,19 @@ tags:
 
 Prologue can stand beside a running system, watch what it does, and hand back a `.play` file describing it, without recording a single row value or request body. What it does record is metadata: which endpoint was called, which tables and columns changed, which spans the system emitted. That metadata can still be sensitive, and the model it produces is a draft for a person to correct.
 
-[Prologue](https://cratis.io/prologue/) is an experimental assisted-discovery tool that captures approved metadata signals and proposes a Cratis event model for human correction. Most systems exist long before anyone models them, and those are the ones it's for. The model it proposes is written in Screenplay, the language from [*Screenplay*](/screenplay-an-event-model-you-can-compile/), so the first model of an old system starts from a draft instead of a blank page.
+[Prologue](https://www.cratis.io/prologue/) is an experimental assisted-discovery tool that captures approved metadata signals and proposes a Cratis event model for human correction. Most systems exist long before anyone models them, and those are the ones it's for. The model it proposes is written in Screenplay, the language from [*Screenplay*](/screenplay-an-event-model-you-can-compile/), so the first model of an old system starts from a draft instead of a blank page.
 
 Picture the author feature already running in an ASP.NET application with a SQL database and no event model anywhere. Prologue can see a `POST` reach it and the write to an authors table that follows. Whether that pair of observations is called `RegisterAuthor`, and that names are unique per organization, is for a person to settle.
 
 ## Evidence instead of memory
 
-A system that predates any event model has two usual sources for one. The code says what the authors wrote, and the people who remember the system say what they think it does. [Why Prologue](https://cratis.io/prologue/why-prologue/) proposes a third: watch the system run. Prologue observes three things the system already does, without a change to its code. It sees the state-changing HTTP requests that reach it, which tables and columns changed in each database transaction right after a command, and the telemetry it already emits.
+A system that predates any event model has two usual sources for one. The code says what the authors wrote, and the people who remember the system say what they think it does. [Why Prologue](https://www.cratis.io/prologue/why-prologue/) proposes a third: watch the system run. Prologue observes three things the system already does, without a change to its code. It sees the state-changing HTTP requests that reach it, which tables and columns changed in each database transaction right after a command, and the telemetry it already emits.
 
 The output is an `ExtractionResult`, a structured tree, and a generated `.play` file. That file is the way into everything else in the modeling layer. `cratis screenplay validate` checks it, `cratis run` starts it in a Stage sandbox, and a person edits it. Prologue itself is self-contained. It needs no Cratis Studio and no Chronicle, the Extractor, Receiver and batch Interpreter run without Orleans, and it runs as three ordinary containers, the Extractor, the Interpreter and an optional Receiver, with shared contract packages on NuGet.
 
 ## What the Extractor watches
 
-The Extractor runs next to the system and is the only piece that runs all the time, as the `cratis/prologue-extractor` image or a downloadable binary. It has four [capture sources](https://cratis.io/prologue/reference/capture-sources/).
+The Extractor runs next to the system and is the only piece that runs all the time, as the `cratis/prologue-extractor` image or a downloadable binary. It has four [capture sources](https://www.cratis.io/prologue/reference/capture-sources/).
 
 For SQL Server it uses change data capture, and it enables CDC itself unless you set `enableChangeDataCapture` to `false`. A `tables` allowlist narrows what it watches, and an empty list means every user table. It records which tables and columns changed in each transaction.
 
@@ -50,7 +51,7 @@ Metadata is still information about the system and sometimes about people. An HT
 
 ## One capture is a command and what it caused
 
-A single HTTP call is rarely the whole fact. The call plus the database transactions it caused usually is. Prologue's correlator groups observations into [captures](https://cratis.io/prologue/concepts/). A capture is an HTTP command plus every database transaction, span or log observed within `correlation.windowMilliseconds` after it, 2,000 milliseconds by default, or that shares the command's trace ID.
+A single HTTP call is rarely the whole fact. The call plus the database transactions it caused usually is. Prologue's correlator groups observations into [captures](https://www.cratis.io/prologue/concepts/). A capture is an HTTP command plus every database transaction, span or log observed within `correlation.windowMilliseconds` after it, 2,000 milliseconds by default, or that shares the command's trace ID.
 
 Telemetry that carries a trace ID but has no command in front of it becomes one capture per trace, which is how background work shows up. Anything else becomes a capture of its own. A schema change, a table or column appearing or disappearing, is recorded but never used as evidence to group other observations. A capture is written only once nothing newer than the window could still join it, so one capture never ends up split across two runs.
 
@@ -58,11 +59,11 @@ This is a heuristic, and it links events by when they happened. Two requests tha
 
 ## From captures to a first model
 
-The Interpreter turns a folder of capture files into a model. By default it runs to completion: it reads every `.jsonl` file, rebuilds the correlated captures, and writes `extraction-result.json` and a `.play` file. It also has a [service mode](https://cratis.io/prologue/guides/running-the-interpreter/) that keeps running as a resumable session backed by MongoDB. The Receiver is an optional HTTP endpoint that stores captures in MongoDB when the Extractor posts them to it instead of writing files.
+The Interpreter turns a folder of capture files into a model. By default it runs to completion: it reads every `.jsonl` file, rebuilds the correlated captures, and writes `extraction-result.json` and a `.play` file. It also has a [service mode](https://www.cratis.io/prologue/guides/running-the-interpreter/) that keeps running as a resumable session backed by MongoDB. The Receiver is an optional HTTP endpoint that stores captures in MongoDB when the Extractor posts them to it instead of writing files.
 
 The first step is deterministic. Each capture becomes one or more provisional slice drafts, the drafts are grouped into modules, features and slices, and drafts that describe the same behavior are merged by name. The merge keeps the first item it finds for each name. Only projections combine their source events, so a property that appears only in a later capture of the same command or event is dropped. The result has the right structure and mechanical names, CRUD placeholders derived from HTTP verbs and database operations.
 
-The [extraction result](https://cratis.io/prologue/reference/extraction-result/) follows the module, feature and slice structure of a Screenplay model. A system has modules, a module has features that can nest, and a feature has slices of type `StateChange`, `StateView`, `Automation` or `Translation`. A slice holds commands (at most one for a `StateChange`), events, read models, projections and constraints. For a library system it looks like this, trimmed:
+The [extraction result](https://www.cratis.io/prologue/reference/extraction-result/) follows the module, feature and slice structure of a Screenplay model. A system has modules, a module has features that can nest, and a feature has slices of type `StateChange`, `StateView`, `Automation` or `Translation`. A slice holds commands (at most one for a `StateChange`), events, read models, projections and constraints. For a library system it looks like this, trimmed:
 
 ```json
 {
@@ -104,7 +105,7 @@ With a hosted provider, the prompt leaves your network. It carries the provision
 
 ## Running it
 
-The [getting-started guide](https://cratis.io/prologue/getting-started/) runs everything in Docker. A minimal configuration that watches only HTTP writes captures to a folder and forwards requests to the system on port 5000:
+The [getting-started guide](https://www.cratis.io/prologue/getting-started/) runs everything in Docker. A minimal configuration that watches only HTTP writes captures to a folder and forwards requests to the system on port 5000:
 
 ```json
 {
@@ -138,7 +139,7 @@ docker run --rm \
   cratis/prologue-interpreter
 ```
 
-The [CLI](https://cratis.io/cli/reference/prologue/) wraps the same steps:
+The [CLI](https://www.cratis.io/cli/reference/prologue/) wraps the same steps:
 
 ```bash
 cratis prologue start
@@ -151,7 +152,7 @@ Every capture carries a `prologueId`. When a folder holds captures from several 
 
 ## Two ways into a model
 
-[`cratis screenplay generate`](https://cratis.io/cli/reference/screenplay/) is the other way to get a model you didn't write. It reads a `.sln`, `.slnx` or `.csproj` with Roslyn, for Arc, Marten, and Marten with Wolverine. It doesn't start the application or connect to Chronicle or PostgreSQL, its output is byte-identical for unchanged source, and whatever it can't express is reported with a stable diagnostic code. Generation reads what the code declares, and needs the source. Prologue records what the system did, and needs the system running with traffic going through it, though no source.
+[`cratis screenplay generate`](https://www.cratis.io/cli/reference/screenplay/) is the other way to get a model you didn't write. It reads a `.sln`, `.slnx` or `.csproj` with Roslyn, for Arc, Marten, and Marten with Wolverine. It doesn't start the application or connect to Chronicle or PostgreSQL, its output is byte-identical for unchanged source, and whatever it can't express is reported with a stable diagnostic code. Generation reads what the code declares, and needs the source. Prologue records what the system did, and needs the system running with traffic going through it, though no source.
 
 ![A diagram titled Two on-ramps. Two arrows lead into one .play file. The upper one comes from Prologue: a running system, no source, with the cost needs traffic. The lower one comes from generate: source, nothing running, with the cost needs the source. From the .play file, an arrow labeled review leads to a person.](./two-on-ramps.png)
 

@@ -1,6 +1,6 @@
 ---
 title: "How a guard is built, merged and widened · Decisions that hold, Part 10"
-description: "A guard is a position in the log and a filter. Here is where Chronicle takes each part from, how several reads, an explicit scope and a definition's declared concurrency merge into one guard per event source, and how to print what a commit guarded."
+description: "A guard is a log position plus a filter. Where Chronicle takes each from, how reads, explicit scope and declared concurrency merge, and how to print one."
 date: 2026-11-13T09:00:00Z
 authors: sindre
 excerpt: "A guard is a position in the log and a filter. This part takes one apart: where the position and the filter come from, what a second read does to them, how an explicit scope and declared concurrency join in, and how to print what a commit actually guarded."
@@ -205,7 +205,7 @@ The whole-account read has no stream, so the stream type and id are both gone, a
 
 *What a second read of the same account does to the guard.*
 
-That's the rule to remember: merging only widens. The merged condition covers everything either read would have caught, so a second read can add conflicts but can't hide one. Outside a read-protection frame, for example `AppendMany(guardedBy: reads)`, the stream values are kept only when both match and are otherwise both dropped; under a frame each value is kept or dropped on its own. If a rule really depends on two streams, read the whole source once instead, so the guard says what it covers. In an Arc command, [ARCCHR0038](https://cratis.io/arc/backend/csharp/chronicle/code-analysis/arcchr0038/) points out a per-stream read whose guard another read will widen.
+That's the rule to remember: merging only widens. The merged condition covers everything either read would have caught, so a second read can add conflicts but can't hide one. Outside a read-protection frame, for example `AppendMany(guardedBy: reads)`, the stream values are kept only when both match and are otherwise both dropped; under a frame each value is kept or dropped on its own. If a rule really depends on two streams, read the whole source once instead, so the guard says what it covers. In an Arc command, [ARCCHR0038](https://www.cratis.io/arc/backend/csharp/chronicle/code-analysis/arcchr0038/) points out a per-stream read whose guard another read will widen.
 
 ## An explicit scope beside a read
 
@@ -280,7 +280,7 @@ Two more dependencies supply guards in Arc, and both fit the same shape:
 
 A guard compares events appended after a position with a filter, so anything that isn't an appended event matching that filter is outside it: revisions and redactions, writers without a guard, projection definitions changed elsewhere, other sequences and stores. [Part 8](/decision-reads-without-arc/) and [Part 9](/testing-a-race/) list these in full. Two details follow from the anatomy. Chronicle refuses `Revise` and `Redact` inside a read-protection frame, so a protected command can't do them to itself ([Chronicle#4900](https://github.com/Cratis/Chronicle/issues/4900) tracks a kernel check for other processes). And a command that reads but appends nothing has no guard at all: `GetAppendConditions()` is empty.
 
-Guards also have a cost shape worth knowing. Each guarded read folds the key's history of the model's types, every time, and folds of one model type are served through one projection per type in the kernel, so they are expected to queue behind each other across keys and tenants. Chronicle's [costs and limits](https://cratis.io/chronicle/dynamic-consistency-boundary/limits/) page has the one measurement published so far, with its environment. Keep guarded models flat and keys short-lived.
+Guards also have a cost shape worth knowing. Each guarded read folds the key's history of the model's types, every time, and folds of one model type are served through one projection per type in the kernel, so they are expected to queue behind each other across keys and tenants. Chronicle's [costs and limits](https://www.cratis.io/chronicle/dynamic-consistency-boundary/limits/) page has the one measurement published so far, with its environment. Keep guarded models flat and keys short-lived.
 
 :::tip[What to do when]
 - **A guard is wider than you expected:** print it. Look for a second read of the same source, a whole-source read beside a per-stream one, or declared `Concurrency` on the definition.
@@ -290,7 +290,7 @@ Guards also have a cost shape worth knowing. Each guarded read folds the key's h
 - **A rule needs two streams of one source:** read the whole source once rather than two streams.
 :::
 
-Chronicle's [How guards are derived](https://cratis.io/chronicle/dynamic-consistency-boundary/how-guards-are-derived/) page has the full merge tables, Arc's [How read protection works](https://cratis.io/arc/backend/csharp/chronicle/consistency/how-it-works/) shows what Arc does for each command, and [read protection](https://cratis.io/chronicle/read-models/read-protection/) documents the frame API. The last part of the series collects the questions that come up most and a guide to which mechanism a rule needs.
+Chronicle's [How guards are derived](https://www.cratis.io/chronicle/dynamic-consistency-boundary/how-guards-are-derived/) page has the full merge tables, Arc's [How read protection works](https://www.cratis.io/arc/backend/csharp/chronicle/consistency/how-it-works/) shows what Arc does for each command, and [read protection](https://www.cratis.io/chronicle/read-models/read-protection/) documents the frame API. The last part of the series collects the questions that come up most and a guide to which mechanism a rule needs.
 
 *The examples need Chronicle 19.68.0 or later. With Arc, read protection needs Arc 22.108.0 or later.*
 

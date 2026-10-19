@@ -1,5 +1,6 @@
 ---
 title: "Reactors, webhooks and subscriptions: reacting to events · Script to stage, Part 4"
+seoTitle: "Reactors, webhooks and subscriptions: reacting to events"
 description: "Chronicle reactors, webhooks and outbox-to-inbox subscriptions: how events reach side effects, why a failing handler stops one partition, and idempotency."
 date: 2026-09-30T09:04:00Z
 authors: sindre
@@ -22,7 +23,7 @@ Once `AuthorRegistered` is in the log, the feature stops being about one request
 
 ## Three ways out of the log
 
-A [reactor](https://cratis.io/chronicle/reactors/) is an observer in your application that performs side effects, such as calling an API, sending mail or recording a follow-up fact. A [webhook](https://cratis.io/chronicle/webhooks/) is an observer inside the kernel that POSTs events to an HTTP endpoint, so whoever receives them never connects to Chronicle. A [subscription](https://cratis.io/chronicle/subscriptions/outbox-inbox/) carries events from one event store's outbox into another store's inbox, where that service's own observers pick them up.
+A [reactor](https://www.cratis.io/chronicle/reactors/) is an observer in your application that performs side effects, such as calling an API, sending mail or recording a follow-up fact. A [webhook](https://www.cratis.io/chronicle/webhooks/) is an observer inside the kernel that POSTs events to an HTTP endpoint, so whoever receives them never connects to Chronicle. A [subscription](https://www.cratis.io/chronicle/subscriptions/outbox-inbox/) carries events from one event store's outbox into another store's inbox, where that service's own observers pick them up.
 
 | When you need to | Use |
 | --- | --- |
@@ -203,7 +204,7 @@ end
 </TabItem>
 </Tabs>
 
-Chronicle [discovers the handler methods](https://cratis.io/chronicle/reactors/event-processing/) by their shape. The first parameter is an event type, and the method returns `void`, `Task`, `Task<T>` or one of the side-effect types that show up further down. In the .NET, Kotlin and Java clients the method name is yours.
+Chronicle [discovers the handler methods](https://www.cratis.io/chronicle/reactors/event-processing/) by their shape. The first parameter is an event type, and the method returns `void`, `Task`, `Task<T>` or one of the side-effect types that show up further down. In the .NET, Kotlin and Java clients the method name is yours.
 
 Chronicle resolves the other parameters. `EventContext` can sit in any position. A read model built by a projection or a reducer can be a parameter too, and Chronicle reads it directly instead of asking the service provider. Anything else comes from the service provider, which is how a mail sender or a payment client gets in. This dependency resolution is a .NET capability. Kotlin, Elixir and TypeScript handlers take the event and, optionally, its context.
 
@@ -211,7 +212,7 @@ A read model parameter raises a freshness question. A materialized read model ca
 
 When two methods handle the same event type, a fixed rule picks one. A public method goes before a non-public one, then the method with the most parameters wins, and after that the method name in ordinal order.
 
-A reactor that calls an API brings its own client and configuration; Chronicle's [External Services](https://cratis.io/chronicle/external-services/) currently serve captures.
+A reactor that calls an API brings its own client and configuration; Chronicle's [External Services](https://www.cratis.io/chronicle/external-services/) currently serve captures.
 
 ## One partition at a time
 
@@ -223,7 +224,7 @@ Retries follow the backoff, and a failed partition is also retried whenever the 
 
 ## Returning the next fact
 
-A reaction is often another fact. A book gets reserved, and the member's activity changes. A reactor can inject `IEventLog` and append, or it can return the events and let Chronicle [append them](https://cratis.io/chronicle/reactors/side-effects/) after the handler completes:
+A reaction is often another fact. A book gets reserved, and the member's activity changes. A reactor can inject `IEventLog` and append, or it can return the events and let Chronicle [append them](https://www.cratis.io/chronicle/reactors/side-effects/) after the handler completes:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
@@ -352,13 +353,13 @@ The append isn't fire-and-forget. A constraint violation, a concurrency conflict
 
 A returned event is a new fact, so a replay of the reactor would append it again. Handlers that return events should be marked `[OnceOnly]`. The .NET analyzer reports CHR0022 when a handler returns an event, or a list of events, without it, and it doesn't flag the `EventForEventSourceId` and `EventsWithConcurrencyScopes` wrappers. Every client appends what a handler returns, and in Elixir that means returning `{:ok, event}` or `{:ok, events}` from `handle/2`. From `io.cratis:chronicle` 6.5.0 Kotlin and Java append a returned list as one transaction, and TypeScript and Elixir send a returned list in a single append call.
 
-An [`IReadModelReactor`](https://cratis.io/chronicle/read-models/reacting-to-changes/) has methods named `Added`, `Modified` and `Removed`, and reacts to read model changes instead of events. It's a convenience over the watch API, and it can take the `EventContext` and services from the container. It can return events, but those appends are best effort: a failure is logged and nothing retries, because a read model reactor has no partition to fail. For reactions that must be retried, react to the event with a reactor.
+An [`IReadModelReactor`](https://www.cratis.io/chronicle/read-models/reacting-to-changes/) has methods named `Added`, `Modified` and `Removed`, and reacts to read model changes instead of events. It's a convenience over the watch API, and it can take the `EventContext` and services from the container. It can return events, but those appends are best effort: a failure is logged and nothing retries, because a read model reactor has no partition to fail. For reactions that must be retried, react to the event with a reactor.
 
 ## Running twice
 
 A reactor can see the same event more than once in two different situations, and each has its own tool.
 
-The first is a replay. You rewind the observer, or a redaction or a revision rewinds the affected partition. [`[OnceOnly]`](https://cratis.io/chronicle/reactors/once-only/) on a method skips that handler for events that arrive as part of a replay, and on the class it makes the whole reactor non-replayable. [`[Replay]`](https://cratis.io/chronicle/reactors/replay/) on a second handler for the same event type makes that handler the only one that runs during a replay, for when a replay should do something different instead of nothing. Without a replay handler, the normal handler runs again unless replay is excluded.
+The first is a replay. You rewind the observer, or a redaction or a revision rewinds the affected partition. [`[OnceOnly]`](https://www.cratis.io/chronicle/reactors/once-only/) on a method skips that handler for events that arrive as part of a replay, and on the class it makes the whole reactor non-replayable. [`[Replay]`](https://www.cratis.io/chronicle/reactors/replay/) on a second handler for the same event type makes that handler the only one that runs during a replay, for when a replay should do something different instead of nothing. Without a replay handler, the normal handler runs again unless replay is excluded.
 
 A handler pair looks like this:
 
@@ -494,7 +495,7 @@ end
 
 The second is recovery after a failure. The partition paused, and recovery delivers the event again as an ordinary observation, so neither `[OnceOnly]` nor `[Replay]` applies. If the handler charged the card before it threw, the retry charges it again.
 
-For that case the .NET and Elixir clients have [delivery identity](https://cratis.io/chronicle/reactors/delivery-identity/). Declare a `ReactorDelivery` parameter, or in Elixir read `delivery_id` from the context, and Chronicle passes in a stable identity for this delivery of this event to this reactor. `delivery.Id` is built from six values Chronicle already has: the reactor id, the event store, the namespace, the event sequence, the partition and the event's sequence number. The same delivery gets the same id on a replay and on a partition recovery. Keep a receipt under that id, check it before the side effect and write it after:
+For that case the .NET and Elixir clients have [delivery identity](https://www.cratis.io/chronicle/reactors/delivery-identity/). Declare a `ReactorDelivery` parameter, or in Elixir read `delivery_id` from the context, and Chronicle passes in a stable identity for this delivery of this event to this reactor. `delivery.Id` is built from six values Chronicle already has: the reactor id, the event store, the namespace, the event sequence, the partition and the event's sequence number. The same delivery gets the same id on a replay and on a partition recovery. Keep a receipt under that id, check it before the side effect and write it after:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
@@ -583,7 +584,7 @@ Delivery stays at-least-once. The id identifies a delivery and makes no promise 
 
 The id is also a persisted key. Renaming a reactor type that has no stable id, moving the reactor to another event sequence or renaming a namespace changes the id and orphans every receipt already written. A reactor that keeps receipts should have a stable id through `[Reactor("...")]`.
 
-Only the .NET and Elixir clients have a delivery identity, so integrations called from the Kotlin, Java and TypeScript clients have to be idempotent on their own. TypeScript supports `@onceOnly()` and `@replay()` from `@cratis/chronicle` 6.9.0, and Elixir has the `once_only:` option and `handle_replay/2`. [Where the clients differ](https://cratis.io/chronicle/clients/where-the-clients-differ/) lists the rest.
+Only the .NET and Elixir clients have a delivery identity, so integrations called from the Kotlin, Java and TypeScript clients have to be idempotent on their own. TypeScript supports `@onceOnly()` and `@replay()` from `@cratis/chronicle` 6.9.0, and Elixir has the `once_only:` option and `handle_replay/2`. [Where the clients differ](https://www.cratis.io/chronicle/clients/where-the-clients-differ/) lists the rest.
 
 ![A diagram titled One delivery, three arrivals. Three numbered cards run left to right, each headed delivery.Id A. 1, live: effect and receipt written, then it throws. 2, recovery: OnceOnly doesn't apply; receipt found, skipped. 3, replay: OnceOnly skips the handler. Below them, a card labeled your receipt store reads A recorded, with an arrow labeled write from the live card and an arrow labeled check first from the recovery card. Beside it, a chip reads .NET client. An amber note reads: effect done, receipt not written: the retry repeats it; close the gap with one transaction or an idempotency key. A band at the bottom reads: Id from reactor, event store, namespace, event sequence, partition, sequence number.](./one-delivery-three-arrivals.png)
 
@@ -591,7 +592,7 @@ Only the .NET and Elixir clients have a delivery identity, so integrations calle
 
 ## Webhooks: pushing without a client
 
-A [webhook](https://cratis.io/chronicle/webhooks/) is registered once, with a name, a URL, the event types to forward, and any headers and bearer token:
+A [webhook](https://www.cratis.io/chronicle/webhooks/) is registered once, with a name, a URL, the event types to forward, and any headers and bearer token:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
@@ -731,13 +732,13 @@ The Authors service's log holds everything about the registration. Its outbox ca
 
 There's a window between the two appends. The [cross-store sample](https://github.com/Cratis/Samples/blob/95f644dc017ebd6ecd41854cbcd358cb22984084/Chronicle/CrossStore/Program.cs) appends the fact to the source event log, then appends the public event to the outbox as a second call. If the second append fails, the first fact is already recorded. The sample returns an error, and nothing rolls the first append back. Forwarding isn't a transaction across stores.
 
-One option is a [reactor](https://cratis.io/chronicle/reactors/) that observes the private fact and appends the public contract, checking the append result and failing the handler on rejection so the partition is retried. Both publisher and receiver must account for duplicate execution. A [webhook](https://cratis.io/chronicle/webhooks/) sends observed events to an HTTP endpoint with retries, so the receiving endpoint needs the same care. [Explicit subscriptions](https://cratis.io/chronicle/subscriptions/explicit-subscriptions/) exist in each Chronicle client, but the [attribute-based routing](https://cratis.io/chronicle/subscriptions/implicit-subscriptions/) that sets one up implicitly is C# only.
+One option is a [reactor](https://www.cratis.io/chronicle/reactors/) that observes the private fact and appends the public contract, checking the append result and failing the handler on rejection so the partition is retried. Both publisher and receiver must account for duplicate execution. A [webhook](https://www.cratis.io/chronicle/webhooks/) sends observed events to an HTTP endpoint with retries, so the receiving endpoint needs the same care. [Explicit subscriptions](https://www.cratis.io/chronicle/subscriptions/explicit-subscriptions/) exist in each Chronicle client, but the [attribute-based routing](https://www.cratis.io/chronicle/subscriptions/implicit-subscriptions/) that sets one up implicitly is C# only.
 
 ## Subscribing to another store
 
-A [subscription](https://cratis.io/chronicle/subscriptions/) is managed by the kernel and persists. It survives a client disconnecting, restarts with the kernel, is tracked per event store and is idempotent by id, so calling `Subscribe` at every startup is safe. Every event store has a well-known outbox sequence, `EventSequenceId.Outbox`, and appending public contract events there is what makes them visible to the stores that subscribe. When store A subscribes to store B, Chronicle manages an inbox on A for events from B. Nothing writes to that inbox except Chronicle.
+A [subscription](https://www.cratis.io/chronicle/subscriptions/) is managed by the kernel and persists. It survives a client disconnecting, restarts with the kernel, is tracked per event store and is idempotent by id, so calling `Subscribe` at every startup is safe. Every event store has a well-known outbox sequence, `EventSequenceId.Outbox`, and appending public contract events there is what makes them visible to the stores that subscribe. When store A subscribes to store B, Chronicle manages an inbox on A for events from B. Nothing writes to that inbox except Chronicle.
 
-An [explicit subscription](https://cratis.io/chronicle/subscriptions/explicit-subscriptions/) names the source store and, optionally, the event types:
+An [explicit subscription](https://www.cratis.io/chronicle/subscriptions/explicit-subscriptions/) names the source store and, optionally, the event types:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
@@ -885,7 +886,7 @@ Elixir does not support this workflow yet.
 </TabItem>
 </Tabs>
 
-Personal data travels with its subject. The subject and its encryption key identity are preserved, and the key is copied into the target store unless that subject was erased there. A forwarded event carrying a `[PII]` value for an erased subject can't be appended in the target until someone authorizes a new key with `AllowNewEncryptionKeyFor`, and until then that event source's partition fails while the rest of the subscription keeps flowing ([compliance and PII in subscriptions](https://cratis.io/chronicle/subscriptions/compliance-and-pii/)). [*Personal data in an event log*](/personal-data-in-an-event-log/) follows that key further.
+Personal data travels with its subject. The subject and its encryption key identity are preserved, and the key is copied into the target store unless that subject was erased there. A forwarded event carrying a `[PII]` value for an erased subject can't be appended in the target until someone authorizes a new key with `AllowNewEncryptionKeyFor`, and until then that event source's partition fails while the rest of the subscription keeps flowing ([compliance and PII in subscriptions](https://www.cratis.io/chronicle/subscriptions/compliance-and-pii/)). [*Personal data in an event log*](/personal-data-in-an-event-log/) follows that key further.
 
 In .NET, a reactor on an inbox gets a `ReactorDelivery` that includes the event sequence, so deliveries from each source inbox have their own identity.
 

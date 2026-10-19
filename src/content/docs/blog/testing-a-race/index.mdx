@@ -1,6 +1,6 @@
 ---
 title: "Testing a decision against a race · Decisions that hold, Part 9"
-description: "A command scenario can put a competing write between a command's read and its commit. How to write the test that shows a rule still holds when someone else writes first, what the scenario sets up for you under read protection, and what a green race test does not show."
+description: "Put a competing write between a command's read and its commit in an Arc scenario to test that a rule still holds when someone else writes first."
 date: 2026-11-11T09:00:00Z
 authors: sindre
 excerpt: "A test that runs one command at a time passes with a plain read too. One line in an Arc command scenario puts a competing write between the read and the commit, and turns 'it works' into 'it still holds when someone else is faster'."
@@ -225,9 +225,9 @@ The second test is the one people skip. It checks that the guard isn't wider tha
 
 ## Without Arc
 
-When you call Chronicle directly, as in Part 8, the race test has the same shape without a scenario: take the decision read, append a competing event, then do the guarded append and check that it was refused. Chronicle's [Test the race](https://cratis.io/chronicle/dynamic-consistency-boundary/scenarios/#test-the-race) scenario shows it in C# and Elixir.
+When you call Chronicle directly, as in Part 8, the race test has the same shape without a scenario: take the decision read, append a competing event, then do the guarded append and check that it was refused. Chronicle's [Test the race](https://www.cratis.io/chronicle/dynamic-consistency-boundary/scenarios/#test-the-race) scenario shows it in C# and Elixir.
 
-If the code runs in a unit of work with read protection enforced, you can also check what was guarded. After the commit, `unitOfWork.GetAppendConditions()` (namespace `Cratis.Chronicle.Transactions`) returns one `AppendCondition` per guarded source, with its event types, stream values, position and the origins behind it. Assert on the origins and the number of conditions rather than on their text. [See what a commit guarded](https://cratis.io/chronicle/dynamic-consistency-boundary/how-guards-are-derived/#see-what-a-commit-guarded) in Chronicle's docs has the example. Part 10 is about how those conditions are built.
+If the code runs in a unit of work with read protection enforced, you can also check what was guarded. After the commit, `unitOfWork.GetAppendConditions()` (namespace `Cratis.Chronicle.Transactions`) returns one `AppendCondition` per guarded source, with its event types, stream values, position and the origins behind it. Assert on the origins and the number of conditions rather than on their text. [See what a commit guarded](https://www.cratis.io/chronicle/dynamic-consistency-boundary/how-guards-are-derived/#see-what-a-commit-guarded) in Chronicle's docs has the example. Part 10 is about how those conditions are built.
 
 ## What a green race test does not show
 
@@ -248,7 +248,7 @@ A race test checks one interleaving: one competitor, at one point, after the rea
 - **The code calls Chronicle directly:** read, compete, append with the guard; under enforced read protection, assert on `GetAppendConditions()` after the commit.
 :::
 
-The reference is Arc's [Test the race](https://cratis.io/arc/backend/csharp/chronicle/consistency/scenarios/testing/), and [Testing Chronicle commands](https://cratis.io/arc/backend/csharp/testing/chronicle/#protected-decision-scenarios) covers the scenario's decision mode in full, including how reads that don't guard the decision are resolved.
+The reference is Arc's [Test the race](https://www.cratis.io/arc/backend/csharp/chronicle/consistency/scenarios/testing/), and [Testing Chronicle commands](https://www.cratis.io/arc/backend/csharp/testing/chronicle/#protected-decision-scenarios) covers the scenario's decision mode in full, including how reads that don't guard the decision are resolved.
 
 *The examples need Arc 22.108.0 or later and Chronicle 19.71.0 or later.*
 

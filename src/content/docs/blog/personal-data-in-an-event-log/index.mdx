@@ -1,5 +1,6 @@
 ---
 title: "Personal data in an event log: PII and crypto-shredding · Script to stage, Part 13"
+seoTitle: "Personal data in an event log: PII and crypto-shredding"
 description: "Handle personal data in an event log: Chronicle erases a person by destroying their encryption key while events stay and PII values read as empty."
 date: 2026-09-30T09:13:00Z
 authors: sindre
@@ -22,9 +23,9 @@ The author's name travels further than the event: into the command's audit trail
 
 ## Personal data, marked once
 
-The author's name is personal data. One attribute on its type makes Chronicle encrypt the value with the key of the event's subject, and with Arc's Chronicle integration the same attribute keeps it out of the [causation record](https://cratis.io/arc/backend/csharp/chronicle/commands/causation/). [The log remembers](https://blog.cratis.io/the-log-remembers-pii-crypto-shredding-in-chronicle/) shows the Chronicle side in five languages.
+The author's name is personal data. One attribute on its type makes Chronicle encrypt the value with the key of the event's subject, and with Arc's Chronicle integration the same attribute keeps it out of the [causation record](https://www.cratis.io/arc/backend/csharp/chronicle/commands/causation/). [The log remembers](https://blog.cratis.io/the-log-remembers-pii-crypto-shredding-in-chronicle/) shows the Chronicle side in five languages.
 
-The name's [`ConceptAs<T>` type is marked `[PII]`](https://cratis.io/chronicle/compliance/pii-with-concepts/), and every event property of that type is encrypted for the event's subject. A person-name type marked that way:
+The name's [`ConceptAs<T>` type is marked `[PII]`](https://www.cratis.io/chronicle/compliance/pii-with-concepts/), and every event property of that type is encrypted for the event's subject. A person-name type marked that way:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
@@ -97,11 +98,11 @@ end
 </TabItem>
 </Tabs>
 
-Projection-backed read models track the protected value's subject through their mappings. Reducer read models need [their own PII marking](https://cratis.io/chronicle/compliance/read-models/), because the kernel can't infer arbitrary transformations.
+Projection-backed read models track the protected value's subject through their mappings. Reducer read models need [their own PII marking](https://www.cratis.io/chronicle/compliance/read-models/), because the kernel can't infer arbitrary transformations.
 
 Pick the attribute by what the value is. Personal data you may have to erase gets `[PII]`. A value that should never reach the causation record gets `[NotAudited]`, which excludes it without encrypting it, and an operational secret you have to keep gets `[Encrypted]`, whose separate key erasure doesn't touch, as [what a command leaves behind](#what-a-command-leaves-behind) explains.
 
-[Erasure](https://cratis.io/chronicle/compliance/erasing-a-subject/) is one call:
+[Erasure](https://www.cratis.io/chronicle/compliance/erasing-a-subject/) is one call:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
@@ -141,7 +142,7 @@ Chronicle.Compliance.delete_encryption_key("person-42")
 </TabItem>
 </Tabs>
 
-Once the [key](https://cratis.io/chronicle/compliance/key-lifecycle/) has been destroyed, Chronicle can't decrypt anything encrypted with it. The event keeps its place in the log, so the log still shows that something happened.
+Once the [key](https://www.cratis.io/chronicle/compliance/key-lifecycle/) has been destroyed, Chronicle can't decrypt anything encrypted with it. The event keeps its place in the log, so the log still shows that something happened.
 
 Erasure stops at these points:
 
@@ -159,15 +160,15 @@ An application that handles personal data still needs its own privacy review. Re
 
 ## Where the marker lands
 
-The [`[PII]` marker](https://cratis.io/chronicle/compliance/pii/) is written into the event type's schema as compliance metadata. Chronicle looks for it in four places, in order: on the property, on the declaring type, on the property's own type, which is the concept case above, and on a matching constructor parameter. It lands on individual leaf values. A marked concept nested inside a value object is encrypted while its sibling stays readable, and the document keeps its shape. A marked collection is encrypted as one value, and geospatial values are never looked inside.
+The [`[PII]` marker](https://www.cratis.io/chronicle/compliance/pii/) is written into the event type's schema as compliance metadata. Chronicle looks for it in four places, in order: on the property, on the declaring type, on the property's own type, which is the concept case above, and on a matching constructor parameter. It lands on individual leaf values. A marked concept nested inside a value object is encrypted while its sibling stays readable, and the document keeps its shape. A marked collection is encrypted as one value, and geospatial values are never looked inside.
 
 Some shapes are refused outright. A polymorphic base type or a dictionary carrying `[PII]` makes the append fail, so the value is never stored unprotected. `[PII]` on an `EventSourceId` type throws `PIINotSupportedOnEventSourceId`. The fix is a surrogate id that says nothing about the person, with the personal value in a marked property. The author feature already has that shape, since `AuthorId` identifies the author and `AuthorName` carries the name.
 
 ## Whose key: the subject
 
-Keys are held per [subject](https://cratis.io/chronicle/concepts/subject/). The subject defaults to the event source id, and it can be set on append, by an event property marked `[Subject]` (C#, and `subject:` on the event type in Elixir), or from an Arc command. `ShippingAddressChanged` lives on the order's stream, but the address belongs to the customer, so the customer is the subject, and every event about that customer, from any stream, shares one key.
+Keys are held per [subject](https://www.cratis.io/chronicle/concepts/subject/). The subject defaults to the event source id, and it can be set on append, by an event property marked `[Subject]` (C#, and `subject:` on the event type in Elixir), or from an Arc command. `ShippingAddressChanged` lives on the order's stream, but the address belongs to the customer, so the customer is the subject, and every event about that customer, from any stream, shares one key.
 
-An Arc command sets the subject by [returning it next to the event](https://cratis.io/arc/backend/csharp/chronicle/compliance/subject/):
+An Arc command sets the subject by [returning it next to the event](https://www.cratis.io/arc/backend/csharp/chronicle/compliance/subject/):
 
 <Tabs syncKey="language">
 <TabItem label="C#">
@@ -341,7 +342,7 @@ Reactors, webhooks, reducers and projections all receive decrypted events, from 
 
 ## What a read model holds
 
-Projection-backed [read models](https://cratis.io/chronicle/compliance/read-models/) get their PII lineage automatically. The kernel knows which read model properties map from PII event properties and encrypts them before the sink write, with no attribute on the read model. A reducer is opaque code, so its read model needs `[PII]` on its own properties.
+Projection-backed [read models](https://www.cratis.io/chronicle/compliance/read-models/) get their PII lineage automatically. The kernel knows which read model properties map from PII event properties and encrypts them before the sink write, with no attribute on the read model. A reducer is opaque code, so its read model needs `[PII]` on its own properties.
 
 Every managed document stores a reserved `__subject`. When a projection joins personal values from different subjects, only the exceptions go into `__subjects`, as in `{"advisorName": "advisor-17"}`. That one value is released and erased under `advisor-17`, while the rest of the document follows its own subject, `employee-42`. Don't name your own properties `__subject` or `__subjects`.
 
@@ -351,7 +352,7 @@ Queries through `IReadModels` release values automatically. An instance that arr
 
 ## What a command leaves behind
 
-With Arc's Chronicle integration in .NET and TypeScript, the [causation](https://cratis.io/arc/backend/csharp/chronicle/commands/causation/) of every event a command appends records the command's name and its property values. Keys are camelCased, concepts render as their inner value, and nested objects become compact JSON, truncated at 1,024 characters with a marker. `[PII]` keeps a top-level value off that chain, whether it sits on the property, the command, the positional parameter or the concept. Arc's own `[NotAudited]` does the same for secrets that aren't personal data:
+With Arc's Chronicle integration in .NET and TypeScript, the [causation](https://www.cratis.io/arc/backend/csharp/chronicle/commands/causation/) of every event a command appends records the command's name and its property values. Keys are camelCased, concepts render as their inner value, and nested objects become compact JSON, truncated at 1,024 characters with a marker. `[PII]` keeps a top-level value off that chain, whether it sits on the property, the command, the positional parameter or the concept. Arc's own `[NotAudited]` does the same for secrets that aren't personal data:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
@@ -417,7 +418,7 @@ Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
 
 The decision fails closed, so a property whose exclusion can't be decided is left out. Exclusion isn't recursive, and a marked member inside a nested object still ends up in that JSON. Arc's analyzer ARCCHR0009 warns when a command property's name reads like a secret and carries no marker.
 
-Causation values aren't encrypted under the subject's key, so deleting the key doesn't erase them. Setting [`events.causationPropertyRetention`](https://cratis.io/chronicle/hosting/configuration/events/) to `Omit` stops new appends, revisions and redactions from storing causation property values, while keeping their types and times. Chains already stored stay as they are.
+Causation values aren't encrypted under the subject's key, so deleting the key doesn't erase them. Setting [`events.causationPropertyRetention`](https://www.cratis.io/chronicle/hosting/configuration/events/) to `Omit` stops new appends, revisions and redactions from storing causation property values, while keeping their types and times. Chains already stored stay as they are.
 
 ```json
 {
@@ -430,7 +431,7 @@ Causation values aren't encrypted under the subject's key, so deleting the key d
 
 `[PII]` on an Arc command keeps a value out of causation and encrypts nothing. The event you build from the command needs its own marker, on the property or on the concept.
 
-For an operational secret you must store, Chronicle has [`[Encrypted]`](https://cratis.io/chronicle/security/encrypted-values/), which uses a separate key. Erasing a subject's `[PII]` key leaves an `[Encrypted]` value readable, and Chronicle's subject-erasure operation refuses to delete its key. `[Encrypted]` keys are scoped to the subject by default, or to the namespace or globally, and no operation deletes one. Combining `[Encrypted]` with `[PII]` on one property makes the schema pass throw, and analyzer CHR0053 catches the direct cases.
+For an operational secret you must store, Chronicle has [`[Encrypted]`](https://www.cratis.io/chronicle/security/encrypted-values/), which uses a separate key. Erasing a subject's `[PII]` key leaves an `[Encrypted]` value readable, and Chronicle's subject-erasure operation refuses to delete its key. `[Encrypted]` keys are scoped to the subject by default, or to the namespace or globally, and no operation deletes one. Combining `[Encrypted]` with `[PII]` on one property makes the schema pass throw, and analyzer CHR0053 catches the direct cases.
 
 ## Four ways to change the record of an event
 
@@ -438,9 +439,9 @@ A request to "delete it" can mean four different operations, and each answers a 
 
 A compensation is a new domain event. A cancelled registration is recorded as a cancellation, and nothing earlier changes. Redaction and revision aren't meant for undoing a business decision.
 
-A [revision](https://cratis.io/chronicle/events/revision/) corrects content. It has to keep the same event type id, or it fails with `InvalidRevisionEventType`. The corrected payload is stored beside the original with the requester's causation and identity, consumers see the latest revision from then on, and the original stays in the event's history. Chronicle then rewinds that event source's partition for replayable observers of the type. A revision removes nothing.
+A [revision](https://www.cratis.io/chronicle/events/revision/) corrects content. It has to keep the same event type id, or it fails with `InvalidRevisionEventType`. The corrected payload is stored beside the original with the requester's causation and identity, consumers see the latest revision from then on, and the original stays in the event's history. Chronicle then rewinds that event source's partition for replayable observers of the type. A revision removes nothing.
 
-A [redaction](https://cratis.io/chronicle/events/redaction/) removes content. Requesting one appends a system event, `EventRedactionRequested` for a single event or `EventsRedactedForEventSource` for a whole event source, optionally limited to some event types, and both take a `RedactionReason`. A built-in reactor then replaces the event in place. It keeps its sequence number and becomes an `EventRedacted` that holds the reason, the original event type and occurred time, the correlation id and caused-by chain, and the types and times of the original causation entries without their property values. The payload, the revision history and the content hashes are gone from sequence storage. The kernel rewinds the affected partition for observers of that type, and a repeated redaction skips the rewind.
+A [redaction](https://www.cratis.io/chronicle/events/redaction/) removes content. Requesting one appends a system event, `EventRedactionRequested` for a single event or `EventsRedactedForEventSource` for a whole event source, optionally limited to some event types, and both take a `RedactionReason`. A built-in reactor then replaces the event in place. It keeps its sequence number and becomes an `EventRedacted` that holds the reason, the original event type and occurred time, the correlation id and caused-by chain, and the types and times of the original causation entries without their property values. The payload, the revision history and the content hashes are gone from sequence storage. The kernel rewinds the affected partition for observers of that type, and a repeated redaction skips the rewind.
 
 An observer hears about a redaction only if it subscribes to the original event type and also handles `EventRedacted`:
 
@@ -613,7 +614,7 @@ Erasures performed before the fence shipped aren't fenced and can be resurrected
 
 ## Where the keys live, and how they come back
 
-By default keys sit in the general storage backend. `compliance.encryption.storage` selects a [dedicated store](https://cratis.io/chronicle/hosting/configuration/compliance-storage/), either HashiCorp Vault (KV v2, with the token from `VAULT_TOKEN`) or Azure Key Vault, and both keep every key revision as its own secret. What those services do with a deleted secret follows their own retention and recovery policies.
+By default keys sit in the general storage backend. `compliance.encryption.storage` selects a [dedicated store](https://www.cratis.io/chronicle/hosting/configuration/compliance-storage/), either HashiCorp Vault (KV v2, with the token from `VAULT_TOKEN`) or Azure Key Vault, and both keep every key revision as its own secret. What those services do with a deleted secret follows their own retention and recovery policies.
 
 Switching to a dedicated store on a running system with keys already stored makes those keys unreachable, and their values read as empty strings with no error. `migrateFromDefaultStorage: true` composes both stores, moves each key on its first read, mirrors new keys back and erases from both. A key nobody has read since the switch still lives only in the default store, so turn the flag off only after confirming that the dedicated store holds every key.
 
@@ -635,7 +636,7 @@ A backup has three parts: the encryption-certificate ring, the storage backend a
 
 ## The same markers in other clients
 
-The C# client validates the most. The Kotlin/Java, TypeScript and Elixir clients accept the markers without the same checks. Every client takes a subject as an append option, but only C# and Elixir read it from the event itself, from a `[Subject]` property in C# and from the `subject:` option of the event type in Elixir. The other clients' subject markers only pick the key a read model is released under. Elixir can't mark a whole multi-field struct `[PII]`, and the TypeScript decorator doesn't read constructor parameters. `[Encrypted]` exists in all four. Every client can delete a subject's key, and only .NET, TypeScript and Elixir can authorize a new one afterward. [Where the clients differ](https://cratis.io/chronicle/clients/where-the-clients-differ/) has the full list.
+The C# client validates the most. The Kotlin/Java, TypeScript and Elixir clients accept the markers without the same checks. Every client takes a subject as an append option, but only C# and Elixir read it from the event itself, from a `[Subject]` property in C# and from the `subject:` option of the event type in Elixir. The other clients' subject markers only pick the key a read model is released under. Elixir can't mark a whole multi-field struct `[PII]`, and the TypeScript decorator doesn't read constructor parameters. `[Encrypted]` exists in all four. Every client can delete a subject's key, and only .NET, TypeScript and Elixir can authorize a new one afterward. [Where the clients differ](https://www.cratis.io/chronicle/clients/where-the-clients-differ/) has the full list.
 
 Erasing an author takes `DeleteEncryptionKeyFor` with the author's subject, once in each namespace the author appears in, and because the name is `[Unique]`, the erasure also appends a removal event so the name's hash leaves the constraint index. The name then reads as empty in the log and in the author list, `AuthorRegistered` keeps its sequence number, and whatever the application already sent elsewhere is still the application's to clean up.
 

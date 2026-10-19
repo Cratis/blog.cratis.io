@@ -114,9 +114,9 @@ end
 </TabItem>
 </Tabs>
 
-Two products meet in those few lines. `[FromEvent<AuthorRegistered>]` belongs to Chronicle and declares the [projection](https://cratis.io/chronicle/projections/). Properties with the same name as the event's properties are [mapped automatically](https://cratis.io/chronicle/projections/declarative/auto-map/), and the instance is keyed by the event source, so every author gets an instance of their own. `[ReadModel]` and the static `AllAuthors` method belong to Arc. [`[ReadModel]`](https://cratis.io/arc/backend/csharp/queries/) marks a type that Arc serves through queries, and it works without Chronicle. `AllAuthors` is an observable query that Arc routes, and its generated TypeScript gives the React code an `AllAuthors.use()` hook.
+Two products meet in those few lines. `[FromEvent<AuthorRegistered>]` belongs to Chronicle and declares the [projection](https://www.cratis.io/chronicle/projections/). Properties with the same name as the event's properties are [mapped automatically](https://www.cratis.io/chronicle/projections/declarative/auto-map/), and the instance is keyed by the event source, so every author gets an instance of their own. `[ReadModel]` and the static `AllAuthors` method belong to Arc. [`[ReadModel]`](https://www.cratis.io/arc/backend/csharp/queries/) marks a type that Arc serves through queries, and it works without Chronicle. `AllAuthors` is an observable query that Arc routes, and its generated TypeScript gives the React code an `AllAuthors.use()` hook.
 
-Arc's walkthrough on [adding event sourcing](https://cratis.io/arc/backend/csharp/chronicle/add-event-sourcing/) keeps this query unchanged from the chapter before Chronicle was added, so the proxy and the hook don't change either. The documents now come from a projection, and Arc reads the collection it wrote. That only works when Arc is configured with `Cratis.Arc.MongoDB` and agrees with Chronicle's sink on the database, the collection names, the key mapping, serialization and the tenant mapping. Running both in one application host doesn't line those up for you. The [.NET walkthrough](https://blog.cratis.io/event-sourcing-in-dotnet-with-chronicle/) builds a slice like this end to end with a runnable project.
+Arc's walkthrough on [adding event sourcing](https://www.cratis.io/arc/backend/csharp/chronicle/add-event-sourcing/) keeps this query unchanged from the chapter before Chronicle was added, so the proxy and the hook don't change either. The documents now come from a projection, and Arc reads the collection it wrote. That only works when Arc is configured with `Cratis.Arc.MongoDB` and agrees with Chronicle's sink on the database, the collection names, the key mapping, serialization and the tenant mapping. Running both in one application host doesn't line those up for you. The [.NET walkthrough](https://blog.cratis.io/event-sourcing-in-dotnet-with-chronicle/) builds a slice like this end to end with a runnable project.
 
 ![A diagram titled From event to read model. A heading reads: The append returns after step 1; steps 2 to 5 catch up asynchronously. Below it, seven numbered cards in two rows are joined by arrows. 1 Event appended, with a sequence number. 2 Observer, with an offset, per partition. 3 Projection or reducer, in the kernel or your app. 4 Sink, MongoDB or SQL. The arrow from 4 turns down to the second row. 5 Change stream, MongoDB. 6 Arc query, Observe(). 7 UI, AllAuthors.use(). Beside the last card, a note reads Replay: shadow copy, swapped in (MongoDB sink).](./event-to-read-model.png)
 
@@ -124,9 +124,9 @@ Arc's walkthrough on [adding event sourcing](https://cratis.io/arc/backend/cshar
 
 ## One definition, written three ways
 
-Chronicle accepts a projection in three forms, and all of them end up as the same thing. A model-bound projection is read from attributes on the read model by reflection. A declarative projection is built in code through a builder. A PDL projection is text that the server compiles. Each produces the same projection definition. The kernel stores it, runs it in its projection engine and pushes the changes to a sink. The [projection architecture](https://cratis.io/chronicle/projections/architecture/) walks through the pipeline.
+Chronicle accepts a projection in three forms, and all of them end up as the same thing. A model-bound projection is read from attributes on the read model by reflection. A declarative projection is built in code through a builder. A PDL projection is text that the server compiles. Each produces the same projection definition. The kernel stores it, runs it in its projection engine and pushes the changes to a sink. The [projection architecture](https://www.cratis.io/chronicle/projections/architecture/) walks through the pipeline.
 
-Model-bound is [the default](https://cratis.io/chronicle/projections/) for most projections, because the read model then is the projection and there's one file to read. The fluent builder takes over when attributes can't express the logic. PDL suits tooling and previews, where a projection is written and tried out without touching application code.
+Model-bound is [the default](https://www.cratis.io/chronicle/projections/) for most projections, because the read model then is the projection and there's one file to read. The fluent builder takes over when attributes can't express the logic. PDL suits tooling and previews, where a projection is written and tried out without touching application code.
 
 ![A diagram titled Three ways in, one definition. On the left, a group labeled In your app holds two rows: Model-bound, attributes read by reflection; and Fluent, IProjectionFor&lt;T&gt;. Below the group sits a third row: PDL, Screenplay's language, compiled on the server. Arrows from all three converge on a tall card in the middle: Projection definition, stored in the kernel. An arrow leads right to Projection engine, in the kernel, and from there down to Sink, MongoDB or SQL. A line underneath reads: Reducers are code and stay in your app; the kernel stores what they return.](./three-ways-one-definition.png)
 
@@ -134,7 +134,7 @@ Model-bound is [the default](https://cratis.io/chronicle/projections/) for most 
 
 ## Model-bound: the read model is the projection
 
-The [model-bound](https://cratis.io/chronicle/projections/model-bound/) form puts the mapping on the record. Names that match are mapped, and `[SetFrom<T>]` maps one that doesn't:
+The [model-bound](https://www.cratis.io/chronicle/projections/model-bound/) form puts the mapping on the record. Names that match are mapped, and `[SetFrom<T>]` maps one that doesn't:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
@@ -262,7 +262,7 @@ end
 </TabItem>
 </Tabs>
 
-A read model with a collection inside it uses [children](https://cratis.io/chronicle/projections/model-bound/children/). Each child has a key, events add or update the child with that key, and another event removes it:
+A read model with a collection inside it uses [children](https://www.cratis.io/chronicle/projections/model-bound/children/). Each child has a key, events add or update the child with that key, and another event removes it:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
@@ -408,7 +408,7 @@ end
 
 ## Fluent: when attributes run out
 
-A [declarative projection](https://cratis.io/chronicle/projections/declarative/children/) implements `IProjectionFor<T>` and describes the same things through a builder. Children with keys and removal look like this:
+A [declarative projection](https://www.cratis.io/chronicle/projections/declarative/children/) implements `IProjectionFor<T>` and describes the same things through a builder. Children with keys and removal look like this:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
@@ -544,11 +544,11 @@ end
 </TabItem>
 </Tabs>
 
-A [join](https://cratis.io/chronicle/projections/declarative/joins/) brings in events from another event source, with `.Join<GroupCreated>(j => j.On(m => m.GroupId))` picking up the group's own events for every read model that points at it. `FromEvery` applies a mapping for every event the projection handles, and `.FromEvery(_ => _.Set(m => m.LastUpdated).ToEventContextProperty(c => c.Occurred))` stamps a last-updated time from the event's context. A projection joins events. It can't join another read model, and a read model that needs data from two sources gets it from both sources' events.
+A [join](https://www.cratis.io/chronicle/projections/declarative/joins/) brings in events from another event source, with `.Join<GroupCreated>(j => j.On(m => m.GroupId))` picking up the group's own events for every read model that points at it. `FromEvery` applies a mapping for every event the projection handles, and `.FromEvery(_ => _.Set(m => m.LastUpdated).ToEventContextProperty(c => c.Occurred))` stamps a last-updated time from the event's context. A projection joins events. It can't join another read model, and a read model that needs data from two sources gets it from both sources' events.
 
 ## PDL: the projection as text
 
-PDL, the Projection Declaration Language, is [Screenplay's language](https://cratis.io/screenplay/projections/), and Chronicle's server [compiles and runs it](https://cratis.io/chronicle/projections/projection-declaration-language/). A PDL projection with a join and children reads like this:
+PDL, the Projection Declaration Language, is [Screenplay's language](https://www.cratis.io/screenplay/projections/), and Chronicle's server [compiles and runs it](https://www.cratis.io/chronicle/projections/projection-declaration-language/). A PDL projection with a join and children reads like this:
 
 ```pdl
 projection InvoiceDetails => InvoiceDetailsReadModel
@@ -573,13 +573,13 @@ Because the server takes text and returns a definition, a PDL projection can be 
 
 ## Keys decide what an instance is
 
-A read model instance is keyed by the event source unless you say otherwise. `UsingKey(e => ...)` in the builder, `[Key]` on a property and `key` in PDL all pick a different key from the event. A [composite key](https://cratis.io/chronicle/projections/declarative/composite-keys/) combines several values, through `UsingCompositeKey<TKey>` with a `Set(k => k.CustomerId).To(e => e.CustomerId)` for each part. A constant key such as `key "global"` in PDL puts every event into one instance, which is how a counter across everything works. Event metadata can be part of a composite key, so the time an event occurred can bucket a histogram.
+A read model instance is keyed by the event source unless you say otherwise. `UsingKey(e => ...)` in the builder, `[Key]` on a property and `key` in PDL all pick a different key from the event. A [composite key](https://www.cratis.io/chronicle/projections/declarative/composite-keys/) combines several values, through `UsingCompositeKey<TKey>` with a `Set(k => k.CustomerId).To(e => e.CustomerId)` for each part. A constant key such as `key "global"` in PDL puts every event into one instance, which is how a counter across everything works. Event metadata can be part of a composite key, so the time an event occurred can bucket a histogram.
 
 The operations inside a projection are a short list: set, add, subtract, increment, decrement, count and clear. When the logic needs more than that, it's time for a reducer.
 
 ## When attributes can't say it: reducers
 
-A [reducer](https://cratis.io/chronicle/reducers/) implements `IReducerFor<TModel>` and has one method per event, such as `OnBookBorrowed(BookBorrowed @event, Model? current, EventContext context) => current! with { IsBorrowed = true }`. It takes the event, the current state and the event's context, and returns the next state. `current` has to be nullable, because the first event for an instance arrives before there's any state.
+A [reducer](https://www.cratis.io/chronicle/reducers/) implements `IReducerFor<TModel>` and has one method per event, such as `OnBookBorrowed(BookBorrowed @event, Model? current, EventContext context) => current! with { IsBorrowed = true }`. It takes the event, the current state and the event's context, and returns the next state. `current` has to be nullable, because the first event for an instance arrives before there's any state.
 
 An account balance shows the shape, one method per event:
 
@@ -784,17 +784,17 @@ Reducers and projections build state. A reactor is the third kind of observer, a
 
 ## Reading a read model, and how fresh it is
 
-A read model is [eventually consistent](https://cratis.io/chronicle/read-models/consistency/) by default. It's materialized in the sink and catches up after the append. There are two other choices. A passive read model is computed from its events when it's read, and a read-after-write append calls `WaitForCompletion()` on the result in .NET, which adds latency for that caller only. There's no synchronous projection mode. The name "immediate projection" refers to the kernel's [on-demand component](https://cratis.io/chronicle/projections/immediate-projections/), and it doesn't make a projection run inside the append.
+A read model is [eventually consistent](https://www.cratis.io/chronicle/read-models/consistency/) by default. It's materialized in the sink and catches up after the append. There are two other choices. A passive read model is computed from its events when it's read, and a read-after-write append calls `WaitForCompletion()` on the result in .NET, which adds latency for that caller only. There's no synchronous projection mode. The name "immediate projection" refers to the kernel's [on-demand component](https://www.cratis.io/chronicle/projections/immediate-projections/), and it doesn't make a projection run inside the append.
 
 Passive read models come with a catch. They replay only the events of one event source, so a projection with joins or custom keys has to stay materialized.
 
-Chronicle's own [read API](https://cratis.io/chronicle/read-models/querying/) is keyed. It fetches by id, takes snapshots, watches, reads a whole collection or pages through a materialized one. There's no predicate query and no `IQueryable`, by design. For a search across read models, query the sink with its own driver, which is what Arc's `IMongoCollection<Author>` does in the author list.
+Chronicle's own [read API](https://www.cratis.io/chronicle/read-models/querying/) is keyed. It fetches by id, takes snapshots, watches, reads a whole collection or pages through a materialized one. There's no predicate query and no `IQueryable`, by design. For a search across read models, query the sink with its own driver, which is what Arc's `IMongoCollection<Author>` does in the author list.
 
-An Arc command can also take a Chronicle read model as a parameter, [resolved by the command's event source id](https://cratis.io/arc/backend/csharp/chronicle/read-models/). It resolves only when a projection or a reducer backs it, since `[ReadModel]` alone doesn't make it injectable, and a child type isn't a read model of its own. What arrives is a snapshot for that command. It isn't a lock, and a materialized read model may lag behind the log. A read can't enforce a rule like unique author names. That's a constraint's job, in [*Rules that hold when you write*](/rules-that-hold-when-you-write/).
+An Arc command can also take a Chronicle read model as a parameter, [resolved by the command's event source id](https://www.cratis.io/arc/backend/csharp/chronicle/read-models/). It resolves only when a projection or a reducer backs it, since `[ReadModel]` alone doesn't make it injectable, and a child type isn't a read model of its own. What arrives is a snapshot for that command. It isn't a lock, and a materialized read model may lag behind the log. A read can't enforce a rule like unique author names. That's a constraint's job, in [*Rules that hold when you write*](/rules-that-hold-when-you-write/).
 
 ## Where read models are stored: sinks
 
-A projection writes to a [sink](https://cratis.io/chronicle/sinks/). The MongoDB sink is the default, with one document per instance, in a collection named after the read model type in camelCase. The SQL sink creates a table per read model, with typed columns for scalar values and a JSON column for collections and nested objects, and an update touches only the columns that changed. The SQL sink doesn't create the indexes declared with `[Index]`. Only the MongoDB sink does.
+A projection writes to a [sink](https://www.cratis.io/chronicle/sinks/). The MongoDB sink is the default, with one document per instance, in a collection named after the read model type in camelCase. The SQL sink creates a table per read model, with typed columns for scalar values and a JSON column for collections and nested objects, and an update touches only the columns that changed. The SQL sink doesn't create the indexes declared with `[Index]`. Only the MongoDB sink does.
 
 The sink type is chosen globally with `DefaultSinkTypeId`, and it can't be set per read model from client configuration. The client hands read models back as JSON deserialized with `System.Text.Json`, so a MongoDB convention pack registered in your application doesn't affect what Chronicle returns.
 
@@ -802,15 +802,15 @@ The sink type is chosen globally with `DefaultSinkTypeId`, and it can't be set p
 
 Two separate mechanisms report that a read model changed.
 
-Chronicle's [`ReadModels.Watch<T>()`](https://cratis.io/chronicle/read-models/watching-read-models/) is a stream of changesets. `eventStore.ReadModels.Watch<Order>().Subscribe(changeset => ...)` receives the namespace, the key, the current read model and whether it was removed. It carries the current state and not the previous one, and any filtering happens on the client. Not every Chronicle client exposes the watch API yet.
+Chronicle's [`ReadModels.Watch<T>()`](https://www.cratis.io/chronicle/read-models/watching-read-models/) is a stream of changesets. `eventStore.ReadModels.Watch<Order>().Subscribe(changeset => ...)` receives the namespace, the key, the current read model and whether it was removed. It carries the current state and not the previous one, and any filtering happens on the client. Not every Chronicle client exposes the watch API yet.
 
-Arc's [observable queries](https://cratis.io/arc/backend/csharp/queries/model-bound/observable-queries/) are what a UI uses, and `collection.Observe()` in `AllAuthors` isn't a Chronicle feature at all. It watches the MongoDB collection through change streams, which need a replica set, and it sees the projection's output only because the sink wrote the documents Arc is watching. The hop from event to browser is a sink write, a MongoDB change stream and an Arc subscription, and the generated React client receives the current result and then later updates over WebSocket or Server-Sent Events. A reconnect creates a new subscription and doesn't replay the event log. When `[RemovedWith<T>]` deletes a document, an `ObserveSingle` subscriber sees `null`. Arc's `Observe()` is built on MongoDB change streams, so a live list over the SQL sink isn't part of that path. [*Live UIs*](/live-uis-with-arc/) picks up from the query onwards.
+Arc's [observable queries](https://www.cratis.io/arc/backend/csharp/queries/model-bound/observable-queries/) are what a UI uses, and `collection.Observe()` in `AllAuthors` isn't a Chronicle feature at all. It watches the MongoDB collection through change streams, which need a replica set, and it sees the projection's output only because the sink wrote the documents Arc is watching. The hop from event to browser is a sink write, a MongoDB change stream and an Arc subscription, and the generated React client receives the current result and then later updates over WebSocket or Server-Sent Events. A reconnect creates a new subscription and doesn't replay the event log. When `[RemovedWith<T>]` deletes a document, an `ObserveSingle` subscriber sees `null`. Arc's `Observe()` is built on MongoDB change streams, so a live list over the SQL sink isn't part of that path. [*Live UIs*](/live-uis-with-arc/) picks up from the query onwards.
 
 ## When the definition changes
 
-Your application [registers every projection](https://cratis.io/chronicle/projections/registration-lifecycle/) each time it connects, as a full set. The kernel compares the set with what it has and acts only where something changed. Registration retries with exponential backoff and doesn't wait for catch-up. If one definition is rejected, it fails on its own, the rest register, and the client is told which one failed.
+Your application [registers every projection](https://www.cratis.io/chronicle/projections/registration-lifecycle/) each time it connects, as a full set. The kernel compares the set with what it has and acts only where something changed. Registration retries with exponential backoff and doesn't wait for catch-up. If one definition is rejected, it fails on its own, the rest register, and the client is told which one failed.
 
-A changed definition is stored, pushed to the projection engine on every server, and any cached pipeline for it is thrown away. Then the kernel classifies the change. When it only adds event types that have no events yet, nothing needs to happen. A partial replay covers a change that only adds event types, with explicit mappings that don't overlap existing ones, where every instance belongs to a single event source. For a reducer, added event types must occur only after the events it already consumed for each affected event source. Chronicle applies just those event types to the affected event sources. Anything touching ordering, keys, joins, children, removal, existing mappings, filters, auto-mapping or subscriptions to every event gets a full replay, and so does any change where Chronicle can't prove the parts are independent. The [`definitionEvolution`](https://cratis.io/chronicle/hosting/configuration/observers/) setting decides what happens next. `Automatic`, the default, carries the work out. `PartialOnly` does the partial work and raises a recommendation when a full replay is needed. `Manual` raises a recommendation for any replay. Reducer registrations carry a fingerprint of their methods, so changing the code triggers the comparison even when the subscribed event types stay the same. A reducer implementation change needs a full replay.
+A changed definition is stored, pushed to the projection engine on every server, and any cached pipeline for it is thrown away. Then the kernel classifies the change. When it only adds event types that have no events yet, nothing needs to happen. A partial replay covers a change that only adds event types, with explicit mappings that don't overlap existing ones, where every instance belongs to a single event source. For a reducer, added event types must occur only after the events it already consumed for each affected event source. Chronicle applies just those event types to the affected event sources. Anything touching ordering, keys, joins, children, removal, existing mappings, filters, auto-mapping or subscriptions to every event gets a full replay, and so does any change where Chronicle can't prove the parts are independent. The [`definitionEvolution`](https://www.cratis.io/chronicle/hosting/configuration/observers/) setting decides what happens next. `Automatic`, the default, carries the work out. `PartialOnly` does the partial work and raises a recommendation when a full replay is needed. `Manual` raises a recommendation for any replay. Reducer registrations carry a fingerprint of their methods, so changing the code triggers the comparison even when the subscribed event types stay the same. A reducer implementation change needs a full replay.
 
 Retiring a projection happens by leaving it out. When a full-set registration no longer declares it, the kernel unsubscribes its observer in every namespace, deletes its jobs and failed partitions, and removes its definition. The sink's data stays, for you to remove when you're ready. A renamed read model shares its container name with the old one, so the kernel raises a replay recommendation for the successor.
 
@@ -820,9 +820,9 @@ Retiring a projection happens by leaving it out. When a full-set registration no
 
 ## Rebuilding from history
 
-Read models are derived and disposable. When one is wrong, fix the projection and [rebuild it](https://cratis.io/chronicle/scenarios/rebuild-a-read-model/) by replaying the sequence from the beginning, from the Workbench or with `cratis chronicle observers replay`. The CLI marks the command destructive and asks for confirmation. A replay reprocesses the event content Chronicle exposes, including applicable revisions and redaction markers, and the cost grows with the length of the history. Reducers rebuild the same way.
+Read models are derived and disposable. When one is wrong, fix the projection and [rebuild it](https://www.cratis.io/chronicle/scenarios/rebuild-a-read-model/) by replaying the sequence from the beginning, from the Workbench or with `cratis chronicle observers replay`. The CLI marks the command destructive and asks for confirmation. A replay reprocesses the event content Chronicle exposes, including applicable revisions and redaction markers, and the cost grows with the length of the history. Reducers rebuild the same way.
 
-On the MongoDB sink, a replay writes into a shadow collection of its own. When it finishes with at least one document, the new collection is renamed into place and the old one is kept under a revert name, with [`ReplayedVersionsToKeep`](https://cratis.io/chronicle/hosting/configuration/read-models/) at 1 by default. A replay that writes nothing leaves the existing collection as it was. The declared indexes are created again on the new collection. The shadow collection belongs to the MongoDB sink.
+On the MongoDB sink, a replay writes into a shadow collection of its own. When it finishes with at least one document, the new collection is renamed into place and the old one is kept under a revert name, with [`ReplayedVersionsToKeep`](https://www.cratis.io/chronicle/hosting/configuration/read-models/) at 1 by default. A replay that writes nothing leaves the existing collection as it was. The declared indexes are created again on the new collection. The shadow collection belongs to the MongoDB sink.
 
 What a replay rebuilds is derived state. It doesn't prove that an email went out, which is why side effects live in reactors and not in projections. [*Reacting to facts*](/reacting-to-facts/) covers replay handlers, replay exclusion and the clients that support them.
 

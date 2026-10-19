@@ -1,5 +1,6 @@
 ---
 title: "Chronicle Workbench: a browser UI for your event store · Script to stage, Part 16"
+seoTitle: "Chronicle Workbench: a browser UI for your event store"
 description: "Chronicle Workbench is a browser UI served by the event store itself. A screen-by-screen tour, how to trace a failed partition, and what can change data."
 date: 2026-09-30T09:16:00Z
 authors: sindre
@@ -15,7 +16,7 @@ tags:
 
 Chronicle Workbench has nothing to install. The Chronicle server serves it on port 35000, the same TLS port your clients connect to, so starting Chronicle starts the Workbench with it.
 
-[Chronicle Workbench](https://cratis.io/chronicle/workbench/) ships with Chronicle and runs locally in your browser. Once you're authorized, it shows what the running Chronicle is doing, and previews how a projection will behave for the projection features it supports.
+[Chronicle Workbench](https://www.cratis.io/chronicle/workbench/) ships with Chronicle and runs locally in your browser. Once you're authorized, it shows what the running Chronicle is doing, and previews how a projection will behave for the projection features it supports.
 
 Say an author registers without an error and never appears in the list of authors. The command succeeded, so the event should be in the log, and the interesting part is what happened after the append. Most of the Workbench's screens answer a piece of that.
 
@@ -33,19 +34,19 @@ curl --insecure --fail --retry 30 --retry-all-errors --retry-delay 1 \
 
 When the health check prints `Healthy`, open `https://localhost:35000`. The development image generates a self-signed certificate in memory, so the browser warns about it the first time. Log in as `Admin` with the password `ChangeMeNow!`. That account is built into the development images for local use, and a development image with those credentials shouldn't be reachable from a staging or production network.
 
-A production image behaves differently at exactly this point. It needs a real TLS certificate, or the server throws at startup. It also creates the administrator without a password, and the first person to open the Workbench sets one. Supply the initial password from your secret store through `Authentication:AdminUser`, or keep port 35000 unreachable until setup is done. The [production guide](https://cratis.io/chronicle/hosting/production/) covers the certificates and the rest of what that image needs.
+A production image behaves differently at exactly this point. It needs a real TLS certificate, or the server throws at startup. It also creates the administrator without a password, and the first person to open the Workbench sets one. Supply the initial password from your secret store through `Authentication:AdminUser`, or keep port 35000 unreachable until setup is done. The [production guide](https://www.cratis.io/chronicle/hosting/production/) covers the certificates and the rest of what that image needs.
 
-[Authentication](https://cratis.io/chronicle/hosting/configuration/authentication/) is on by default, with Chronicle's built-in OAuth authority unless you configure an external one. Setting `authentication.enabled` to `false` removes it altogether. There's no login and no token endpoint, and every gRPC service and HTTP endpoint answers anonymously. That suits an instance embedded in one container or process, talking to its own client over loopback and thrown away with it, and nothing reachable as a server.
+[Authentication](https://www.cratis.io/chronicle/hosting/configuration/authentication/) is on by default, with Chronicle's built-in OAuth authority unless you configure an external one. Setting `authentication.enabled` to `false` removes it altogether. There's no login and no token endpoint, and every gRPC service and HTTP endpoint answers anonymously. That suits an instance embedded in one container or process, talking to its own client over loopback and thrown away with it, and nothing reachable as a server.
 
 ## Store first, then namespace
 
 Most screens belong to one event store and one namespace, and the address carries both. A few belong to the store as a whole, among them event types, projections and the list of namespaces. User and application management sits above any single store.
 
-With Arc's Chronicle integration, each tenant maps to its own [namespace](https://cratis.io/chronicle/concepts/namespaces/). The author who's missing for tenant Acme is visible only in Acme's namespace, so pick the store and the namespace before you read anything else. An empty page in the wrong namespace looks exactly like an empty page in the right one.
+With Arc's Chronicle integration, each tenant maps to its own [namespace](https://www.cratis.io/chronicle/concepts/namespaces/). The author who's missing for tenant Acme is visible only in Acme's namespace, so pick the store and the namespace before you read anything else. An empty page in the wrong namespace looks exactly like an empty page in the right one.
 
 ## Is the event there?
 
-The Sequences page is a query editor over an [event sequence](https://cratis.io/chronicle/concepts/event-sequence/), with filters, saved queries and a detail view for each event. For the author feature, filter on `AuthorRegistered` and look for the author's ID.
+The Sequences page is a query editor over an [event sequence](https://www.cratis.io/chronicle/concepts/event-sequence/), with filters, saved queries and a detail view for each event. For the author feature, filter on `AuthorRegistered` and look for the author's ID.
 
 ![The Sequences page for the acme namespace of the Authors event store, showing six AuthorRegistered events with sequence numbers 0 to 5, their event source ids and times.](./workbench-02-event-log.png)
 
@@ -61,7 +62,7 @@ Event types is one store-level list. Selecting a type opens a side panel with it
 
 ## Who should have handled it
 
-The Observers page lists every [observer](https://cratis.io/chronicle/concepts/observers/) in the namespace, projections, reducers and reactors alike. Each row has the observer's ID, type, owner and state, the next sequence number it will look at and how many events it has handled.
+The Observers page lists every [observer](https://www.cratis.io/chronicle/concepts/observers/) in the namespace, projections, reducers and reactors alike. Each row has the observer's ID, type, owner and state, the next sequence number it will look at and how many events it has handled.
 
 ![The Observers page for the acme namespace, filtered to Authors. It lists a projection, Authors.Author, and a reactor, Authors.AuthorWelcomeMail, with their sequence, owner, next event sequence number, handled events and state. Both are Active with next sequence number 6. The projection has handled 6 events and the reactor 5.](./workbench-06-observers-list.png)
 
@@ -73,7 +74,7 @@ The observer's detail view has a connected clients section in its Summary tab, w
 
 ## Why it failed
 
-When a [partition](https://cratis.io/chronicle/concepts/observers/) fails, Chronicle stops that partition and retries it with backoff, and the observer's other partitions carry on. A partition is the events of one event source, so for the author feature it's one author, and the failed partition is labelled with the author's ID. You can go straight from "this author is missing" to the partition that holds the reason.
+When a [partition](https://www.cratis.io/chronicle/concepts/observers/) fails, Chronicle stops that partition and retries it with backoff, and the observer's other partitions carry on. A partition is the events of one event source, so for the author feature it's one author, and the failed partition is labelled with the author's ID. You can go straight from "this author is missing" to the partition that holds the reason.
 
 The Failed partitions page lists each one with its status, the partition, the number of attempts and the last attempt, and it has a detail panel per partition. Status says whether the partition has been quarantined. When the status value is missing, the page shows **Unknown**, and that's a gap in what the page knows about the partition. It doesn't mean the partition is fine.
 
@@ -107,7 +108,7 @@ The Read models page lists the read-model definitions in the namespace, their oc
 
 *From one event to the read-model instance built from it.*
 
-[Projection](https://cratis.io/chronicle/projections/) definitions live at store level, on the projections page, with an editor and a preview. The preview shows how a projection will behave for the features it supports, so a change to the `Author` projection can be tried there first, within what the preview covers. What happens when a changed definition is deployed, and why Chronicle sometimes replays and sometimes only recommends it, is in [*Jobs, scale and performance*](/chronicle-jobs-scale-and-performance/).
+[Projection](https://www.cratis.io/chronicle/projections/) definitions live at store level, on the projections page, with an editor and a preview. The preview shows how a projection will behave for the features it supports, so a change to the `Author` projection can be tried there first, within what the preview covers. What happens when a changed definition is deployed, and why Chronicle sometimes replays and sometimes only recommends it, is in [*Jobs, scale and performance*](/chronicle-jobs-scale-and-performance/).
 
 ![The Projections page with Authors.Author selected. The editor shows its declaration: projection Authors.Author to Author, from AuthorRegistered.](./workbench-15-projection.png)
 
@@ -117,7 +118,7 @@ The Read models page lists the read-model definitions in the namespace, their oc
 
 The dashboard gives key figures, a distribution of events by type and a breakdown by namespace. The Jobs page shows replays, catch-ups, migrations and failed-partition retries with their type, status and progress. The Recommendations page shows the replays Chronicle has filed for a person to decide on, each with a name, a description and when it occurred.
 
-The other store-level pages aren't on the missing author's route: read-model types, known identities, [webhooks](https://cratis.io/chronicle/webhooks/), external services, captures and a page that seeds events into a store.
+The other store-level pages aren't on the missing author's route: read-model types, known identities, [webhooks](https://www.cratis.io/chronicle/webhooks/), external services, captures and a page that seeds events into a store.
 
 Above the stores, the Servers page lists each server's address, status, CPU and memory. It's where a cluster with more than one node shows up, and it doesn't show which node runs which partition. The other system screens list users, OAuth applications and connected clients, and development builds add a page of development tools.
 
@@ -127,7 +128,7 @@ Above the stores, the Servers page lists each server's address, status, CPU and 
 
 ## Screens that change things
 
-Several screens have buttons that change the store. On Sequences you can append an event, [revise](https://cratis.io/chronicle/events/revision/) one, or [redact](https://cratis.io/chronicle/events/redaction/) a single event or every event of one event source. Observers has Replay, Clear quarantine and Remove. Jobs has Stop, Resume and Delete. On Recommendations, Perform replays the observer the recommendation names, and Ignore drops it. The seed-data page writes events, the projections page saves definitions, the system screens add and remove users and OAuth applications, and the store-level pages remove webhooks and external services and stop or delete captures.
+Several screens have buttons that change the store. On Sequences you can append an event, [revise](https://www.cratis.io/chronicle/events/revision/) one, or [redact](https://www.cratis.io/chronicle/events/redaction/) a single event or every event of one event source. Observers has Replay, Clear quarantine and Remove. Jobs has Stop, Resume and Delete. On Recommendations, Perform replays the observer the recommendation names, and Ignore drops it. The seed-data page writes events, the projections page saves definitions, the system screens add and remove users and OAuth applications, and the store-level pages remove webhooks and external services and stop or delete captures.
 
 Some of those buttons reach further than they look. Removing an observer is refused while any client is subscribed to it in any namespace. Once it goes through, it applies to every namespace and leaves the read-model data where it is, and if the observer registers again later, it replays from the start of the log. A replay rebuilds from sequence zero, which on a large store takes time. A revision keeps the original next to the correction, and redaction replaces an event's content with a marker in the same slot. [*Year two*](/four-changes-in-year-two/) goes through what each kind of correction means.
 

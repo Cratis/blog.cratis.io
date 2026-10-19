@@ -1,6 +1,7 @@
 ---
 title: "The same guard without Arc: decision reads and append conditions · Decisions that hold, Part 8"
-description: "Under Arc's read protection is a Chronicle decision read: note the log position, fold the key, append with the read as the guard. How to write that yourself in an endpoint, a controller or a worker, in the .NET and Elixir clients, and what it maps to in DCB terms."
+seoTitle: "The same guard without Arc: decision reads"
+description: "A Chronicle decision read notes the log position, folds the key and appends with that read as the guard. Write it yourself in .NET or Elixir, without Arc."
 date: 2026-11-09T09:00:00Z
 authors: sindre
 excerpt: "Under Arc's read protection is one Chronicle call you can make yourself: note where the log was, fold the state, and append only if nothing it depended on arrived since. This part writes that guard by hand, and says exactly what it is in DCB terms and what it is not."
@@ -28,11 +29,11 @@ Arc's read protection is a host for Chronicle's decision reads. For each command
 | The events `Handle()` returns are written | Staged in the unit and appended with every enrolled guard in one call |
 | A lost race comes back as a 400 with `ReadChanged` | The unit's commit fails, and `GetDecisionConflicts()` names the read model and key |
 
-Without Arc, those three are yours: take the read as a decision read, attach it to the append, and check the result before you answer the caller. Chronicle's [read protection page](https://cratis.io/chronicle/read-models/read-protection/#how-arc-uses-this-api) has the full mapping.
+Without Arc, those three are yours: take the read as a decision read, attach it to the append, and check the result before you answer the caller. Chronicle's [read protection page](https://www.cratis.io/chronicle/read-models/read-protection/#how-arc-uses-this-api) has the full mapping.
 
 ## A decision read and a guarded append
 
-The smallest form guards one append. A workshop has a fixed number of places, and a booking may only be made while one is free. [Decision reads](https://cratis.io/chronicle/read-models/decision-reads/) exist in the .NET and Elixir clients:
+The smallest form guards one append. A workshop has a fixed number of places, and a booking may only be made while one is free. [Decision reads](https://www.cratis.io/chronicle/read-models/decision-reads/) exist in the .NET and Elixir clients:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
@@ -246,7 +247,7 @@ Chronicle's ASP.NET Core middleware begins a unit of work for each request, and 
 
 When another loan for the same member lands between the read and the commit, this endpoint answers 409, and the member's log has the competing loan and not this one. A member who already holds three gets the 422 before anything is staged. The conflict check comes before `IsSuccess` because `IsSuccess` is also `false` for a constraint violation. And the 409 carries a message, not the conflicts themselves: in Chronicle 19.73 and earlier, a `DecisionConflict` holds the read model's `Type`, which System.Text.Json refuses to serialize, so `Results.Conflict(unit.GetDecisionConflicts())` fails while it writes the response, on exactly the path you wanted to report. Map conflicts to your own response shape.
 
-One mistake undoes it quietly: a plain `eventLog.Append(...)` in the same request is written immediately and bypasses the guard. A controller action uses the same calls, with `HttpContext.Features` instead of the `http` parameter; Arc's [Chronicle used directly](https://cratis.io/arc/backend/csharp/chronicle/consistency/scenarios/chronicle-direct/) page has both. In Elixir, `Chronicle.decide` commits when its function returns, so the outcome is known while you can still choose the response.
+One mistake undoes it quietly: a plain `eventLog.Append(...)` in the same request is written immediately and bypasses the guard. A controller action uses the same calls, with `HttpContext.Features` instead of the `http` parameter; Arc's [Chronicle used directly](https://www.cratis.io/arc/backend/csharp/chronicle/consistency/scenarios/chronicle-direct/) page has both. In Elixir, `Chronicle.decide` commits when its function returns, so the outcome is known while you can still choose the response.
 
 ## In DCB terms
 
@@ -264,7 +265,7 @@ Chronicle has the same two parts, a decision model and an append condition, but 
 
 What DCB can do and Chronicle cannot follows from the one-source-per-event model. One event can't be tagged with two entities, so a fact about two entities is two events in one atomic `AppendMany`, one per event source. There is no query for "events about both X and Y". Custom tags are stored and filterable, but take no part in concurrency, so anything the guard must tell apart has to be an event type or one of the four values. Two independent conditions on the same event source are merged into one wider one. A decision read refuses a projection that joins entities or is keyed by something other than the event source. And a guard covers the event log only, not other event sequences.
 
-Chronicle's own summary is the sentence I'd keep: it supports DCB-style decision models and append conditions within its event-source model. It is not a DCB event store. Einar's [DCB, but not DCB](/dcb-but-not-dcb/) argues for naming what you want from DCB instead. The [DCB in Chronicle](https://cratis.io/chronicle/dynamic-consistency-boundary/chronicle/) page has the full mapping and says when recording one fact as two events is acceptable, and [DCB examples in Chronicle](https://cratis.io/chronicle/dynamic-consistency-boundary/dcb-examples/) answers each canonical DCB example, including the course subscription with two decision reads and two events.
+Chronicle's own summary is the sentence I'd keep: it supports DCB-style decision models and append conditions within its event-source model. It is not a DCB event store. Einar's [DCB, but not DCB](/dcb-but-not-dcb/) argues for naming what you want from DCB instead. The [DCB in Chronicle](https://www.cratis.io/chronicle/dynamic-consistency-boundary/chronicle/) page has the full mapping and says when recording one fact as two events is acceptable, and [DCB examples in Chronicle](https://www.cratis.io/chronicle/dynamic-consistency-boundary/dcb-examples/) answers each canonical DCB example, including the course subscription with two decision reads and two events.
 
 ## When no model fits: tail first
 
@@ -330,8 +331,8 @@ A decision read guards less than it might seem to, and costs more than a plain r
 
 - **Only some models can be read this way.** A flat projection keyed by the event source, or an unfiltered reducer without constructor dependencies other than `ILogger<T>`. Joins, children, event-property keys, filtered reducers and other event sequences are refused with `DecisionReadRefused` and a typed reason, before anything is read.
 - **GUID keys must be written the same way everywhere.** For a model keyed by a GUID, every writer of that event source must use the lowercase canonical form. A writer in another language that formats it differently is outside the guard.
-- **It is a full fold every time.** Each attempt makes two tail reads, opens a fresh projection session and folds the key's whole history. The first read of a model type also checks its definition. Keep the keys short-lived. Chronicle's docs publish [one measurement with its environment](https://cratis.io/chronicle/dynamic-consistency-boundary/limits/#what-a-decision-read-costs).
-- **What it does not see.** A revision or redaction of an earlier event does not move the tail, so it does not conflict. Other event sequences, external data, clocks and projection definitions changed by another process are not guarded either. And a guard only protects the decisions that carry it: a writer that appends without one can still break the rule. The rule holds only when every writer that decides on it is guarded, or when it is a [constraint](https://cratis.io/chronicle/constraints/), which the kernel checks for every append.
+- **It is a full fold every time.** Each attempt makes two tail reads, opens a fresh projection session and folds the key's whole history. The first read of a model type also checks its definition. Keep the keys short-lived. Chronicle's docs publish [one measurement with its environment](https://www.cratis.io/chronicle/dynamic-consistency-boundary/limits/#what-a-decision-read-costs).
+- **What it does not see.** A revision or redaction of an earlier event does not move the tail, so it does not conflict. Other event sequences, external data, clocks and projection definitions changed by another process are not guarded either. And a guard only protects the decisions that carry it: a writer that appends without one can still break the rule. The rule holds only when every writer that decides on it is guarded, or when it is a [constraint](https://www.cratis.io/chronicle/constraints/), which the kernel checks for every append.
 
 ## Where this goes next
 
@@ -342,11 +343,11 @@ Everything here is opt-in, append by append. That is the trade: code that calls 
 - **The read and the append are in different places in a request:** `IDecisionReads.Get<T>` in the request's unit of work, `Transactional.Append`, and `IUnitOfWorkCompletionFeature.CommitAsync()` before you respond.
 - **In Elixir:** `DecisionReads.get` inside `Chronicle.decide`, and match on `{:error, %DecisionConflict{}}`.
 - **No read model fits:** note the tail, then read, then append with a `ConcurrencyScope` built from that tail.
-- **A value may be claimed once:** a [constraint](https://cratis.io/chronicle/constraints/), not a decision read.
+- **A value may be claimed once:** a [constraint](https://www.cratis.io/chronicle/constraints/), not a decision read.
 - **You need every read refused unless it is guarded:** `EnforceReadProtection()` on the unit of work (Part 10), or an Arc command with read protection On.
 :::
 
-Chronicle's [decision reads](https://cratis.io/chronicle/read-models/decision-reads/) page covers the unit-of-work lifecycle, stream-scoped reads and admitted shapes in full. [Choosing how a rule holds](https://cratis.io/chronicle/dynamic-consistency-boundary/choosing/) compares decision reads with constraints and scopes, and Arc's [pitfalls](https://cratis.io/arc/backend/csharp/chronicle/consistency/pitfalls/#results-you-must-check-when-you-use-chronicle-directly) page lists the results to check when you call Chronicle directly.
+Chronicle's [decision reads](https://www.cratis.io/chronicle/read-models/decision-reads/) page covers the unit-of-work lifecycle, stream-scoped reads and admitted shapes in full. [Choosing how a rule holds](https://www.cratis.io/chronicle/dynamic-consistency-boundary/choosing/) compares decision reads with constraints and scopes, and Arc's [pitfalls](https://www.cratis.io/arc/backend/csharp/chronicle/consistency/pitfalls/#results-you-must-check-when-you-use-chronicle-directly) page lists the results to check when you call Chronicle directly.
 
 *The .NET examples need Cratis.Chronicle and Cratis.Chronicle.AspNetCore 19.68.0 or later (decision reads themselves arrived in 19.9.0; the scope behaviour described here in 19.68.0), and the Elixir example needs the Elixir client 3.13.0 or later. Decision reads need a Chronicle server of 19.0.0 or later; on servers older than 19.40.1, an append renumbered after a duplicate-sequence collision is not checked again.*
 

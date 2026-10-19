@@ -1,6 +1,6 @@
 ---
 title: "One rule, two entities, one append · Decisions that hold, Part 3"
-description: "A rule over two entities in Arc: two read models in one validator, each picked by its own key, one event for each entity in one atomic append, and what happens when either side changes first."
+description: "A rule over two entities in Arc: two read models in one validator, one event per entity in one atomic append, and nothing written if either changed."
 date: 2026-10-26T09:00:00Z
 authors: sindre
 excerpt: "A member may hold three loans, and a book has one copy left. Two read models in one validator, one fact for each entity, one atomic append, and if either side changed after the read, nothing is written."
@@ -121,7 +121,7 @@ Events that don't touch either guard leave the command alone. Another member's b
 
 They are also two different facts. "A copy left the shelf" belongs in the book's history, and "the member took a loan" belongs in the member's. Returning a book appends `BookReturned` to the book and `LoanReturned` to the member, the same way.
 
-If you know the [dynamic consistency boundary](https://dcb.events/examples/course-subscriptions/), this is where Chronicle differs from it. In DCB, one event can carry a tag for each entity it concerns, and one query reads both. In Chronicle every event belongs to exactly one event source, so a fact about two entities is two events in one atomic append, and each read model reads its own entity's events. Chronicle's [DCB page](https://cratis.io/chronicle/dynamic-consistency-boundary/chronicle/#when-one-fact-becomes-two-events) says when two events for one fact are the right answer, and when to look for a form with one event instead.
+If you know the [dynamic consistency boundary](https://dcb.events/examples/course-subscriptions/), this is where Chronicle differs from it. In DCB, one event can carry a tag for each entity it concerns, and one query reads both. In Chronicle every event belongs to exactly one event source, so a fact about two entities is two events in one atomic append, and each read model reads its own entity's events. Chronicle's [DCB page](https://www.cratis.io/chronicle/dynamic-consistency-boundary/chronicle/#when-one-fact-becomes-two-events) says when two events for one fact are the right answer, and when to look for a form with one event instead.
 
 ## Choosing the key
 
@@ -134,7 +134,7 @@ A read-model parameter reads the instance whose `Id` equals a key taken from the
 
 `BookStock` has an `Isbn Id` and `MemberLoans` a `MemberId Id`, and `BorrowBook` has exactly one property of each type, so under On the second rule would find both keys on its own. I still write `[LookUpBy]`, for two reasons. It works the same in every mode, while under Off and Measure a parameter without it reads the command's event source id. And it survives the next property: add a `MemberId ReservedFor` to the command, and the type rule no longer has a single answer. A command with two properties of the model's `Id` type and no `[LookUpBy]` fails with `AmbiguousReadModelLookup`, a `500` whose message names both properties and asks you to select one with `[LookUpBy]`.
 
-`[LookUpBy]` goes on the parameter, also on a validator constructor, and names a property of the command. The property's type doesn't have to match the model's `Id` type: Arc converts the value to the key, so an `Isbn` property can select a model with an `EventSourceId Id`. When the second key isn't on the command at all, because it's computed or looked up, read it with `IDecisionReads.Get` in `Provide()`. That read is guarded in the same way. The [reads page](https://cratis.io/arc/backend/csharp/chronicle/consistency/reads/#choose-the-key-with-lookupby) has the conversion rules.
+`[LookUpBy]` goes on the parameter, also on a validator constructor, and names a property of the command. The property's type doesn't have to match the model's `Id` type: Arc converts the value to the key, so an `Isbn` property can select a model with an `EventSourceId Id`. When the second key isn't on the command at all, because it's computed or looked up, read it with `IDecisionReads.Get` in `Provide()`. That read is guarded in the same way. The [reads page](https://www.cratis.io/arc/backend/csharp/chronicle/consistency/reads/#choose-the-key-with-lookupby) has the conversion rules.
 
 ## A course and a student
 
@@ -228,7 +228,7 @@ public record MemberLoans(
 
 As a query model this is fine. As a decision it can't be guarded. A guard covers the events of one event source, and this model's events live on the books' event sources, one per book. A borrow of any other book by the same member changes the count, and there is no key a guard could watch to see it.
 
-Arc says so twice. The build reports [ARCCHR0024](https://cratis.io/arc/backend/csharp/chronicle/code-analysis/arcchr0024/) as a warning on the validator parameter, and under On the command is refused with a `500` and writes nothing. In Development the response carries this message; elsewhere the client gets a generic error and the message goes to the server log:
+Arc says so twice. The build reports [ARCCHR0024](https://www.cratis.io/arc/backend/csharp/chronicle/code-analysis/arcchr0024/) as a warning on the validator parameter, and under On the command is refused with a `500` and writes nothing. In Development the response carries this message; elsewhere the client gets a generic error and the message goes to the server log:
 
 ```text
 BorrowBook reads 'loans' (MemberLoans) keyed by an event property, so read protection cannot guard it. If it is only context, mark it [Unprotected("why")]. Otherwise append a fact to the entity it is keyed by, or use a constraint.
@@ -254,7 +254,7 @@ The rest of the limits from the previous part apply to each read here: a `Revise
 - **The set of keys can grow:** move the count onto one key that receives every fact, or the new keys are not guarded.
 :::
 
-The [two-entities scenario](https://cratis.io/arc/backend/csharp/chronicle/consistency/scenarios/two-entities/) in the Arc docs has both examples, and [refusals](https://cratis.io/arc/backend/csharp/chronicle/consistency/refusals/) lists the 500s with their fixes. A rule over one account and one month, read from a single stream, is the next shape.
+The [two-entities scenario](https://www.cratis.io/arc/backend/csharp/chronicle/consistency/scenarios/two-entities/) in the Arc docs has both examples, and [refusals](https://www.cratis.io/arc/backend/csharp/chronicle/consistency/refusals/) lists the 500s with their fixes. A rule over one account and one month, read from a single stream, is the next shape.
 
 *The examples need Arc 22.108.0 or later and Chronicle 19.68.0 or later.*
 

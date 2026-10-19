@@ -1,5 +1,6 @@
 ---
 title: "Testing event-sourced apps with Arc and Chronicle · Script to stage, Part 11"
+seoTitle: "Testing event-sourced apps with Arc and Chronicle"
 description: "Test event-sourced .NET apps with Arc and Chronicle: in-process scenarios, how a green spec can prove nothing, and the few tests that need a real server."
 date: 2026-09-30T09:11:00Z
 authors: sindre
@@ -24,7 +25,7 @@ That's one of a handful of ways a spec in an event-sourced application can go gr
 
 ## Start with the function
 
-The decision in `RegisterAuthor` is a method. Call `Handle()`, compare the event it returns, and the rule is tested without starting a server or faking an event log. [Arc's testing guide](https://cratis.io/arc/backend/csharp/testing/) makes that direct call the first choice for a deterministic decision:
+The decision in `RegisterAuthor` is a method. Call `Handle()`, compare the event it returns, and the rule is tested without starting a server or faking an event log. [Arc's testing guide](https://www.cratis.io/arc/backend/csharp/testing/) makes that direct call the first choice for a deterministic decision:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
@@ -105,9 +106,9 @@ Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
 </TabItem>
 </Tabs>
 
-The C# spec is written with [Cratis Specifications](https://cratis.io/specifications/), where `Because()` is the "when" and each `[Fact]` is a "then". It needs no container and no fake.
+The C# spec is written with [Cratis Specifications](https://www.cratis.io/specifications/), where `Because()` is the "when" and each `[Fact]` is a "then". It needs no container and no fake.
 
-An event is a record, so expecting one is an equality check on a value. The event doesn't even repeat its own event source ID, because Chronicle keeps that in the event context, so the value `Handle()` returns is all there is to compare. The [event-sourced commands lesson](https://cratis.io/arc/backend/csharp/testing/event-sourced-commands/) puts every branch of a decision in direct specs like this one.
+An event is a record, so expecting one is an equality check on a value. The event doesn't even repeat its own event source ID, because Chronicle keeps that in the event context, so the value `Handle()` returns is all there is to compare. The [event-sourced commands lesson](https://www.cratis.io/arc/backend/csharp/testing/event-sourced-commands/) puts every branch of a decision in direct specs like this one.
 
 Arc also splits getting data from deciding with it. `Provide()` fetches what a command needs, and `Handle()` decides with what it was given, so `Handle` can be a pure function of its arguments. Arc's loan example gets a credit score in `Provide()` and rejects an applicant with no credit history, as in [*Validation all the way down*](/validation-all-the-way-down/). In each language below, the direct spec supplies the score to `Handle()` or `handle()` and doesn't exercise that rejection:
 
@@ -242,7 +243,7 @@ Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
 </TabItem>
 </Tabs>
 
-The [command decisions lesson](https://cratis.io/arc/backend/csharp/testing/command-decisions/) tests one command both ways, once directly and once through the pipeline. A `Handle()` that calls a service or reads the clock is still testable, but it isn't a pure function just because it lives on a command.
+The [command decisions lesson](https://www.cratis.io/arc/backend/csharp/testing/command-decisions/) tests one command both ways, once directly and once through the pipeline. A `Handle()` that calls a service or reads the clock is still testable, but it isn't a pure function just because it lives on a command.
 
 Reducers work the same way. A reducer takes the event, the current state and the event context, and returns the next state. In .NET, the [Processing sample](https://github.com/Cratis/Samples/tree/3c1ee46a4b8e86bac9623fcf9faace208a9551d9/Chronicle/Processing) tests its progress reducer by folding four events by hand, trimmed here to the action:
 
@@ -316,13 +317,13 @@ result = WorkItemProgressReducer.reduce(%ProgressRecorded{points: 3}, result, co
 </TabItem>
 </Tabs>
 
-In .NET, the same sample calls its reactor directly. `new CompletionSummaryReactor().Completed(new WorkItemCompleted(8, 8))` returns a `CompletionSummarized` event, with no event log and no command pipeline injected into the reactor. Chronicle's [reactor testing guide](https://cratis.io/chronicle/testing/reactors/) makes that split the default: the logic goes into a function that returns its side effect as a value, and the framework contract gets its own scenario. The default holds for as long as your reactors return their side effects instead of performing them.
+In .NET, the same sample calls its reactor directly. `new CompletionSummaryReactor().Completed(new WorkItemCompleted(8, 8))` returns a `CompletionSummarized` event, with no event log and no command pipeline injected into the reactor. Chronicle's [reactor testing guide](https://www.cratis.io/chronicle/testing/reactors/) makes that split the default: the logic goes into a function that returns its side effect as a value, and the framework contract gets its own scenario. The default holds for as long as your reactors return their side effects instead of performing them.
 
 Projections are the exception. A projection is attributes or a fluent definition, and there's no method to call. The cheapest honest test of a projection runs the real projection engine, in memory.
 
 ## One process, the real pipeline
 
-A [spec](https://cratis.io/arc/backend/csharp/testing/chronicle/) for registering an author looks like this. Here `RegisterAuthor` takes the author's id and name:
+A [spec](https://www.cratis.io/arc/backend/csharp/testing/chronicle/) for registering an author looks like this. Here `RegisterAuthor` takes the author's id and name:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
@@ -425,15 +426,15 @@ Arc for Elixir doesn't exist; use the Chronicle Elixir client directly.
 </TabItem>
 </Tabs>
 
-It runs Arc's [command pipeline](https://cratis.io/arc/backend/csharp/commands/command-pipeline/) and an in-memory Chronicle event log in one process, without a Chronicle server, and checks the decision and the recorded fact. HTTP routing, the auth middleware, a real read-model store and redelivery need a different kind of test. In .NET, [Specifications](https://cratis.io/specifications/) supplies the given/when/then base on xUnit or NUnit. Synopsis can turn recognized specification shapes into navigable HTML documentation, though it doesn't run them.
+It runs Arc's [command pipeline](https://www.cratis.io/arc/backend/csharp/commands/command-pipeline/) and an in-memory Chronicle event log in one process, without a Chronicle server, and checks the decision and the recorded fact. HTTP routing, the auth middleware, a real read-model store and redelivery need a different kind of test. In .NET, [Specifications](https://www.cratis.io/specifications/) supplies the given/when/then base on xUnit or NUnit. Synopsis can turn recognized specification shapes into navigable HTML documentation, though it doesn't run them.
 
-In .NET, [`CommandScenario<TCommand>`](https://cratis.io/arc/backend/csharp/testing/command-scenario/) runs authorization, the validators, `Provide()` and `Handle()`, and builds the command result, which is the path a request takes once routing has found the command. [`QueryScenario<TReadModel>`](https://cratis.io/arc/backend/csharp/testing/query-scenario/) does the same for a static query on a read model. With `Cratis.Arc.Chronicle.Testing` referenced, a command scenario gains `Given`, `EventLog` and `AppendedEvents`, and that's where `ShouldHaveAppendedEvent` comes from. Arc for Kotlin and Java have a `CommandScenario` and a `QueryScenario` in `io.cratis:arc-testing`, and the source preview of Arc for TypeScript has a `CommandScenario`.
+In .NET, [`CommandScenario<TCommand>`](https://www.cratis.io/arc/backend/csharp/testing/command-scenario/) runs authorization, the validators, `Provide()` and `Handle()`, and builds the command result, which is the path a request takes once routing has found the command. [`QueryScenario<TReadModel>`](https://www.cratis.io/arc/backend/csharp/testing/query-scenario/) does the same for a static query on a read model. With `Cratis.Arc.Chronicle.Testing` referenced, a command scenario gains `Given`, `EventLog` and `AppendedEvents`, and that's where `ShouldHaveAppendedEvent` comes from. Arc for Kotlin and Java have a `CommandScenario` and a `QueryScenario` in `io.cratis:arc-testing`, and the source preview of Arc for TypeScript has a `CommandScenario`.
 
 A direct spec and a scenario spec answer different questions about the same command. The direct one says the decision is right for the inputs you chose. The scenario says the command still reaches that decision when authorization, validation and `Provide()` run in front of it, and that the event it returned was appended.
 
 ## Chronicle's own scenarios
 
-In .NET, Chronicle's [testing package](https://cratis.io/chronicle/testing/), `Cratis.Chronicle.Testing`, runs the real projection and reducer engines, constraint evaluation and reactor dispatch over in-memory storage. Three scenarios divide the work:
+In .NET, Chronicle's [testing package](https://www.cratis.io/chronicle/testing/), `Cratis.Chronicle.Testing`, runs the real projection and reducer engines, constraint evaluation and reactor dispatch over in-memory storage. Three scenarios divide the work:
 
 | Scenario | Runs | Doesn't reach |
 |---|---|---|
@@ -441,7 +442,7 @@ In .NET, Chronicle's [testing package](https://cratis.io/chronicle/testing/), `C
 | `ReadModelScenario<T>` | A projection or reducer building state from events | Sink writes, MongoDB queries, change streams |
 | `ReactorScenario<T>` | Dispatch, dependency injection, read-model materialization, routing of side effects | Observer registration, kernel dispatch, redelivery |
 
-In .NET, the `Author` read model from the hub declares its projection with `[FromEvent<AuthorRegistered>]`, and a [`ReadModelScenario`](https://cratis.io/chronicle/testing/read-models/scenario/) picks up that model-bound form on its own, as it does a fluent projection or a reducer:
+In .NET, the `Author` read model from the hub declares its projection with `[FromEvent<AuthorRegistered>]`, and a [`ReadModelScenario`](https://www.cratis.io/chronicle/testing/read-models/scenario/) picks up that model-bound form on its own, as it does a fluent projection or a reducer:
 
 <Tabs syncKey="language">
 <TabItem label="C#">
@@ -730,7 +731,7 @@ Two more are worth knowing. `Validate(command)` runs the command filters, and au
 
 ## Examples in the model
 
-A `.play` slice in [Screenplay](https://cratis.io/screenplay/specifications/) can carry given/when/then examples of its own, written against the model, with `for` naming the event source:
+A `.play` slice in [Screenplay](https://www.cratis.io/screenplay/specifications/) can carry given/when/then examples of its own, written against the model, with `for` naming the event source:
 
 ```screenplay
 specification RegisteringADraftInvoice
@@ -751,7 +752,7 @@ A `then` can also name a read model, a query result, an error or a denial. The e
 
 Some behavior only exists with a real host. Routing, authentication middleware, real storage writes, change streams, redelivery and tenant routing from AuthProxy's headers all sit outside one process with in-memory storage.
 
-For .NET, `Cratis.Chronicle.XUnit.Integration` has two fixtures. `ChronicleInProcessFixture` runs the kernel inside the test process with MongoDB in a container through Testcontainers, and `ChronicleOutOfProcessFixture` runs the kernel in a container of its own. Both need Docker. A real kernel processes asynchronously, so [`IEventAppendCollection`](https://cratis.io/chronicle/testing/event-append-collection/) collects appends as they happen, and `WaitForCount` waits for the number you expect.
+For .NET, `Cratis.Chronicle.XUnit.Integration` has two fixtures. `ChronicleInProcessFixture` runs the kernel inside the test process with MongoDB in a container through Testcontainers, and `ChronicleOutOfProcessFixture` runs the kernel in a container of its own. Both need Docker. A real kernel processes asynchronously, so [`IEventAppendCollection`](https://www.cratis.io/chronicle/testing/event-append-collection/) collects appends as they happen, and `WaitForCount` waits for the number you expect.
 
 Arc has no packaged test host. A hosted spec is an HTTP client pointed at a running application, next to a Chronicle fixture that a project defines as an xUnit collection. The [Library sample](https://github.com/Cratis/Samples/tree/3c1ee46a4b8e86bac9623fcf9faace208a9551d9/Library) does this for the author feature. Its `and_there_already_exists_one_with_same_name` spec appends an existing author straight to the event log, posts a `RegisterAuthor` with the same name to `/api/authors/register`, and asserts that the command failed. It expects the application to be running on `localhost:8080`.
 
