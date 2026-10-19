@@ -4,7 +4,7 @@ import sitemap from '@astrojs/sitemap';
 import starlight from '@astrojs/starlight';
 import starlightBlog from 'starlight-blog';
 import { authors } from './src/data/authors.mjs';
-import { readPublishedPosts } from './src/data/published-posts.mjs';
+import { readPublishedPosts, readScheduledSlugs } from './src/data/published-posts.mjs';
 import { rootBlogUrls } from './src/integrations/root-blog-urls.ts';
 
 // starlight-blog wants only the fields it knows about; `signature` is used by
@@ -17,6 +17,7 @@ const blogAuthors = Object.fromEntries(
 // so they stay out of the sitemap too. Slugs mirror starlight-blog's tag URLs.
 const minimumPostsPerIndexedTag = 3;
 const publishedPosts = readPublishedPosts();
+const scheduledUrls = new Set(readScheduledSlugs().map((slug) => `/${slug}/`));
 const postCountByTag = new Map();
 for (const { tags } of publishedPosts) {
     for (const tag of tags) postCountByTag.set(tag, (postCountByTag.get(tag) ?? 0) + 1);
@@ -46,7 +47,10 @@ export default defineConfig({
         // rewrite the relocated URLs (posts move from /blog/<slug> to
         // /<slug> at build time, see src/integrations/root-blog-urls.ts).
         sitemap({
-            filter: (page) => !thinTagUrls.has(new URL(page).pathname),
+            filter: (page) => {
+                const { pathname } = new URL(page);
+                return !thinTagUrls.has(pathname) && !scheduledUrls.has(pathname);
+            },
             serialize(item) {
                 const url = item.url.replace('/blog/', '/');
                 const slug = new URL(url).pathname.replaceAll('/', '');
