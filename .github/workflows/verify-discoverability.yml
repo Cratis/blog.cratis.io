@@ -1,0 +1,29 @@
+name: Verify Discoverability
+
+on:
+  pull_request:
+    paths:
+      - src/**
+      - public/**
+      - astro.config.mjs
+      - package.json
+      - package-lock.json
+      - .github/workflows/verify-discoverability.yml
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  discoverability:
+    uses: Cratis/Workflows/.github/workflows/verify-discoverability.yml@main
+    with:
+      site-path: dist
+      base-url: https://blog.cratis.io
+      build-command: npm ci && npm run build
+      ignore: 404.html
+      fail-on: none
+      runs-on: ${{ vars.RUNNER_GATE || 'ubuntu-latest' }}
