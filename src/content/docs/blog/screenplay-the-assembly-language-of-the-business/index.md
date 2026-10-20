@@ -116,13 +116,13 @@ code --install-extension cratis.screenplay
 
 The text is still the source of truth. Run **Show Source** from the command palette and you get the `.play` file side by side with the board, with highlighting, completion, hover and diagnostics, and the board redraws as you type.
 
-![VS Code with the Library sample's library.play open twice side by side. On the left, the event model board shows the Catalog feature: AddBook, BookCatalog and OpeningHours slices with persona rows for Librarian and Member, commands, read models, events, and Given/When/Then specifications below. On the right, the Screenplay source of the AddBook slice with its command, validation, produces block, event, constraint, screen and specification.](./vscode-board-and-source.png)
+![VS Code with the Library sample's library.play open twice side by side. On the left, the event model board shows the Catalog feature: AddBook, BookCatalog and OpeningHours slices with persona rows for Librarian and Member, commands, read models, events, and Given/When/Then specifications below. On the right, the Screenplay source of the AddBook slice with its command, validation, produces block, event, constraint, screen and specification.](./vscode-board-and-source.webp)
 
 *The Library sample in VS Code: the board on the left, the Screenplay it's drawn from on the right.*
 
 Zoom out and you get the whole application in one picture. A picture of the system is something I've wanted for every system I've built, and this one is drawn from the very file the rest of the tooling reads.
 
-![The full Library sample on the event model board in VS Code, zoomed out: the Lending module with Catalog, Members and Loans features, eight slices including a WelcomeNewMembers automation, and the specifications for each slice below them.](./vscode-board-overview.png)
+![The full Library sample on the event model board in VS Code, zoomed out: the Lending module with Catalog, Members and Loans features, eight slices including a WelcomeNewMembers automation, and the specifications for each slice below them.](./vscode-board-overview.webp)
 
 ## Your AI assistant gets a whiteboard
 
@@ -143,7 +143,7 @@ to the existing Lending module, and show it on the board. Do not propose it yet.
 
 The board then shows the application as the sketch would leave it, with a **Current** and **Proposed** switch in the toolbar. Whatever both share stays in place, so the only thing that moves is the difference.
 
-![The Screenplay MCP board toggling between Current and Proposed for the Library sample. In Proposed, a new Reservations feature appears to the right of Loans with a ReserveBook command producing BookReserved, and a ReservationQueue slice building a Reservation read model from it.](./mcp-sketch-toggle.gif)
+![The Screenplay MCP board toggling between Current and Proposed for the Library sample. In Proposed, a new Reservations feature appears to the right of Loans with a ReserveBook command producing BookReserved, and a ReservationQueue slice building a Reservation read model from it.](./mcp-sketch-toggle.webp)
 
 *A sketch of a Reservations feature drawn over the Library sample. Nothing is written to disk.*
 
