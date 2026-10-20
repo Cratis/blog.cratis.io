@@ -45,6 +45,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       pages: write
       id-token: write
     environment:
@@ -54,3 +55,13 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+      - name: Checkout IndexNow script
+        continue-on-error: true
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Notify IndexNow
+        continue-on-error: true
+        run: node .github/scripts/indexnow.mjs blog.cratis.io f668506e8e968b38483a66c0c9b3e8d0
