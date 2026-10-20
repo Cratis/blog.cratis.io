@@ -60,6 +60,8 @@ The matrix deliberately does not crown a winner. Instead, ask fit questions:
 - **Is your organization polyglot?** Check which client languages are first-party and what each client actually supports. Client existence is not client parity — for any tool, including ours.
 - **Who explains the system at 3 a.m.?** Compare the operational surfaces: what does each tool show you about subscription progress, failed projections, and replay?
 
+For a concrete next step with Chronicle, [build the full-stack .NET application](/event-sourcing-in-dotnet-with-chronicle/); for the pieces around the event store, start with [the ecosystem tour](/the-cratis-ecosystem-at-a-glance/).
+
 None of these questions has a universal answer. A team that answers "PostgreSQL shop, .NET only, minimal infrastructure" is describing Marten's sweet spot. A team that wants a dedicated event database under a stack they assemble themselves is describing KurrentDB's. A team that wants the store, the CQRS layer, and the frontend contract designed together is describing Chronicle's.
 
 ## Verify us

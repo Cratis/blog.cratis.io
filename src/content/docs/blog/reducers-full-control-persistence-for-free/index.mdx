@@ -22,6 +22,8 @@ A [reducer](https://www.cratis.io/chronicle/reducers/) is a method per event. Ch
 
 Let's face it, Chronicle gives you more than one way to turn events into a read model, and that can be a bit much when you're new to it. There are [projections](https://www.cratis.io/chronicle/projections/), written as attributes on the read model, as a fluent builder or as text. And there are reducers. The projections are the declarative side: you describe how events map onto the model, and the engine does the rest.
 
+If you want to see a declarative projection in a working application first, [the .NET walkthrough](/event-sourcing-in-dotnet-with-chronicle/) builds one from an event log to a live UI.
+
 The reducer is the imperative side. I think of it as the odd one out, and, to be honest, as the one that makes the other two easier to understand, because it shows you what the declarative ones are doing on your behalf.
 
 ## Between a projection and a reactor
@@ -33,6 +35,8 @@ The easiest way to place a reducer is to put it next to its two neighbors. A pro
 *Who writes what. The reducer takes the code from the reactor and the storage from the projection.*
 
 What I like about this is where the line falls. With a reactor you get all the freedom, and with that freedom comes the job of making it safe to run more than once, because Chronicle will run it more than once. With a projection you get the least code, but you're limited to what the attributes and the builder can say. The reducer gives you code for the part where you want control, which is the shape and the content of the read model, and takes the persistence off your hands. It's a nice cross between the two, really.
+
+The examples below show the same fold in several languages. [How Chronicle’s gRPC contract works](/event-sourcing-in-any-language/) explains the shared server boundary behind those clients.
 
 ## One method per event
 

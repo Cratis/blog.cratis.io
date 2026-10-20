@@ -13,6 +13,8 @@ tags:
 
 Event sourcing has a reputation for heavy setup: a store, a bus, projections infrastructure, and a day of wiring before the first event lands. This post takes the shortest honest path instead: one Docker container, one scaffolded project, and enough C# and React to append events, project them into a read model, and see the result in a browser — backend and frontend, from one template.
 
+If you are still deciding on an event store, [the .NET stack comparison](/choosing-an-event-sourcing-stack-for-dotnet/) explains the trade-offs. [The ecosystem tour](/the-cratis-ecosystem-at-a-glance/) places Chronicle, Arc, and Components in the wider stack.
+
 The versions are pinned so you can reproduce the run exactly:
 
 | Piece | Version |

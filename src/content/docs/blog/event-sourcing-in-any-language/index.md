@@ -12,6 +12,8 @@ tags:
 
 Event sourcing libraries are usually tied to one language: the store, the client, and the programming model ship as a single package for a single ecosystem. [Chronicle](https://www.cratis.io/chronicle/) takes a different shape. It is an event-sourcing database and processing runtime with a first-class client SDK for .NET and additional TypeScript, Kotlin/Java (JVM), and Elixir clients — and the boundary between the server and every one of those clients is a wire contract, not a language binding.
 
+If you want to use a shipped client before exploring the wire contract, [the .NET walkthrough](/event-sourcing-in-dotnet-with-chronicle/) builds a complete application. For how client languages factor into a store evaluation, see [the .NET stack comparison](/choosing-an-event-sourcing-stack-for-dotnet/).
+
 This post walks through how that contract works: what the server exposes, how the shipped clients are layered on top of it, and what a new client for another language actually has to implement.
 
 ## One kernel, one wire contract
