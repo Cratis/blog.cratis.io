@@ -114,4 +114,3 @@ async function keepThinTagPagesOutOfTheIndex(starlightRoute: App.Locals['starlig
 
 // Matches starlight-blog's tag URLs for the lowercase, hyphenated tags in use.
 const tagSlug = (tag: string) => tag.trim().toLowerCase().replace(/\s+/g, '-');
-

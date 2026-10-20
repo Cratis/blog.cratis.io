@@ -4,12 +4,10 @@ import { docsLoader } from '@astrojs/starlight/loaders';
 type ScheduledData = { date?: unknown; draft?: boolean; scheduled?: boolean };
 
 /**
- * Starlight's docs loader that marks a post dated after the build time as a
- * draft (`scheduled`). starlight-blog leaves drafts out of listings, tags,
- * authors and RSS, and Starlight builds no page for them; src/pages/[slug].astro
- * builds the page of a scheduled post at its final URL instead, as `noindex`,
- * so links from published posts to later parts keep working. The first build
- * on or after its date (the Pages workflow rebuilds daily) publishes it.
+ * Starlight's docs loader that treats a post dated after the build time as a
+ * draft. Drafts are left out of pages, listings, tags, RSS and the sitemap in
+ * production builds, so a post appears on the first build on or after its date
+ * (the Pages workflow rebuilds daily for this).
  *
  * This runs after the wrapped loader on every load, because Astro keeps
  * unchanged entries from its content cache: a post marked as scheduled in an
