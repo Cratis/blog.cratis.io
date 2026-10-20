@@ -50,9 +50,8 @@ function retitleLanding(starlightRoute: App.Locals['starlightRoute']) {
     }
 }
 
-// starlight-blog ignores a post's `cover:` frontmatter for social metadata, so
-// for posts that have one, swap the favicon defaults for the cover. Pages
-// without a (local) cover keep the defaults untouched.
+// Prefer a post's local cover; otherwise use its build-time branded card.
+// Landing, tag and other non-post pages keep the site-wide defaults.
 async function useCoverAsSocialPreview(
     context: Parameters<Parameters<typeof defineRouteMiddleware>[0]>[0],
     starlightRoute: App.Locals['starlightRoute'],
@@ -60,22 +59,29 @@ async function useCoverAsSocialPreview(
     const cover = (starlightRoute.entry.data as { cover?: any }).cover;
     // A single `image`, or a `light`/`dark` pair (light suits a preview card).
     const source = cover?.image ?? cover?.light;
-    if (!source || typeof source === 'string') return;
+    const generated = !cover && /^blog\/[^/]+$/.test(starlightRoute.id) && 'date' in starlightRoute.entry.data;
+    if (!generated && (!source || typeof source === 'string')) return;
 
-    const image = await getImage({ src: source, width: previewWidth, height: previewHeight, format: 'png' });
-    const url = new URL(image.src, context.site).href;
+    const src = generated
+        ? `/og/${starlightRoute.id.slice('blog/'.length)}.png`
+        : (await getImage({ src: source, width: previewWidth, height: previewHeight, format: 'png' })).src;
+    const url = new URL(src, context.site).href;
+    const alt = generated
+        ? ((starlightRoute.entry.data as { seoTitle?: string }).seoTitle ?? starlightRoute.entry.data.title)
+        : cover.alt;
+    const height = generated ? 630 : previewHeight;
 
     starlightRoute.head = [
         ...starlightRoute.head.filter(
             ({ tag, attrs }) => !(tag === 'meta' && socialImageTags.has(String(attrs?.property ?? attrs?.name))),
         ),
         { tag: 'meta', attrs: { property: 'og:image', content: url } },
-        { tag: 'meta', attrs: { property: 'og:image:alt', content: cover.alt } },
+        { tag: 'meta', attrs: { property: 'og:image:alt', content: alt } },
         { tag: 'meta', attrs: { property: 'og:image:width', content: String(previewWidth) } },
-        { tag: 'meta', attrs: { property: 'og:image:height', content: String(previewHeight) } },
+        { tag: 'meta', attrs: { property: 'og:image:height', content: String(height) } },
         { tag: 'meta', attrs: { name: 'twitter:card', content: 'summary_large_image' } },
         { tag: 'meta', attrs: { name: 'twitter:image', content: url } },
-        { tag: 'meta', attrs: { name: 'twitter:image:alt', content: cover.alt } },
+        { tag: 'meta', attrs: { name: 'twitter:image:alt', content: alt } },
     ];
 }
 
