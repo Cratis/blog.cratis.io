@@ -6,7 +6,7 @@ applyTo: "**/*"
 
 1. Write posts with the `.agents/skills/write-blog-post` skill; review drafts with `.agents/skills/review-blog-post`. For a revision, start from the published post and the author's feedback, not an intervening AI rewrite.
 2. One post per folder in `src/content/docs/blog/<slug>/index.md`, frontmatter `authors` referencing keys in `src/data/authors.mjs` (`einar`, `sindre`, `cratis-team`, or a resolved GitHub author — see below). Posts carry the author's personal voice; the byline and signature block render automatically. Post-specific images live beside `index.md` in the same folder and are referenced with relative paths (`./cover.png`).
-3. Claims about Cratis products must be true of released, public behavior and link to <https://cratis.io>. Links to the documentation site are absolute URLs — this is a separate site.
+3. Claims about Cratis products must be true of released, public behavior and link to <https://www.cratis.io>. Links to the documentation site are absolute URLs — this is a separate site.
 4. Build the evidence with the content: released public sources for product claims, compilation of the exact published snippets, and runtime assertions for the behavior demonstrated. Keep those evidence levels distinct — "it compiles" is not "it works", and one verified example does not verify a separate comparison page or every language client.
 5. Review the whole resulting post, not only the diff, before calling it ready. A wording cleanup or a green build is not a review.
 6. Verify locally: `npm install && npm run build` must pass; `npm run dev` to preview. RSS is at `/rss.xml`; sitemap and `robots.txt` ship with the build. Production pages are `/<slug>/`; the dev server still serves `/blog/...`.
