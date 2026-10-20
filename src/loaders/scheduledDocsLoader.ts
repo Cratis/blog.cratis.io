@@ -24,9 +24,6 @@ export function scheduledDocsLoader(): Loader {
             const now = Date.now();
             for (const entry of [...context.store.values()]) {
                 const data = entry.data as ScheduledData;
-                // An author's own draft is never scheduled, built or released by this loader.
-                const isAuthorDraft = data.draft === true && !data.scheduled;
-                if (isAuthorDraft) continue;
                 const isFuture = data.date instanceof Date && data.date.getTime() > now;
                 if (isFuture) {
                     replace(context.store, entry, { ...data, draft: true, scheduled: true });
