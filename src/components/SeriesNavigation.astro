@@ -7,7 +7,7 @@ import { getCollection, type CollectionEntry } from 'astro:content';
 const { id, entry } = Astro.locals.starlightRoute;
 const { series } = entry.data as CollectionEntry<'docs'>['data'];
 // Use the loader's published collection, just like the blog's listings and RSS.
-// Scheduled posts and author drafts must not enter the series index or links.
+// Author drafts must not enter the series index or links.
 const posts = series ? await getCollection('docs', ({ id, data }) =>
     /^blog\/[^/]+$/.test(id) && data.draft !== true && data.series?.title === series.title,
 ) : [];
