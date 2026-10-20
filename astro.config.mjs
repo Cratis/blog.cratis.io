@@ -61,7 +61,7 @@ export default defineConfig({
         starlight({
             title: 'Cratis Blog',
             description:
-                'The Cratis blog — essays and engineering explainers on event sourcing, CQRS, and building the open-source (MIT) Cratis stack: Chronicle, Arc, Components, and friends.',
+                'Essays and engineering notes on event sourcing, CQRS, and building with Chronicle, Arc, and the rest of the Cratis stack.',
             // Default social-sharing metadata for every page.
             head: [
                 { tag: 'meta', attrs: { property: 'og:image', content: 'https://blog.cratis.io/og-image.jpg' } },

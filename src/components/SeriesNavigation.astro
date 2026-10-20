@@ -1,0 +1,62 @@
+---
+// Copyright (c) Cratis. All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+
+import { getCollection, type CollectionEntry } from 'astro:content';
+
+const { id, entry } = Astro.locals.starlightRoute;
+const { series } = entry.data as CollectionEntry<'docs'>['data'];
+// Use the loader's published collection, just like the blog's listings and RSS.
+// Scheduled posts and author drafts must not enter the series index or links.
+const posts = series ? await getCollection('docs', ({ id, data }) =>
+    /^blog\/[^/]+$/.test(id) && data.draft !== true && data.series?.title === series.title,
+) : [];
+posts.sort((first, second) => (first.data.series?.order ?? 0) - (second.data.series?.order ?? 0));
+const current = posts.findIndex((post) => post.id === id);
+const previous = posts[current - 1];
+const next = current >= 0 ? posts[current + 1] : undefined;
+---
+
+{
+    series && current >= 0 && (
+        <nav aria-labelledby="series-heading" class="series-navigation">
+            <h2 id="series-heading">Series: {series.title}</h2>
+            <ol>
+                {posts.map((post) => (
+                    <li>
+                        <a href={`/${post.id}/`} aria-current={post.id === id ? 'page' : undefined}>
+                            {post.data.series?.order === 0 ? 'Introduction' : `Part ${post.data.series?.order}`}:
+                            {' '}{post.data.seoTitle ?? post.data.title}
+                        </a>
+                    </li>
+                ))}
+            </ol>
+            <div class="series-links">
+                {previous && (
+                    <a href={`/${previous.id}/`}>
+                        Previous in series: {previous.data.seoTitle ?? previous.data.title}
+                    </a>
+                )}
+                {next && (
+                    <a href={`/${next.id}/`}>
+                        Next in series: {next.data.seoTitle ?? next.data.title}
+                    </a>
+                )}
+            </div>
+        </nav>
+    )
+}
+
+<style>
+    .series-navigation {
+        border-block-start: 1px solid var(--sl-color-gray-5);
+        margin-block-start: 2rem;
+    }
+
+    .series-links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+        justify-content: space-between;
+    }
+</style>

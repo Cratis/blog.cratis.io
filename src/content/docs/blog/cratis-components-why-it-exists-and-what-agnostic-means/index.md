@@ -1,5 +1,6 @@
 ---
 title: "Cratis Components: why it exists, and what agnostic really means"
+seoTitle: "Cratis Components: why it exists and what agnostic means"
 description: "Cratis Components is the React layer between Arc's generated proxies and your screens, independent of MUI, PrimeReact or any one UI library."
 date: 2026-10-11T11:00:00Z
 authors: einar

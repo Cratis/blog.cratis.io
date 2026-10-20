@@ -1,5 +1,6 @@
 ---
 title: "Event modeling with Screenplay: the assembly language of the business"
+seoTitle: "Screenplay: the assembly language of the business"
 description: "Screenplay is an event modeling language: one .play model that people, AI assistants, Studio and C# write, drawn as one board in VS Code, MCP and the CLI."
 date: 2026-10-05
 authors: einar

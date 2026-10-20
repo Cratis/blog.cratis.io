@@ -1,5 +1,6 @@
 ---
 title: "Event sourcing in .NET with Chronicle: from zero to first projection"
+seoTitle: "Event sourcing in .NET: your first Chronicle projection"
 description: "Event sourcing in .NET with Chronicle: scaffold a full-stack app from the official templates, model a library with Arc and see it live in React."
 date: 2026-08-28T18:00:00Z
 authors: cratis-team
