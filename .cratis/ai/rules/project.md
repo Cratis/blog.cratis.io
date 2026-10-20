@@ -1,6 +1,6 @@
 # blog.cratis.io — project context
 
-This repository is the **Cratis blog**, published at <https://blog.cratis.io>. It is a standalone Astro + Starlight site using the `starlight-blog` plugin, deliberately separate from the documentation site (<https://cratis.io>, built from the `Cratis/Documentation` repository) while mirroring its visual identity.
+This repository is the **Cratis blog**, published at <https://blog.cratis.io>. It is a standalone Astro + Starlight site using the `starlight-blog` plugin, deliberately separate from the documentation site (<https://www.cratis.io>, built from the `Cratis/Documentation` repository) while mirroring its visual identity.
 
 ## Project concerns
 

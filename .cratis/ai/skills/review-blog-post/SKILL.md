@@ -56,7 +56,7 @@ For each gap, identify where the reader gets stuck and a concrete change that wo
 
 ## Gate 3 — Claim safety and evidence
 
-- Each consequential product claim has a supporting public documentation passage on <https://cratis.io>, supplemented by release-tagged source or registry evidence where necessary. A homepage link is not proof of a specific capability.
+- Each consequential product claim has a supporting public documentation passage on <https://www.cratis.io>, supplemented by release-tagged source or registry evidence where necessary. A homepage link is not proof of a specific capability.
 - Separate **published**, **documented**, **compiled**, **executed**, and **asserted** evidence. Use the definitions in `write-blog-post`; never upgrade one into another in the prose or review summary.
 - "We verified", "executed as written", "current", and "rechecked" statements are supported at precisely that scope. One successful quickstart does not validate a comparison matrix, browser workflow, or all language clients.
 - Sources and the article use compatible baselines. If a live comparison page still pins an older release, the post must not imply that page validates the newer one. Read the page, not just the link label.
@@ -77,7 +77,7 @@ For each gap, identify where the reader gets stuck and a concrete change that wo
 ## Gate 5 — Structure and repository mechanics
 
 - Frontmatter includes `title`, `date`, `authors`, `excerpt`, and `tags`; preserve original publication dates and make substantive revision dates visible.
-- Descriptive headings, connected prose, clear code filenames, and links whose destinations support the linked text. Documentation links use absolute `https://cratis.io/...` URLs.
+- Descriptive headings, connected prose, clear code filenames, and links whose destinations support the linked text. Documentation links use absolute `https://www.cratis.io/...` URLs.
 - No manual signature; author blocks render automatically. Reuse existing tags.
 - Record site-build/render evidence separately from sample and claim evidence. Report existing warnings accurately; do not say "no warnings" when the gate only passed.
 - Production pages are `/<slug>/`, `/tags/...`, `/authors/...`, and `/rss.xml`. The development server uses `/blog/...`; legacy `/blog/*` redirects are not the canonical production content.
