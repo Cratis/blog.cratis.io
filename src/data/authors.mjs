@@ -11,7 +11,7 @@ export const authors = {
         name: 'Einar Ingebrigtsen',
         title: 'Co-founder, Cratis',
         url: 'https://cast.cratis.io/einari/',
-        picture: 'https://github.com/einari.png?size=160',
+        picture: '/authors/einari.webp',
         signature:
             'Einar has been building developer platforms and event-sourced systems for decades — and still gets excited when a design finally clicks. Expect strong opinions, held loosely, and the occasional tangent that turns out to be the point.',
     },
@@ -19,7 +19,7 @@ export const authors = {
         name: 'Sindre Alstad Wilting',
         title: 'Co-founder, Cratis',
         url: 'https://cast.cratis.io/woksin/',
-        picture: 'https://github.com/woksin.png?size=160',
+        picture: '/authors/woksin.webp',
         signature:
             'Sindre works across the Cratis stack, from the Chronicle kernel to the clients that talk to it. He writes the way he builds: precise, grounded in what actually ships, and skeptical of claims without evidence.',
     },
@@ -27,7 +27,7 @@ export const authors = {
         name: 'The Cratis Team',
         title: 'Cratis',
         url: 'https://github.com/cratis',
-        picture: 'https://github.com/cratis.png?size=160',
+        picture: '/authors/cratis.webp',
         signature:
             'Written by the Cratis team. Everything we publish today is open source and MIT licensed — come build with us on GitHub or',
         signatureLink: { text: 'say hi on Discord', url: 'https://discord.gg/kt4AMpV8WV' },
