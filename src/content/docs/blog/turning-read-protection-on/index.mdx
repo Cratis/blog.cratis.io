@@ -21,7 +21,7 @@ tags:
 
 ## Why On is not a flag you flip
 
-Read protection is `Off` by default today. Making `On` the default is planned for a future major version of Arc ([Cratis/Arc#3255](https://github.com/Cratis/Arc/issues/3255)), so an explicit `<CratisReadProtection>` setting also keeps the mode from changing under you when you upgrade. There are three reasons not to jump straight to `On` in existing code:
+Read protection is `Off` by default today. Making `On` the default is planned for the next major version of Arc ([Cratis/Arc#3255](https://github.com/Cratis/Arc/issues/3255)), so an explicit `<CratisReadProtection>` setting also keeps the mode from changing under you when you upgrade. There are three reasons not to jump straight to `On` in existing code:
 
 - A protected command fails closed. It refuses a read it can't guard, an immediate append and a read outside a parameter. Commands that work today would start returning `500`s.
 - Moving a read from `Handle()` into a parameter or a validator changes where a rule lives and what it decides from. That's a code change per command, not a setting.

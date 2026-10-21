@@ -101,7 +101,7 @@ None of this is new. [*Rules that hold when you write*](/rules-that-hold-when-yo
 
 ## Turning the read into a guard
 
-Arc has a mode for this, called read protection. It's `Off` by default, and under `Off` an injected read model is a plain read, as above. Set it to `On` in the project that contains your commands, or in a `Directory.Build.props` that covers several:
+Arc has a mode for this, called read protection. It's `Off` by default, and under `Off` an injected read model is a plain read, as above. The next major version of Arc turns it `On` by default, and you'll still be able to turn it off for one command with `[ReadProtection(ReadProtectionMode.Off)]` or for one read with `[Unprotected("why")]` ([Cratis/Arc#3255](https://github.com/Cratis/Arc/issues/3255)). Set it to `On` in the project that contains your commands, or in a `Directory.Build.props` that covers several:
 
 ```xml
 <PropertyGroup>

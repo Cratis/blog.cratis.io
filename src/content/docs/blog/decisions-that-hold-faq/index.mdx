@@ -65,7 +65,7 @@ One property in the project that contains the commands, or in a `Directory.Build
 </PropertyGroup>
 ```
 
-It's compiled into the assembly, and any value other than `Off`, `Measure` or `On` fails the build. `[ReadProtection(ReadProtectionMode.On)]` turns on one command. New applications from the Cratis templates have `On` already. Arc's own default is `Off`, because a protected command fails closed: commands that read through `IReadModels` or append as a side effect would start failing. Making `On` the default is planned for a future major version ([Cratis/Arc#3255](https://github.com/Cratis/Arc/issues/3255)). See [Part 2](/the-read-model-said-yes/) and [Part 6](/turning-read-protection-on/).
+It's compiled into the assembly, and any value other than `Off`, `Measure` or `On` fails the build. `[ReadProtection(ReadProtectionMode.On)]` turns on one command. New applications from the Cratis templates have `On` already. Arc's own default is `Off`, because a protected command fails closed: commands that read through `IReadModels` or append as a side effect would start failing. The next major version of Arc makes `On` the default ([Cratis/Arc#3255](https://github.com/Cratis/Arc/issues/3255)). You can then turn it off for one command with `[ReadProtection(ReadProtectionMode.Off)]` or `[Unprotected("why")]`, for one read with `[Unprotected("why")]`, and for a project with `<CratisReadProtection>Off</CratisReadProtection>`. See [Part 2](/the-read-model-said-yes/) and [Part 6](/turning-read-protection-on/).
 
 ### Do I still need `[ProtectedDecision]` and `DecisionRead<T>`?
 
