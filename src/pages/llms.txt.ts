@@ -14,7 +14,7 @@ export const GET: APIRoute = async () => {
     const lines = [
         '# Cratis Blog',
         '',
-        '> Essays and engineering explainers on event sourcing, CQRS, and building the open-source (MIT) Cratis stack: Chronicle, Arc, Components, and friends. Product documentation lives at https://www.cratis.io.',
+        '> Essays and engineering notes on event sourcing, CQRS, and building with the Cratis Platform. Its components can be adopted independently. This blog publishes editorial explanations and engineering notes; current component guides and reference live at https://www.cratis.io.',
         '',
         '## Posts',
         '',
@@ -24,7 +24,7 @@ export const GET: APIRoute = async () => {
         '',
         `- [RSS feed](${site}/rss.xml)`,
         `- [Sitemap](${site}/sitemap-index.xml)`,
-        '- [Cratis documentation](https://www.cratis.io)',
+        '- [Cratis documentation](https://www.cratis.io): Current component guides and reference for the Cratis Platform.',
         '',
     ];
 
