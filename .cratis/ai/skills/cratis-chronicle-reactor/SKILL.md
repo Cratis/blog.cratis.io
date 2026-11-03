@@ -1,6 +1,6 @@
 ---
 name: cratis-chronicle-reactor
-description: Implement a Chronicle IReactor - an automation that causes an external side effect or appends a follow-up event or command, or the adapter side of a translation of outside data into our own facts. Covers handler dispatch and parameter resolution, every supported return type, targeting another event source, replay handling with [OnceOnly] and [Replay], event filtering, failure and quarantine behavior, and the analyzer rules. Use for event-driven side effects; do not use to populate a read model.
+description: Use when Chronicle events must trigger external effects, follow-up commands or translated facts, or a reactor's replay and failure behavior needs diagnosis. Not for populating a queryable read model.
 license: MIT
 ---
 <!-- cratis-ai-managed: skills/cratis-chronicle-reactor/SKILL.md -->
@@ -21,9 +21,7 @@ effects. If the answer is "populate a queryable model", it is not a reactor.
 | both a model and an effect | one projection *and* one reactor |
 
 > **Model first.** If an accepted model under the model root covers this scope, or
-> the repository is opted in (the root, the folder holding the project's `.play` files, holds a
-> committed `.play` file (`git ls-tree -r --name-only HEAD` lists a `.play` file there, narrowed to `-- <root>` when a root is configured), or the project explicitly set `mcpServers.screenplay.root` in
-> `.cratis/ai.json`; master definition in `cratis-screenplay-modeling-lifecycle`), the automation is
+> the repository is opted in (per `general.md` "Model first"; where `cratis-screenplay-modeling-lifecycle` is installed, run its `scripts/model-first-status.mjs`), the automation is
 > a modeled slice: find it (`Automation` or `Translate`), treat its `produces` /
 > `invokes`, conditions and fields as the contract, and write the reactor only as
 > gap-fill for what the model leaves to code (Stage renders supported event-triggered Automation;
@@ -136,23 +134,14 @@ re-delivers the event as an ordinary observation, and a `[OnceOnly]` handler run
 again. Catch-up and crash redelivery are not replay either; every ordinary
 matching event can run, even on the same source. Keep effects idempotent.
 
+**A new reactor catches up history; `[OnceOnly]` does not stop that.**
+Requires Chronicle 19.70.0 for `[StartAtTail]` to start only its first registration
+at the tail; existing positions remain. Upgrade the server first: older kernels
+ignore it. Read references/starting-and-replaying.md when avoiding pre-registration
+side effects or choosing alternate replay behavior.
+
 Analyzer **CHR0022** (warning) requires `[OnceOnly]` on a handler that returns
 event side effects, because a replay would otherwise append duplicates.
-
-`Cratis.Chronicle.Reactors.ReplayAttribute` (`[Replay]`) is the other half, and
-targets a method only. Mark a **second** handler for the same event type with it
-when replay needs to do something *different* rather than nothing:
-
-```csharp
-public Task <MethodName>(<EventName> @event) => <serviceName>.<Operation>(@event.<Property>);
-
-[Replay]
-public Task <MethodName>DuringReplay(<EventName> @event) => Task.CompletedTask;
-```
-
-With a `[Replay]` handler present, only it runs during replay. Without one, the
-ordinary handler runs during replay as before. An event type handled *only* by a
-`[Replay]` handler is still subscribed to.
 
 ## Identity and event sequence
 
@@ -250,6 +239,18 @@ Read [references/domain-failures.md](references/domain-failures.md) when handlin
 
 Inject through the primary constructor; hold no mutable state (CHR0031 warning).
 Keep one automation concern per reactor; several related handlers are fine.
+
+Requires Chronicle 19.90.0 for concurrent .NET reactor partitions.
+
+Different partitions of one .NET reactor run concurrently;
+batches for one partition retain arrival order. Shared collaborators must be
+thread-safe. Set `ChronicleOptions.Reactors.MaxConcurrentPartitions = 1` when
+one-at-a-time handling is required; the default is processor count capped at 8,
+and values below 1 are refused. This is not ordering across different observers.
+Verified in the tagged sources listed in
+[connection options](../cratis-chronicle-client-dotnet/references/connection-options.md):
+`Source/Clients/DotNET/Reactors/ReactorOptions.cs`,
+`Reactors.cs` and `Observation/PartitionedDeliveryScheduler.cs`.
 
 ## Specifications
 

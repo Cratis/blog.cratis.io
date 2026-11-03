@@ -110,13 +110,10 @@ phase, a decision important enough that a later reader could misread the model (
 ## P6 Accept (the user)
 - **Input**: the reviewed source identity.
 - **Carry-forward**: the accepted **source identity** (`verdicts-and-modes.md`).
-- **Commit at P6**: the accepted `.play` files and `.screenplay/identities.json` when present.
+- **Commit at P6**: the accepted `.play` files, `screenplay.json` (the authored validation gate) when the repository has one, and `.screenplay/identities.json` when present.
   The user commits, or explicitly authorizes the owning session to commit; the modeler never
-  commits on its own. Committing a model under the model root is the team's act of acceptance
-  and opts the repository in (`git ls-tree -r --name-only HEAD -- <root>` lists the `.play`
-  file). Staged or untracked files under the root are drafts, not contracts for code agents.
-  A committed file with working-tree edits is a model change in progress; its HEAD version is
-  the contract until the change is committed.
+  commits on its own. Run `cratis-screenplay-modeling-lifecycle`'s `scripts/model-first-status.mjs` to check acceptance, drafts and model changes in progress.
+- **Split acceptance**: with `process.acceptance` set, the meaning role confirms the meaning against the reviewer's explain or walkthrough output at the P5-reviewed source identity (any language; record which), and the commit role commits. Either alone leaves P6 open. Record both in commit trailers and the STATE.md Acceptance line: `project-process.md`. Without it, one user does both.
 - **Gate**: explicit acceptance and the model commit before P7-P9. After committing, recompute
   the source identity. Its digest must equal the digest reviewed at P5; only the commit part may
   differ. If the digest differs, return to P4/P5 for the changed scope. Record the post-commit
@@ -127,13 +124,14 @@ phase, a decision important enough that a later reader could misread the model (
 - **Input**: the accepted identity.
 - **Carry-forward**: V3, and V4 where a route exists.
 - **Gate**: V3 ready; V4 result or "V4 not run: no route". Specs written or bound is never "specs pass".
+- **Optional after V3**: a behavior walk in the Stage sandbox (`cratis-stage-rendering-and-sandbox`); findings go to the model owner, and it is not V3, V4 or V5 evidence.
 - **Skip when**: design mode.
 
 ## P8 Render or fall back (`cratis-screenplay-render-and-gap-fill`)
 - **Input**: the accepted identity.
 - **Carry-forward**: the admission result; render output and named gaps in `Customizations/`;
   non-renderable scope handed to a code agent with the model as contract, plus a fallback record
-  naming the blocking codes. Stage 4.89.1 renders supported event-triggered Automation; Translate/captures and refused reactions remain gap-fill (mixed effects keep one modeled reaction; `STAGE-ESM-037` is a redelivery-safety refusal, not a reason to split it). Three cases stay distinct: admission failure (nothing rendered); an
+  naming the blocking codes. Stage 4.89.1 renders supported event-triggered Automation; newer Stage also renders bounded source-event capture/outbound Translate paths (see its `references/current-boundaries.md`); refused shapes remain gap-fill (mixed effects keep one modeled reaction; `STAGE-ESM-037` is a redelivery-safety refusal, not a reason to split it). Three cases stay distinct: admission failure (nothing rendered); an
   existing generated base plus separately authorized gap-fill; fully hand-written delivery.
 - **Gate**: V5 sub-results, or a fallback entry per non-renderable scope. A customization never
   makes a rejected model renderable; no whole-application V5 from a subset.

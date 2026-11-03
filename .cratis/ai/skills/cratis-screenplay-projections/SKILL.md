@@ -1,6 +1,6 @@
 ---
 name: cratis-screenplay-projections
-description: Build a Cratis Screenplay read model with the Projection Declaration Language (PDL) — keys, `from`/`every`/`all`, property mapping and AutoMap, joins, children and nested objects, removal, arithmetic counters, and the reducer escape hatch. Use when declaring or changing how events become read-model state in a `.play` model, or when a projection does not populate what was expected. Use `cratis-chronicle-projection` instead for hand-written C# Chronicle projections.
+description: Use when declaring Screenplay event-to-state mappings or diagnosing a .play projection's keys, joins, children or lifecycle variants. Not for hand-written C# Chronicle projections or read-model query contracts.
 license: MIT
 ---
 <!-- cratis-ai-managed: skills/cratis-screenplay-projections/SKILL.md -->
@@ -16,11 +16,10 @@ text. This is half of every event model, and the half most easily got wrong.
 ## Locate the model
 
 Look first for the project's existing `.play` files: the folder holding them is the
-model. A new model goes under the repository's `Source/` or `src/` folder, else in a
-`Screenplay/` folder at the repository root; never under `.cratis/`, which holds
-configuration and the shared AI corpus only. This is the
-conventional home for consumer-owned `.play` source; do not invent another
-location or search the whole repository before checking it.
+model. Reuse existing model/workspace roots; code-only `Source/` or `src/` does
+not qualify. Otherwise use repository-root `Screenplay/`, never `.cratis/`
+(configuration/shared corpus only). Read [discovery/version gates](../cratis-screenplay-event-modeling/references/file-layout.md#locate-the-model)
+when locating the model; do not invent another location.
 
 `cratis ai install` manages `.cratis/ai/`, never model files. Never
 hand-copy Screenplay source between repositories. Keep Markdown that explains,
@@ -29,11 +28,9 @@ source is the single flow model.
 
 ## Product sources
 
-Screenplay `Documentation/screenplay/projections/` (including `semantic-model.md`, `keys.md`
-and `variants.md`), `readmodels.md`, `diagnostics.md`, `commands.md`, `events.md` and
-`mcp/authoring-tools.md` describe the PDL parser, validator, diagnostics, semantic binder and
-reducer-body binding (`Semantics/`). Every example below compiles with the standalone compiler.
-Reverify before claiming another version behaves the same.
+Consult Screenplay `Documentation/screenplay/projections/` for grammar and semantics,
+`readmodels.md` for targets and `diagnostics.md` for errors. Verify examples with
+the standalone compiler before claiming another version behaves the same.
 
 **Chronicle decides what a projection means.**
 Screenplay owns the grammar; which instance an event affects, what a join may
@@ -82,11 +79,8 @@ Read [observer filters](../cratis-screenplay-toolchain/references/production-rou
 
 ## Projection-level directives
 
-`description "..."` (or a fenced text block) on the projection header (report-only `PLAY0270`; variants
-and nested blocks take none), `no automap`, `sequence <name>`, `file <path>`. `sequence` is a realization
-concern and does not bind to the executable model. A mapping target may end in a dynamic dictionary
-key, `count eventCountByType.$eventContext.eventType.id` (one entry per distinct value); only
-`$eventContext` resolves there, any other `$` text is a literal key with warning `PLAY0299`.
+Read [projection-level directives](references/pdl-grammar.md#projection-level-directives)
+when using descriptions, `sequence`, `file` or dynamic dictionary-key targets.
 
 ⚠️ **Do not write `key` on the projection.** It parses, but neither Chronicle nor
 the executable model routes any event by it, and it is not a default for the
@@ -101,6 +95,7 @@ the executable model routes any event by it, and it is not a default for the
 | From-level block | indented `key invoiceId` inside the `from` |
 | Per event, several events | `from A key idA, B key idB, C` |
 | Composite | `key OrderKey` with indented `<property> = <expr>` parts |
+| Flat composite parts | untyped `key` block naming every key part (Requires 4.204.0; ESM v27) |
 | Literal (constant) | `key literal "site-stats"` — every event updates the **same** instance |
 | Children identity | `children lines identified by lineNumber` |
 | **Default** | **the event source id** — `from X` ≡ `from X key $eventSourceId` |
@@ -120,6 +115,10 @@ declared by `produces event` is still a named slice-owned contract: projections
 subscribe to it exactly like a standalone event. Verified extraction preserves
 canonical ESM and identities, so it changes no projection contract. Removing a
 payload property is different and requires consumer/persistence review.
+
+A read model with several flat `key` parts needs that block in every root `from` and
+`remove with` (`PLAY0661`/`PLAY0662`); other blocks and reducers there are `PLAY0268`
+(`references/pdl-grammar.md`).
 
 A second key on one `from` is error `PLAY0060`. A template expression in a
 composite key is error `PLAY0073`; an empty composite key is `PLAY0074`.
@@ -144,14 +143,26 @@ subscribe to every event type: `all` inside `children` or `nested` behaves as
 `lastUpdatedAt`. The `every` block **inside** a `children` block does not accept
 it — it is already in a children context.
 
+## One event per level
+
+One event type is used once per projection level (`PLAY0801`): two `from` blocks
+cannot update two rows at that level, even with different keys. Combine mappings
+for one row; model a genuine second domain fact as its own event. Never invent
+events only to satisfy the read side. Joins use a separate set; each children,
+nested and variant block starts fresh sets. Read [event scope](references/pdl-grammar.md#event-scope)
+for grouped events, removals and compiler compatibility.
+
 ## Property mapping and AutoMap
 
 ⚠️ **AutoMap is on by default.** Matching property names are copied before your
 explicit mappings run, and explicit mappings win. Turn it off with `no automap` at
 **projection**, `every`/`all`, `join`, `children` or `nested` level — it
 **cannot** be toggled inside an individual `from` block. An `automap`/`no automap`
-under a joined event (`with …`) parses but Chronicle replaces it with the auto-map
-of the level the join sits in (`PLAY0380`).
+under a joined event (`with …`) decides auto-mapping for that event alone;
+without one, the joined event follows its level's auto-map.
+
+Requires Screenplay 4.212.4 (`screenplay --version`) for joined-event auto-map
+overrides in executable binding; older binders replace the setting with the level's.
 
 Mapping sources: a property path (`name`, `contactInfo.email`), a literal
 (`true`, `"Pending"`, `42`, `null`), `$eventSourceId`, and
@@ -245,7 +256,10 @@ reducer Balance => AccountBalance
 ````
 
 Inline code uses a tagged fence (` ```csharp `); a `csharp` line above a bare
-fence still parses but warns (`PLAY0397`). Reach for a reducer only when the next
+fence still parses but warns (`PLAY0397`). Built-in inline languages are `csharp`,
+`typescript`, `react`, `html`, `sql` and `java`; the body is opaque and travels unchanged
+to the target, and the Cratis render target refuses `java` bodies.
+Requires Screenplay 4.244.0 (`screenplay --version`) for that refusal. Reach for a reducer only when the next
 state depends on the current one — a running balance, a state machine.
 `context.State` is **null for the first event** and is the only nullable member;
 `Event`, `Key`, `Tenant`, `Occurred`, `SequenceNumber` and `IsFirst` are always
@@ -257,7 +271,9 @@ What the executable model does with it (ESM v3):
   rules is `PLAY0398`; two rules for one event is `PLAY0399`; a reducer with no
   bodies is rejected with a hint to write a projection.
 - The key is **always the event source id** — a reducer cannot route by an event
-  property. State starts at null; returning null deletes the instance.
+  property. State starts at null; returning null deletes the instance. A query
+  `by` another identity type warns `PLAY0690`; use a projection keyed on each `from`
+  or a join ([reducer identity](references/reducer-identity.md)).
 - The body is an opaque attachment identified by a content hash, never compiled
   or run by Screenplay. The reference runner cannot compute reducer state, so a
   specification that reads a reducer-built read model reports unsupported and
@@ -268,6 +284,23 @@ What the executable model does with it (ESM v3):
 of a document a reader cannot check at a glance.
 
 Read [pdl-grammar.md](references/pdl-grammar.md) when checking exact syntax, interpreting a projection diagnostic code, or needing a worked example.
+
+## `STAGE-ESM-017` on a projection passes `validate` and fails at `render`
+
+Symptom: `cratis screenplay validate --executable` exits 0, then `cratis render` (or `render --check`)
+refuses with `STAGE-ESM-017` and a generic message whose location is a `sem1:<hash>`, not a source line
+(seen on Stage 4.192.0 and CLI 3.94.0). Cause: `validate --executable` binds only Screenplay's model;
+Stage's admission runs only in `render`. Check every `from` block in turn:
+
+1. **Key.** An event property or the event source. A root `from` also accepts a constant text key (nonempty, only letters, digits, `_`, space and `. / : * + -`); any other literal key, and a literal key outside a root, is refused.
+2. **Do not overwrite the key.** A mapping onto the key property must restate the key itself (`from E` keyed by the event source with `berthId = $eventSourceId`, or the key's own event property); mapping a different value onto it is refused (`MatchesKey`). Simplest is to leave the key property unmapped.
+3. **`$eventSourceId` into a non-key target** is admitted in a `from` block keyed by an event property, when every command and reaction producing the event addresses it with a non-collection value of exactly the target's type (optionality ignored). It is refused in `join`s, for a mismatched type, and for an event nothing produces.
+4. **No `$context.*`.** Map an event property instead and have the command set it. The compiler may refuse it first (`PLAY0152`); Stage refuses a context value in a projection with `STAGE-ESM-017`.
+5. **Targets.** A target path through an optional or non-composite intermediate is refused; an optional leaf and a path through required composites are fine. The event property mapped from must exist on the event.
+
+Bisect: run `cratis render <root> --target cratis --name <App> --destination <dir> --check` (plans,
+writes nothing), comment out `from` blocks one at a time until the error clears, then apply the list to
+the block that cleared it. Reference: `cratis-stage-rendering-and-sandbox` `references/admission.md`.
 
 ## Verify
 

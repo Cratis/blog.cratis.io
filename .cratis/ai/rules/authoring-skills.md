@@ -24,11 +24,15 @@ A code-breaking prerequisite belongs in one `Requires` line with the version-che
 Use portable fields: `name`, `description`, `license`, `compatibility`, `metadata`, `allowed-tools`. Keep extension metadata under `metadata` so other harnesses can load the skill.
 
 - Match `name` to the directory: 1–64 lowercase letters, digits and single hyphens; no edge hyphen or reserved `anthropic`/`claude` words. These constraints keep discovery portable.
-- Lead the description with what the skill does, then `Use when…` and `Not for…` (name the sibling to use). Include concrete words from the user's request so the router can distinguish neighbors.
+- Write only invocation conditions in the description, starting with `Use when…` or `Use before…`. Include concrete words from the user's request so the router can distinguish neighbors. Keep capabilities, outputs, API lists and how-to instructions in the body. Add `Not for…` or a sibling pointer only when it clarifies a real near-miss; an isolated skill may use a positive trigger alone.
 - Use neutral imperative or third-person phrasing, not `I`/`you`/`your`; descriptions enter instruction context, where shifting voice obscures who acts. Quoted command text and inline code are not the author's voice.
-- Aim below 700 characters, within the hard 1–1024 limit. No tag-like text, versions or research-process vocabulary: the listing is for routing, not evidence.
+- Aim for one positive sentence and, where useful, one boundary sentence, normally below 300 characters within the hard 1–1024 limit. No tag-like text, versions or research-process vocabulary: the listing is for routing, not evidence.
 
-An explicit trigger clause (`Use when`, `Load when`, `Read when` or an equivalent) and neutral voice are required even with `SKILL_AUTHORING_MODE=warn`. Negative routing and meta-language findings follow that switch; the 700-character target is guidance, not a gate.
+An anchored `Use when` or `Use before` lead and neutral voice are required even with `SKILL_AUTHORING_MODE=warn`. A summary followed by a trigger is invalid. Meta-language findings follow that switch; brevity is guidance, not a truncation rule. Structural checks cannot prove semantic routing: review every description against its body and nearest sibling.
+
+For example: `Use when an existing Arc query needs server-side paging. Not for creating a read model.` An isolated skill can say `Use before leaving a GitHub review comment.` Do not replace a capability summary with a disguised summary such as “Use when a skill that builds, validates and publishes artifacts is needed.”
+
+The overlap lint warns when positive trigger token sets have Jaccard similarity (intersection / union) **>= 0.4**, compared before rounding. It lowercases ASCII word tokens, deduplicates them and removes routing boilerplate and common function words. Only the explicit `Use when` (or equivalent) clause counts, stopping at negative routing; empty triggers never match. The warning stays advisory even in strict mode: shared vocabulary is a review signal, not proof of competing scope. Sharpen the trigger and add a sibling pointer rather than padding it with unrelated words.
 
 ## 3. Budget and progressive disclosure
 
@@ -72,7 +76,7 @@ When changing a description, run trigger evaluations before and after when autho
 
 ## 10. Review checklist
 
-- What, when, when-not and sibling routing are explicit; voice is neutral and routing text has no meta/history claims.
+- The description contains only invocation conditions, starts with `Use when` or `Use before`, and distinguishes real near-misses where useful; voice is neutral with no capability summary or meta/history claims.
 - Body has headroom; every reference, asset and script is directly named; long references have Contents.
 - Text is timeless; no research-only pages or verified-source headings remain.
 - Defaults, escape conditions, adjacent reasons, glossary terms and correct examples are clear.
@@ -83,7 +87,9 @@ When changing a description, run trigger evaluations before and after when autho
 
 ## 11. Always-on content
 
-Keep `general.md` to facts needed in every session, at most 200 lines. Warn above 24,000 bytes and above 91,000 combined bytes for rules without `paths`; line length alone can hide context bloat. Review globally applied Copilot instructions above 4,000 characters. These budgets leave room for source and task context, rather than promising a token count.
+Keep `general.md` to facts needed in every session, at most 200 lines. Warn above 24,000 bytes and above 91,000 combined bytes for rules without `paths`; line length alone can hide context bloat. Review globally applied Copilot instructions above 4,000 characters. These budgets leave room for source and task context, rather than promising a token count. The corpus verification caps the rule bytes each harness loads at session start and fails above a cap: displace or demote text to an on-demand skill, or raise the cap in a reviewed change.
+
+Every proposed rule names its enforcement: analyzer-enforceable, CI-enforceable or judgment-shaped. The first two ship as the analyzer, lint or CI check, with at most a one-line pointer in prose; only judgment-shaped rules are written out, because prose does not enforce itself and costs context in every session that loads it.
 
 Use path-scoped rules for file-specific invariants and skills for particular operations. Hooks and CI enforce mechanical constraints; natural-language rules do not replace permission controls.
 

@@ -22,7 +22,7 @@ speaks in them; never model board mechanics (lanes, node ids, positions).
 | Storyline (ordered beats) | a **family** of specifications sharing example data, each one transition (no storyline syntax) | several spec classes | specifications |
 | Field validation | concept `validate` (every use) / command `validate`, `require` | `ConceptValidator<T>` / `CommandValidator<T>` | command validation |
 | Role permission ("Cannot") | `policy` + `authorize` + `then denied` spec; ownership via `claim ... matches subject` | `[Authorize(Policy)]`, generated policies | authorization |
-| Precondition on stream state | `reads` + `require` as stated intent, not enforced (target: Arc `[ProtectedDecision]` + `DecisionRead<T>`, or Chronicle DCB; APIs available to gap-fill in the Arc and Chronicle the Stage scaffold pins, not emitted protection) | decision over a guarded read | command validation |
+| Precondition on stream state | `command reads protected` + eligible `reads`/`require` (v25 reference protection); legacy/refused reads remain stated intent. the Cratis renderer renders protected reads as Arc read protection once the CLI bundles a Stage that supports it (older bundles refuse them with STAGE-ESM-044; releases in command-surface `references/protected-reads.md`); semantic-engine execution is separate from generated-app protection. Target Arc `[ProtectedDecision]` + `DecisionRead<T>` or Chronicle DCB needs separate verification | decision over a guarded read | command validation |
 | Generated id (`derived:uuid4()`) | `generated` (authorable, not executable) | id supplied before `Handle()` | commands |
 | External system / outbound call | `Translate` slice (inbound); `system`/`operation` (authorable, not executable) or Automation (outbound) | `ICommandOperation` / reactor | operations, reactors |
 | HTML mockup | `screen` Level 1 + board (`visualize-model`) | default Scene composition | ui composition |
@@ -44,7 +44,8 @@ Screenplay meaning, and when you meet the older usage, translate it and say so.
   `invokes` a command or `produces` events).
 - Chronicle **reactor**: C# observer, usually for side effects; it does not by itself define
   business decisions. Stage renders supported event-triggered Automation as Chronicle reactors.
-  Translate/captures and refused reactions remain gap-fill. Mixed events and commands
+  Bounded source-event captures and outbound Translate also render; refused shapes
+  remain gap-fill (see Stage's `references/current-boundaries.md`). Mixed events and commands
   in one handler remain `STAGE-ESM-037`: Arc supports the return shape, but redelivery
   after a failed command duplicates events. Keep the reaction whole and prove retry safety.
   Source boundary: Stage skill `references/admission.md`.
