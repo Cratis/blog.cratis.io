@@ -1,6 +1,6 @@
 ---
 name: cratis-screenplay-read-surface
-description: Declare the read side of a Cratis Screenplay `.play` model — the `readmodel` shape, `query` with `by`/`filter`/`scoped to`/`observable`/`performer`, and `screen` at its three levels of detail, including the data/action contract that later component bindings, templates, forms, toolbars, routes and outlets consume. Use when adding or changing a query, a read-model shape, or a screen in a `.play` model, or when deciding what a caller may narrow a result by. Do not use for how events fill the read model, and do not use for layouts, templates or forms.
+description: Use when writing Screenplay read-model shapes, query filtering or screen data and action contracts. Not for event-to-state mappings or component layouts, templates and forms.
 license: MIT
 ---
 <!-- cratis-ai-managed: skills/cratis-screenplay-read-surface/SKILL.md -->
@@ -15,11 +15,10 @@ shape, the `query` is the entry point, and the `screen` renders it.
 ## Locate the model
 
 Look first for the project's existing `.play` files: the folder holding them is the
-model. A new model goes under the repository's `Source/` or `src/` folder, else in a
-`Screenplay/` folder at the repository root; never under `.cratis/`, which holds
-configuration and the shared AI corpus only. This is the
-conventional home for consumer-owned `.play` source; do not invent another
-location or search the whole repository before checking it.
+model. Reuse existing model/workspace roots; code-only `Source/` or `src/` does
+not qualify. Otherwise use repository-root `Screenplay/`, never `.cratis/`
+(configuration/shared corpus only). Read [discovery/version gates](../cratis-screenplay-event-modeling/references/file-layout.md#locate-the-model)
+when locating the model; do not invent another location.
 
 `cratis ai install` manages `.cratis/ai/`, never model files. Never
 hand-copy Screenplay source between repositories. Keep Markdown that explains,
@@ -55,11 +54,13 @@ identity (all such queries must agree). Only with no single-instance identifier
 and an admitted list query does the binder infer an unambiguous `*Id`; queryless
 read models need an explicit `key`. See named keys below for collection-key exclusions.
 One explicit key binds byte-identically to equivalent inference. Several marks
-form a composite key, supplied by name in query/read
-`by` blocks. Composite keys and block queries remain
-**authoring-only** (PLAY0268); the scalar optional snapshot shape binds.
-Read [named keys](references/named-keys.md) for complete examples, trigger/command
-reads, all-parts fixtures, PLAY0660–0662 and command-read-only PLAY0661 repair.
+form a flat composite key: an optional single-instance query names every part in a
+`by` block, a list query narrows with equality filters, and fixtures state every part.
+Requires Screenplay 4.204.0 (ESM v27; `screenplay --version`); older binders refuse
+several key marks with PLAY0268. A list query over such a read model cannot use a
+`by` block (PLAY0268).
+Read [named keys](references/named-keys.md) for one complete executable example,
+trigger/command reads, all-parts fixtures, PLAY0660–0662 and command-read-only PLAY0661 repair.
 A `=>` target resolving to an event is an event-target builder, not a read model;
 keep event and read-model names distinct (see projections' public-event targets).
 
@@ -76,10 +77,15 @@ query ListInvoices => InvoiceListReadModel[]
   authorize IsAuthenticated
 ```
 
+A deliberately public query (no identity needed) uses a policy with `require anonymous`
+as its whole authorization, ideally in a separate public module; leaving `authorize` off
+is not the same thing. Rules and diagnostics:
+[anonymous policy](../cratis-screenplay-command-surface/references/policy-persona-seed.md#anonymous-policy).
+
 **Name the compiler and renderer.** Optional keyed queries and collection queries
 bind, including `observable`. Caller-supplied equality
 filters on collections bind as ESM v14; `from`, single-result filters, `scoped to`,
-`performer` and composite `by` remain PLAY0268, each with its reason. Read
+and a `by` block on a list query (or on a non-optional single result) remain PLAY0268, each with its reason. A `performer` query is not refused: it is an opaque read (PLAY0270 information) left out of the executable model ([version gate](../cratis-screenplay-toolchain/references/executable-subset.md#code-attachments-what-binds-what-never-does)). Read
 [equality filters](references/equality-filters.md) for the admitted shape, a complete
 compiled specification model and the Stage/CLI ceilings. Keep a list the domain needs.
 
@@ -159,12 +165,42 @@ A query is **complete without a performer** — it is realization metadata, not 
 precondition. It takes a `file` reference or an inline block in a tagged fence
 (` ```csharp `, ` ```sql `), and is the query's counterpart to a command's
 `handler`. The parser accepts any registered inline language and does not reject
-a nonsensical one, so the choice is yours to get right. Performer code is opaque:
-Screenplay never runs it.
+a nonsensical one, so the choice is yours to get right. Built-in inline languages are `csharp`, `typescript`, `react`, `html`, `sql` and `java`. A performer query refuses a `by` or `filter` argument sourced from `$context` with PLAY0810 (C# binding; Requires Screenplay 4.244.0, `screenplay --version`; older compilers silently drop it): take a caller-supplied argument instead. Performer code is opaque:
+Screenplay never runs it. It is reported as information `PLAY0270` and left out of the executable model; a specification that reads it is left out while every other specification still runs. Older compilers refuse it with PLAY0268: see the [version gate](../cratis-screenplay-toolchain/references/executable-subset.md#code-attachments-what-binds-what-never-does).
 
 A read model a performer composes needs no projection, and no event builds it.
 Specify it from state with `given readmodel`, then `when query <Query>` with the
 arguments and `then result` - see `cratis-screenplay-specifications`.
+
+#### Performer bodies are rendered
+
+Reach for a performer body when the declarative query cannot say what the read needs, for
+example a filter relative to today: clock operands are syntax-only in query filters, so the
+body computes it. Attach the body with `file` (or an inline `csharp` fence):
+
+```screenplay excerpt
+query FiguresInRegion => InvoiceFigures[]
+  filter region String
+  filter status String optional
+  performer
+    file Queries/FiguresInRegion.cs
+```
+
+The body is synchronous C# that returns the read-model instance (or null) for a single query,
+or `IEnumerable<ReadModel>` for a collection. It sees `readModels` (the current collection), the
+caller arguments by camelCase name and on `context.Arguments`, and `context.Tenant`,
+`context.Identity` and `context.ReceivedAt`, for example
+`return readModels.Where(figures => figures.Total > 0);`.
+
+Stage renders the read model record and the query method with its route, parameters (filters in
+declaration order, optional ones defaulted) and the modeled `[Authorize]` policy, and embeds the
+verified body in a compile-checked helper; no projection or reducer is needed. Do not hand-write
+a supported performer as gap-fill: attach the body to the model and render. An observable
+performer, a non-C# body, a missing, changed or hash-invalid body, or a body that does not compile
+becomes an explicit implementation gap instead, with a not-fully-runnable marker (see
+[bodies and implementation gaps](../cratis-stage-rendering-and-sandbox/references/current-boundaries.md#bodies-and-implementation-gaps)).
+
+Requires Stage 4.197.0 to render performer bodies, run directly or through a CLI that bundles it (check with `cratis --version`; CLI 3.100.0 bundles Stage 4.196.0); older versions keep the gap-fill path.
 
 A query's key goes on its own `by` line in the body. `query X => RM optional by id Type`
 on the header line is a declaration error, not a shorthand.
@@ -177,13 +213,17 @@ Caller-supplied equality filters on collections select ESM v14 (Requires Screenp
 primitive/concept/enum properties, same nominal type ignoring optionality, no
 `from`, distinct names not repeating `by`. `by` and supplied filters AND together;
 optional filters may be omitted, but supplied null is refused. PLAY0268 still
-rejects context sources, single-result filters, opaque scope/performer and
-composite `by`; a single non-optional result remains unadmitted too.
+rejects context sources, single-result filters, opaque scope and
+a `by` block on a list query (or on a non-optional single result).
 Authorization runs before lookup, ANDed with module/feature gates; policies see
 only `by`, never filters. Pin denial with `given caller` and `then denied`.
 Specs pass `by` and filters by name (PLAY0468 for unknown, repeated or missing
 required arguments); collection results match by read model/key regardless of
 row order. Details and renderer limits: [equality filters](references/equality-filters.md).
+
+A reducer-built view is keyed by event-source id, so a single-instance `by` of another
+nominal type warns `PLAY0690`. Rebuild it as a projection keyed on each `from`: projections
+[reducer identity](../cratis-screenplay-projections/references/reducer-identity.md).
 
 ## `screen` — three levels
 
@@ -256,7 +296,7 @@ bindings; the selected command still enforces its own gate/rules/constraints.
 Read [guarded actions](references/guarded-actions.md) for the checked model,
 missing-versus-null behavior and source-versus-renderer boundary. For a gesture
 choosing a whole action list rather than one labeled command, use block-form
-`when`/`otherwise` on click/double click/select:
+`when`/`otherwise` on click, double click, select or change:
 [guarded interactions](../cratis-screenplay-ui-composition/references/guarded-interactions.md).
 
 ## How a bare name resolves
@@ -264,9 +304,8 @@ choosing a whole action list rather than one labeled command, use block-form
 **Inside out:** the slice, then the enclosing feature, then the module, then the
 document. The innermost match wins.
 
-That rule exists because a generated document cannot make every name unique — one
-real application declares 76 queries under 37 distinct names, with `All` appearing
-21 times. Two sibling slices can each declare `All`, and each screen gets its own.
+Sibling slices may each declare `All`; each screen resolves its own query.
+Read `references/named-keys.md` when query scope affects identity inference.
 
 Reach across slices by qualifying with **any trailing part** of the scope.
 Excerpt: `Queue` and `Deviations` are sibling slices that each declare `All`.
@@ -301,8 +340,9 @@ binding failures are errors.
 - [ ] `observable` is present exactly where the caller should see changes without
       asking again.
 - [ ] Every authorized query has a specification with `given caller`, including a
-      `then denied` case.
+      `then denied` case (a query authorized only by an anonymous policy may omit `given caller`).
 - [ ] Each read model has exactly one builder and every field traces to an event.
+- [ ] A reducer-built view's `by` type matches its events' event-source identity (`PLAY0690`).
 - [ ] No screen reference is left ambiguous or unresolved.
 - [ ] Every UI binding that consumes screen data (component context, toolbar
       parameter, dialog input, outlet route) has a source in the screen contract
@@ -318,6 +358,6 @@ Read [screen patterns](references/screen-patterns.md) when deciding whether a sc
 Attribution and licences: `references/provenance.md`.
 
 - How events fill the read model: `cratis-screenplay-projections`.
-- Layouts, templates, forms, component bindings, toolbars, outlets, contributions, packages and themes: `cratis-screenplay-ui-composition`.
+- Layouts, templates, forms, component bindings, toolbars and slice buttons, outlets, contributions, navigation regions, sample data, packages and themes: `cratis-screenplay-ui-composition`.
 - Asserting query results: `cratis-screenplay-specifications`.
 - Deciding which read models exist: `cratis-screenplay-event-modeling`.

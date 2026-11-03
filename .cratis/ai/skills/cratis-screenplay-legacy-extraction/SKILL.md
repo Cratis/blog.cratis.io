@@ -1,6 +1,6 @@
 ---
 name: cratis-screenplay-legacy-extraction
-description: "Turn an existing system into an evidence-backed, intentional Screenplay `.play` model: interview and freeze agreement, provider-coverage inventory, `cratis screenplay generate`, approval-gated Prologue capture and interpret, bounded UI walks, targeted code reads, an evidence table with exact path:start-end locators that keeps unknowns, keep / change / remove decisions, re-slicing by business decision, a loss report and expert verification. Use for brownfield understanding, documentation or migration. Not for: greenfield modeling (use `cratis-screenplay-discovery`), reviewing the candidate (use `cratis-screenplay-model-review`), running Chronicle systems (use `cratis-chronicle-cli-operations`)."
+description: Use when understanding an inherited system or deriving a candidate Screenplay model for brownfield documentation or migration. Not for greenfield discovery, reviewing the candidate or diagnosing a live Chronicle store.
 license: MIT
 ---
 <!-- cratis-ai-managed: skills/cratis-screenplay-legacy-extraction/SKILL.md -->
@@ -134,12 +134,12 @@ chain per slice before handoff (`references/evidence-table-template.md`, "Tracea
    `cratis-screenplay-slice-design` for slices, `cratis-screenplay-streams-and-consistency` for
    identity and invariants). To move an already authored slice or feature to its right parent, use
    the MCP `propose-move` tool (identity-preserving; it refuses identity loss, collisions and
-   captures) rather than retyping the declarations (`cratis-screenplay-model-authoring`):
+   name capture (a reference that would resolve to a different declaration); it also moves a single declaration between slices from Screenplay 4.230.0) rather than retyping the declarations (`cratis-screenplay-model-authoring`):
    - one StateChange per decision a person or system makes; events are facts experts recognise;
      consequences (counters, denormalised copies) become projections; an automation only when
      evidence shows a separate decision; no generic names (`Update/Edit/Save<Noun>`, `<Noun>Updated`): split by intent;
-   - refusals, state-dependent rules (`reads` + `require`, marked **NOT enforced in the model
-     today** with the target named), unique indexes and preserved `pii` / `secret` protection:
+   - refusals, state-dependent rules (`reads` + `require` with eligible protected-read
+     opt-in; legacy/refused shapes marked unenforced and target realization named), unique indexes and preserved `pii` / `secret` protection:
      `references/rule-modeling.md`. Every role gate has `authorize` plus a `then denied` spec,
      else a recorded gap; rules you cannot express truthfully are recorded one by one, never
      fabricated.

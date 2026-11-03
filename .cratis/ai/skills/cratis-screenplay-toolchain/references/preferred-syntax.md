@@ -6,7 +6,7 @@
 
 Use these forms when writing or reviewing `.play`. Acceptance of an older
 spelling is not a recommendation to teach it. Information diagnostics do not
-fail `--warnaserror`; the corpus verification gate rejects the nine style codes
+fail `--warnaserror`; the corpus verification gate rejects the twelve style codes
 below even when a fence declares `expect`, unless an exact, reasoned migration
 exception exists in the verifier's preferred-syntax allowlist. That allowlist also
 covers deliberate legacy explanations in prose; stale entries fail.
@@ -22,8 +22,11 @@ covers deliberate legacy explanations in prose; stale entries fail.
 | Source/stream identity | Omit `id` unless preserving a previous stored name | A pin equal to the current name | PLAY0507 (information) |
 | Production route | Inherit the command's route | Repeating the same `stream` / `streamId` on a production | PLAY0664 (warning) |
 | Imports | Import only declarations not already declared by the application | Importing the application's own names | PLAY0290 (warning) |
-| Interaction guard | Block-form `when` alternatives | Opaque interaction `where` on click, double click or select | PLAY0564 (warning or information) |
+| Interaction guard | Block-form `when` alternatives | Opaque interaction `where` on click, double click or select (a `change` keeps it) | PLAY0564 (warning or information) |
 | Projection transition cardinality | Source binding emits `One` | Constructed/deserialized ESM v1–v3 `ZeroOrOne` / `Many` | PLAY0445 (warning; ESM-only, not a source spelling) |
+| Command decision reads | `command reads protected` after reviewing every read's admission, absence and conflict semantics | Eligible legacy command reads without the application-root preamble | PLAY0786 (information; individual typed repair review, never fix-all) |
+| Profile shell | `root template <Name>` in a `ui profile` | `layout <Name>` in a `ui profile` | PLAY0791 (warning; quick fix) |
+| Literal text rules | `starts with`, `ends with`, `contains`, `not contains` or equality, preserving message and severity | Exact deprecated Studio `matches` shapes | PLAY0787 (warning; not arbitrary regex rewriting) |
 
 `query Q => observable?` is not a legacy optional type suffix and has no keyword
 replacement. Reaction/Translate `where` is current syntax, not an interaction

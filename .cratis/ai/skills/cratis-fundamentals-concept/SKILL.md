@@ -1,6 +1,6 @@
 ---
 name: cratis-fundamentals-concept
-description: Create strongly typed Cratis domain values with ConceptAs and Chronicle event-source identities with EventSourceId. Use when a C# or TypeScript domain value has meaning beyond its primitive or when an identity is actually used as a Chronicle event-source/stream ID. Do not use for enums, DTO-only transport values, arbitrary non-stream entity IDs, or event schema migration.
+description: Use when a C# or TypeScript domain value needs a distinct type, a concept generates a value or an identity addresses a Chronicle stream. Not for enums, DTO-only values, Go concepts or event migration.
 license: MIT
 ---
 <!-- cratis-ai-managed: skills/cratis-fundamentals-concept/SKILL.md -->
@@ -119,15 +119,23 @@ Sources and the complete shop example: [shop generation](references/shop-generat
 ## Choosing a strategy
 
 The shared shop uses CustomerId (`cus_` + ULID), context-aware OrderId (TypeID),
-InviteCode (NanoID), and secret ApiKey (`Bytes(32)`, `[NotAudited]` in its host).
+InviteCode (NanoID), readable InvoiceNumber (pattern with checksum), random Int64
+TicketNumber and secret ApiKey (`Bytes(32)`, `[NotAudited]` in its host).
 Read [choices, time/tenant context and protection](references/shop-generation.md).
 Requires Fundamentals 7.24.0 for these newer helpers; the earlier
 UUID examples remain supported.
+Requires Fundamentals 7.25.0 for `GenerateValue.Pattern(pattern, checksum)`, its
+`(pattern, context, checksum)` overload, `Integer(minimum, maximum)` and
+`HasValidChecksum(value, checksum)` (`dotnet list package --include-transitive`);
+older packages lack them. Read the shop reference for exact signatures and UTC
+patterns before using them; do not hand-roll checksum or random-range algorithms.
 
 ## When not to generate
 
 Client-supplied identities stay inputs; random generation is not idempotency or
-gapless numbering. UUIDs are not credentials. Byte generation can create a secret
+gapless/sequential numbering. Patterns are readable references, not allocators or
+secrets; check digits catch typos, not forgery. Short codes need collision handling
+and uniqueness/freshness enforcement appropriate to their role. UUIDs are not credentials. Byte generation can create a secret
 in Fundamentals, but audit suppression, authorized delivery and hash storage are separate
 host responsibilities; never treat randomness as protection.
 

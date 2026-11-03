@@ -1,6 +1,6 @@
 ---
 name: cratis-chronicle-projection
-description: Add Chronicle projection behavior to an existing read model - model-bound attributes first, the fluent IProjectionFor builder when they cannot express the shape. Covers AutoMap, keys, children and nested types, counters, event-sequence selection, variants (VariantOf and EntersOn, as attributes or fluent calls) for an entity with mutually exclusive lifecycle shapes such as a work item that is a backlog entry then a pull request then closed, and the startup-crash traps. Use when populating a read model from events; do not use to create the read model and its query surface, and do not reach for a reducer before exhausting these options.
+description: Use when populating an existing Chronicle read model through event mappings, structured joins or lifecycle variants, or diagnosing projection startup failures. Not for new query surfaces or external side effects.
 license: MIT
 ---
 <!-- cratis-ai-managed: skills/cratis-chronicle-projection/SKILL.md -->
@@ -74,6 +74,12 @@ targets. Two things there are worth knowing before you write anything:
 - `ConstantKey` on `[Count<T>]`, `[Increment<T>]`, `[Decrement<T>]`, and
   `[FromEvent<T>]` is an **object-initializer property**, never a constructor
   argument: `[Count<TEvent>(ConstantKey = "<key>")]`.
+
+A counter or aggregate (`[Increment<T>]`, `[Decrement<T>]`, `[Count<T>]`) sees the
+event, not the item's previous state. Its commands must refuse non-transitions
+(a close for an already closed item) or the counter drifts permanently and replay
+reproduces the drift; see **cratis-chronicle-event-modeling**
+(`references/event-log-hygiene.md`).
 
 ## Fluent projections — structured mappings
 
@@ -272,10 +278,7 @@ projection spans streams.
 ## Route near misses
 
 - An accepted `.play` model under the model root covers the behavior, or the
-  repository is opted in (the root holds a committed `.play` file (`git ls-tree -r --name-only HEAD` lists a `.play` file there, narrowed to `-- <root>` when a root is configured), or the project set
-  `mcpServers.screenplay.root` in `.cratis/ai.json`; an empty directory, install
-  output, an uncommitted `.play` draft or a `.play` file outside the root does not count; master definition:
-  `cratis-screenplay-modeling-lifecycle`): change the model first with
+  repository is opted in (per `general.md` "Model first"; where `cratis-screenplay-modeling-lifecycle` is installed, run its `scripts/model-first-status.mjs`): change the model first with
   `cratis-screenplay-event-modeling`. If the Screenplay skills are not installed,
   say so and do not author `.play` from memory.
   Edit code here only for infrastructure, clients, adapters, Screenplay code
