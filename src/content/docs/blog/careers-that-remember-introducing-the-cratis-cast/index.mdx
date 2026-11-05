@@ -1,0 +1,84 @@
+---
+title: "Careers that remember: introducing the Cratis Cast"
+description: "The Cratis Cast: profile sites that tell a career as an event stream, badges checked against a reviewed registry and GitHub, and a directory of the people who build with Cratis."
+date: 2026-10-23
+authors: sindre
+excerpt: "One cast.yaml becomes a personal site that replays your career as events, shows your public GitHub work as it happens, and carries a badge it can't give itself. The directory at cast.cratis.io is where that badge is checked."
+tags:
+  - cast
+  - community
+  - event-sourcing
+---
+
+"Event Sourcing" on a CV says nothing. It reads the same whether the person skimmed the docs last week or has shipped three systems on Chronicle. A client looking for help can't tell the two apart, and the people who do the work get little credit for it outside GitHub.
+
+There's a second problem we run into all the time. Event sourcing is easier to show than to explain. Most people have never watched a system rebuild its state by replaying facts, and a diagram of an event log doesn't make them feel it.
+
+The [Cratis Cast](https://cast.cratis.io) is our answer to both. Its tagline is *the people behind the play*, which fits the rest of the family: Screenplay, Stage, Scene, Prologue. Cratis is *software that remembers*. Cast is *careers that remember*.
+
+## One file, one site
+
+You run one command and edit one file:
+
+```bash
+npm create @cratis/cast@latest my-site
+```
+
+The scaffolder asks for your GitHub handle, prefills a `cast.yaml` from your public profile, and writes a GitHub Pages workflow that rebuilds the site every hour. The site itself comes from `@cratis/cast`, an Astro integration. Your editor completes and checks `cast.yaml` against its published schema, and engine updates arrive as a version bump.
+
+What you get is a static site in the Cratis design, with one accent color of your own and light and dark themes. It has sections for what you do now, your writing, your talks and your projects, and a printable CV at `/cv` built from the same data. There's a terminal behind the backtick key and a command palette on ⌘K or Ctrl+K, because the people who build with Cratis tend to like those.
+
+## A career is an event stream
+
+The part I care most about is the career replay. A career is a sequence of things that happened: you joined a company, took on a role, picked up a skill, left, started something. Cast stores it that way. A visitor presses play, the events fold into a projection in the browser, and the current role, the organizations and the skills rebuild one event at a time.
+
+That's event sourcing in about ten seconds, on a page someone opened for a different reason. Nobody has to read an explanation first.
+
+The numbers on the page come from GitHub, not from you. Merged pull requests, contributions and releases are read from public data on every hourly build and refreshed again in the browser. Private repositories are filtered out at every step.
+
+## A badge the site can't claim
+
+A personal site is static and its owner controls every byte of it, so anything it says about itself is a claim. Cast is built around that fact.
+
+There are three tiers:
+
+- **Core**: the founders and maintainers of Cratis.
+- **Partner**: consultants and companies Cratis vouches for, people we've worked with and would recommend for Cratis work.
+- **Contributor**: anyone with at least one merged pull request in a public repository in the [Cratis organization](https://github.com/Cratis).
+
+Core and Partner come only from [`Registry/members.yaml`](https://github.com/Cratis/Cast/blob/main/Registry/members.yaml) in the Cast repository, and that file changes only through reviewed pull requests. Contributor is computed from GitHub when a site or the directory builds, and is never listed in the file. `cast.yaml` has no tier field, and the engine rejects one if you add it.
+
+The badge on a member's site links to their page on the directory. Cratis builds that page from the registry and live GitHub data, so the directory is the source of truth and the badge is a pointer to it. Badges are SVG images you can embed in a GitHub README, an email signature or anywhere else, and each one links back to its verification page.
+
+A tier says what someone's relationship to Cratis is. It isn't a certification, and it doesn't come with program benefits, discounts or referrals.
+
+## The directory
+
+[cast.cratis.io](https://cast.cratis.io) lists the people behind the play. For each Core and Partner member it renders a full profile in the Cratis design from their `/cast.json`.
+
+That file is an open format with a published JSON Schema, and a site doesn't need to be built with Cast to publish one. My own site, [www.woksin.com](https://www.woksin.com), is a custom build that publishes `/cast.json`, and the directory turns it into [my Cast profile](https://cast.cratis.io/woksin/). Contributors get a profile built from public GitHub data.
+
+Every Cast site also publishes `/resume.json` in the [JSON Resume](https://jsonresume.org/) format and an `/llms.txt`. People, the directory and AI agents read the same data, and nobody has to scrape a page to get it.
+
+Today the Core tier is Einar Ingebrigtsen, Co-founder and CTO, and me, Co-founder and Chief Architect. There are no Partners yet. The directory already shows the verified Contributors.
+
+## Try it
+
+- Scaffold a site: `npm create @cratis/cast@latest my-site`, then fill in `cast.yaml` and push.
+- Browse the directory at [cast.cratis.io](https://cast.cratis.io).
+- See a full profile at [cast.cratis.io/woksin](https://cast.cratis.io/woksin/), and press play.
+- Read the code at [github.com/Cratis/Cast](https://github.com/Cratis/Cast). It's MIT licensed.
+
+## How to join
+
+**Contributor.** Get a pull request merged in any public Cratis repository. The next build of the directory, and of your Cast site if you have one, shows the badge. There's nothing to apply for.
+
+**Partner.** Open a pull request that adds you to [`Registry/members.yaml`](https://github.com/Cratis/Cast/blob/main/Registry/members.yaml), and say in it how you work with Cratis. We review it, may ask to talk first, and merge it only when we can vouch for the work. Not everyone who asks becomes a Partner. If you point the entry at a site that publishes `/cast.json`, the directory renders your full profile; without one it builds a profile from GitHub.
+
+You can change your own entry or remove yourself at any time with another pull request. If a partnership ends, we remove the entry and say so in the pull request that does it. The [registry README](https://github.com/Cratis/Cast/blob/main/Registry/README.md) has the exact policy.
+
+## What's next
+
+The roadmap is public. [Cratis/Cast#3](https://github.com/Cratis/Cast/issues/3) grows the Cast into a network: case studies modeled as events, with the client's approval, and skills earned from evidence such as merged pull requests instead of self-declared tags. [#4](https://github.com/Cratis/Cast/issues/4) runs the Cast on Cratis itself: the directory on Chronicle and Arc, modeled in Screenplay, with an MCP server for agents and `cratis cast` commands in the CLI. [#5](https://github.com/Cratis/Cast/issues/5) collects the ideas further out.
+
+If you build with Cratis, put your career on the stream. If you've shipped Cratis work with a client and want to be a Partner, open the pull request and tell us about it.
