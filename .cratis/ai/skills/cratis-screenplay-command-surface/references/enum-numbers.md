@@ -24,6 +24,8 @@ module Invoicing
         status InvoiceStatus
         produces event InvoiceSent
           status InvoiceStatus = status
+      screen SendingInvoice
+        action SendInvoice for screen
       specification Sending
         when SendInvoice
           invoiceId = "6f9619ff-8b86-d011-b42d-00c04fc964ff"
@@ -35,6 +37,8 @@ module Invoicing
 
 ## Source rules
 
+- Member names are lowercase identifiers: `hourly`, not `Hourly`. A capitalised member is
+  PLAY0009 ("expected an identifier"); rename it, and use the same name in specifications.
 - Number **all members or none**; there is no implicit continuation after a pin.
 - Numbers are unique whole int32 values, from -2147483648 through 2147483647.
   Gaps and negative numbers are allowed; aliases and flags semantics are not.

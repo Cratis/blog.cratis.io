@@ -1,6 +1,6 @@
 ---
 name: cratis-screenplay-model-review
-description: "Critic-mode review of a Cratis Screenplay .play model, candidate, proposal or edit request: verdict evidence, element sweep, entity walk, field lineage, an 89-check phased checklist, anti-pattern signals, event-sourcing correctness and a PASS / PASS WITH WARNINGS / FAIL report pinned to declarations, plus a business-question pass and a read-only walkthrough that explains a feature or a planned change slice by slice. Use to review, audit, self-check or explain a model before acceptance or rendering. Never edits the model. Not for: writing the missing specifications (use `cratis-screenplay-scenario-coverage`), changing the model (use `cratis-screenplay-model-authoring`)."
+description: Use when reviewing, auditing, self-checking or explaining a Screenplay model or proposal read-only before acceptance or rendering. Not for editing the model, adding missing scenarios or reviewing rendered code.
 license: MIT
 ---
 <!-- cratis-ai-managed: skills/cratis-screenplay-model-review/SKILL.md -->
@@ -54,17 +54,20 @@ model's behalf.
 
 3. **Element sweep** (phase 1, mechanical, before any judgement). One line per gated element, event,
    name, command, event property and slice; `references/checklist.md` S1-S7 gives each line's
-   format. Scoped `find-modeling-smells` supplies advisory generic-name, duplicate-shape
-   and wide-flow questions, never compiler defects or a substitute for the sweep. Each `NONE` and each form name is its own finding naming that element. A repeated
+   format. Scoped `find-modeling-smells` supplies advisory generic-name, duplicate-shape,
+   wide-flow and unread-event-property questions, never compiler defects or a substitute for the sweep. Each `NONE` and each form name is its own finding naming that element. A repeated
    payload or generic verb is a signal to investigate: report it only when the name or payload
    hides the business reason or a consequence is shown (distinct facts that share a shape and
    earlier generations are not findings). A description, comment or spec name never excuses a flagged line.
-4. **Entity walk** (phase 2). Per kind of event source write the first fact, the allowed and the
+4. **Entity walk** (phase 2). Perform an entity walk per kind of event source: write the first fact, the allowed and the
    refused state changes, the final states; then walk cancel, fail, correct and expire paths. Each
    refused change needs a `then error` spec; each command missing from the table is investigated.
 5. **Lineage and completeness** (phase 3). Backward: every read-model field to an event field,
    `$eventSourceId`, literal or documented derivation, to a command input, `$context`, capture field
-   or literal, to the screen, reaction or integration that supplies it. AutoMap fills same-named
+   or literal, to the screen, reaction or integration that supplies it. Trace a field with the
+   `screenplay` MCP server's `trace-lineage` tool (paged tree, breaks, branches and opaque hops
+   are reported) rather than stitching `dependencies` calls; confirm each hop in the model.
+   Requires Screenplay 4.223.0 (`screenplay --version`); on older releases use `dependencies`. AutoMap fills same-named
    fields silently: count them. Forward: every event to a consumer or a terminal reason; every
    command input to an event field or a rule. Before calling data missing, search the model.
 6. **Phased checklist** (phases 4-10): ownership, event quality, events versus views, rules and
@@ -95,6 +98,12 @@ model's behalf.
     mode in a design model is a recorded gap, not a defect to delete. Removing protection
     (`pii`, authorization, rules) to pass a tool is always a critical finding.
     Protection and reaction-privilege checks: [mode compliance](references/mode-compliance.md).
+    A client id, secret, authority, sender or mail server in a model is a critical finding: those
+    belong in the environment (`cratis-screenplay-authentication-and-onboarding`).
+    **Design system check** (when the model draws a UI): exactly one `design system` with a `default theme` (`PLAY0917`, `PLAY0927`);
+    every theme a profile selects `implements` it and gives each `color` token a value in every mode (`PLAY0926`, `PLAY0921`); no raw
+    `accent`, `corners` or `font` left in a profile's `appearance` (`PLAY0929`); `contrast` rules declared for the text/background pairs
+    components use, and no `PLAY0928` waived without a reason. Detail: `cratis-screenplay-ui-composition`.
 12. **Root causes, classify, report** (`references/report-template.md`). Group findings that share
     a declaration; report the root cause with its symptoms under it; severity critical, major or
     minor; kind defect, question or note; verdict with confidence. Never apply changes.
@@ -115,6 +124,12 @@ model's behalf.
 
 ## Comparing with a baseline
 For comparison with `main`, use `semantic-diff`; neither it nor `read-proposal view=semantic-diff` proves behavioral equivalence. Read [baseline comparison](references/baseline-comparison.md) for source selection, the baseline worktree check, identity matching and drift refusals.
+Review [enum numeric identity](../cratis-screenplay-model-authoring/references/mcp-tools.md#enum-numeric-identity)
+(Requires Screenplay 4.214.0; `screenplay --version`): inspect `stored: true` items.
+Number change/removal/reuse is breaking; an explicit-number-preserving rename is
+not breaking for numeric storage but renames generated code. Pin stored positional
+enums with `propose-number-enum-members` before reordering. Treat
+`EnumerationNotComparable` as unresolved comparison, never as unchanged.
 
 ## Audit pass (existing or extracted models)
 Read-only. Before the checklist produce the inventory in the fixed shape of
@@ -128,14 +143,11 @@ rejected state and its evidence.
 Optional, on request, all read-only and yielding edit requests: a subject's information journey (`references/model-inventory-report.md`), a resilience pass (`references/stressor-analysis.md`) and a slice-by-slice walkthrough (`references/walkthrough.md`).
 
 ## Quick self-check (modeler, P4; about ten minutes)
-Eleven yes/no checks the modeler runs on its own work before P5 (V1 clean, no dropped constructs,
-every event production has `for`, every field has an origin, every command a reachable authorized
-origin, NOT-enforced rules marked, coverage matrix filled, personas with their denials, rationale in
-`documentation`, open questions as anchored notes, every Automation with pending work). Any "no" is
-fixed or explained before P5. The list: [quick self-check](references/quick-self-check.md).
+Read [quick self-check](references/quick-self-check.md) before P5 for the eleven
+modeler checks. Fix or explain every "no"; this is not the independent review.
 
 ## Business-question pass (explain brief)
-Be a sharp business analyst seeing the domain fresh: walk each persona's journey and ask only what a domain person must decide, in plain language with no engineering words (could a non-technical product owner read it and immediately understand what is being asked?), anchored to a place in the model, at most 12 questions (zero is valid). Method, element prompts and the model-word translation table: `references/business-questions.md`.
+Be a sharp business analyst seeing the domain fresh: walk each persona's journey and ask only what a domain person must decide, in plain language with no engineering words (could a non-technical product owner read it and immediately understand what is being asked?), anchored to a place in the model, at most 12 questions (zero is valid). Method, element prompts and the model-word translation table: `references/business-questions.md`. A behavior walk in the Stage sandbox (`cratis-stage-rendering-and-sandbox`) is a separate, optional check; its findings arrive here as review findings.
 
 ## Independent review
 P5 uses a fresh reviewer who authored nothing in scope; record reviewer/author models or `model: not exposed`, label a same-model review and let the user decide sufficiency. Read lifecycle "Independent review" when arranging P5; the model-family rationale is in `references/report-template.md` ("Independent review").
@@ -162,7 +174,7 @@ P5 uses a fresh reviewer who authored nothing in scope; record reviewer/author m
 The review is complete when every phase of the checklist has a status for every check, every
 sweep `NONE` and field-copy line is a finding or has a written domain reason, all five verdict
 lines are present (result or "not run: reason"), the three final questions are answered, and the
-verdict follows the rules in `references/report-template.md`.
+verdict follows the rules in `references/report-template.md`: PASS, PASS WITH WARNINGS or FAIL.
 
 ## Verify
 - Every finding has severity, kind, address and file:line, rule (with tier), consequence and fix;
@@ -180,7 +192,7 @@ Read [references/neighbouring-skills.md](references/neighbouring-skills.md) when
 
 ## References (load on demand)
 - Review public leaks, direction, complete keys and effective routes with [public/key/route checks](references/public-keys-and-routes.md).
-- Read `references/checklist.md` when performing the element sweep and phased audit; it contains eleven phases, 89 checks, tiers and evidence sources.
+- Read `references/checklist.md` when performing the element sweep and phased audit; it contains eleven phases, 90 checks, tiers and evidence sources.
 - Read `references/anti-patterns.md` when investigating an anti-pattern signal.
 - Read `references/report-template.md` when classifying findings, deciding the verdict, writing the report or conducting a re-review.
 - Read `references/worked-example.md` when an example of the sweep, lineage or report is needed, or when checking the complete examples: seeded model, filled report, fixed model.

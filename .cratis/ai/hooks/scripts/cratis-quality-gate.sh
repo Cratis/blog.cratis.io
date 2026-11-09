@@ -23,7 +23,21 @@ set -euo pipefail
 [ "${CRATIS_HOOKS_SKIP_GATE:-0}" = "1" ] && exit 0
 
 input="$(hook_read_stdin)"
-hook_have jq || exit 0
+root="$(hook_repo_root)"
+if ! hook_have jq; then
+    # Without JSON parsing, still honor Stop re-entry and never block an unchanged tree.
+    LC_ALL=C grep -Eq '"stop_hook_active"[[:space:]]*:[[:space:]]*true' <<<"$input" && exit 0
+    git -C "$root" rev-parse --git-dir >/dev/null 2>&1 || exit 0
+    [ -n "$(git -C "$root" status --porcelain --untracked-files=normal 2>/dev/null || true)" ] || exit 0
+    {
+        printf 'BLOCKED by cratis-quality-gate: jq is not installed, so no quality gates ran on this change.\n'
+        hook_jq_install_hint
+        printf '\nA person who accepts ending turns without the gate sets CRATIS_HOOKS_SKIP_GATE=1 in the environment the agent\n'
+        printf 'harness was started from; setting it inside the command has no effect.\n'
+    } >&2
+    [ "${CRATIS_HOOKS_GATE_DRYRUN:-0}" = "1" ] && exit 0
+    exit 2
+fi
 
 # Never re-enter: Claude Code sets stop_hook_active when the previous Stop hook already
 # blocked and the model is continuing. Blocking again would loop forever.
@@ -31,12 +45,15 @@ if [ -n "$input" ] && [ "$(hook_json "$input" '.stop_hook_active')" = "true" ]; 
     exit 0
 fi
 
-root="$(hook_repo_root)"
 here="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+export CRATIS_HOOKS_SCRIPTS_DIR="$here"
 config="${CRATIS_HOOKS_GATES:-$here/quality-gates.json}"
 dryrun="${CRATIS_HOOKS_GATE_DRYRUN:-0}"
 
-[ -f "$config" ] || exit 0
+[ -f "$config" ] || {
+    printf 'cratis-quality-gate: configuration not found: %s — no gates ran. Shipped defaults: .cratis/ai/hooks/scripts/quality-gates.json; project overrides: .cratis/ai/quality-gates.project.json (merged by gate id). CRATIS_HOOKS_GATES replaces the defaults.\n' "$config" >&2
+    exit 0
+}
 jq -e . "$config" >/dev/null 2>&1 || {
     printf 'cratis-quality-gate: %s is not valid JSON — gate skipped.\n' "$config" >&2
     exit 0
@@ -266,7 +283,8 @@ discover_workdirs() {
 
 gate_count="$(jq -r '.gates | length' "$config")"
 [ "${gate_count:-0}" -gt 0 ] || exit 0
-fail_fast="$(jq -r '.failFast // true' "$config")"
+# jq's // treats false as absent; failFast=false must keep running after a failed gate.
+fail_fast="$(jq -r '.failFast | if . == null then true else . end' "$config")"
 max_lines="$(jq -r '.maxOutputLines // 60' "$config")"
 
 tmp_root="$(hook_state_dir "$(hook_json "$input" '.session_id')")" || tmp_root="${TMPDIR:-/tmp}"
@@ -336,6 +354,46 @@ EOF
     return 0
 }
 
+# Bash job control gives the command and watchdog separate process groups without GNU timeout
+# or a language runtime. Keep the supervisor in the caller's group so Pi cancellation reaches
+# its trap too. Wait for escalation even if the command leader exits on TERM: its test hosts
+# may still be running. Only configured gates use this wrapper; other gates remain unchanged.
+run_timed_gate() (
+    set -m
+    local worker timer rc=0 marker="$log.timeout"
+    rm -f "$marker"
+    stop_group() {
+        kill -TERM -- "-$1" 2>/dev/null || return 0
+        sleep 1
+        kill -KILL -- "-$1" 2>/dev/null || true
+    }
+    cleanup() {
+        trap '' TERM INT
+        kill -TERM -- "-$timer" 2>/dev/null || true
+        stop_group "$worker"
+        wait "$timer" 2>/dev/null || true
+        wait "$worker" 2>/dev/null || true
+    }
+    (cd -P "$root/$wd" && exec "${cmd[@]}") </dev/null &
+    worker=$!
+    (
+        sleep "$gate_timeout"
+        printf 'timed out\n' >"$marker"
+        stop_group "$worker"
+    ) &
+    timer=$!
+    trap 'cleanup; exit 2' TERM INT
+    wait "$worker" || rc=$?
+    if [ -f "$marker" ]; then
+        wait "$timer" || true
+        rc=124
+    else
+        cleanup
+    fi
+    trap - TERM INT
+    exit "$rc"
+)
+
 idx=0
 ran=0
 planned_gates=0
@@ -384,6 +442,15 @@ while [ "$idx" -lt "$gate_count" ]; do
 $(jq -r --argjson i "$idx" '.gates[$i].command // [] | .[]' "$config")
 EOF
 
+    gate_timeout="$(jq -r --argjson i "$idx" 'if .gates[$i].timeoutSeconds == null then "" else .gates[$i].timeoutSeconds end' "$config")"
+    timeout_hint="$(jq -r --argjson i "$idx" '.gates[$i].timeoutHint // empty' "$config")"
+    if ! jq -e --argjson i "$idx" '
+        .gates[$i].timeoutSeconds | . == null or (type == "number" and . >= 1 and . <= 86400 and floor == .)
+    ' "$config" >/dev/null; then
+        printf 'cratis-quality-gate: UNVERIFIED %s — timeoutSeconds must be an integer from 1 to 86400.\n' "$id" >&2
+        exit 2
+    fi
+
     project_index=0
     gate_ran=0
     gate_noops=0
@@ -425,13 +492,23 @@ EOF
         rc=0
         {
             printf 'cratis-quality-gate: LOG %s (cwd: %s)\n' "$id" "$wd"
-            (cd -P "$root/$wd" && "${cmd[@]}") </dev/null
+            if [ -n "$gate_timeout" ]; then
+                run_timed_gate
+            else
+                (cd -P "$root/$wd" && "${cmd[@]}") </dev/null
+            fi
         } >"$log" 2>&1 || rc=$?
         ran=$((ran + 1))
 
         if [ "$rc" -ne 0 ]; then
             {
-                printf 'QUALITY GATE FAILED: %s (exit %s)\n' "$id" "$rc"
+                if [ -n "$gate_timeout" ] && [ -f "$log.timeout" ]; then
+                    printf 'QUALITY GATE TIMED OUT: %s after %ss (cwd: %s) — NOT VERIFIED.\n' "$id" "$gate_timeout" "$wd"
+                    printf 'Run a narrower command instead: %s\n' "${timeout_hint:-run the affected project with the command below, not the whole workspace/solution.}"
+                    printf 'Configure command/workingDirectory/timeoutSeconds in .cratis/ai/quality-gates.project.json.\n'
+                else
+                    printf 'QUALITY GATE FAILED: %s (exit %s)\n' "$id" "$rc"
+                fi
                 printf '  %s\n' "$desc"
                 printf '  $ %s   (cwd: %s)\n\n' "${cmd[*]}" "$wd"
                 printf -- '--- last %s lines ---\n' "$max_lines"

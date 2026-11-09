@@ -14,8 +14,10 @@ destination-type information; a reaction can also consume events from a capture 
 
 **Scope.** This document is the runnable demonstration only. It deliberately holds no rule that
 depends on stored state (the invoice must exist, only an open invoice may be voided, a reversal
-needs a received payment, `reads` + `require`): those rules cannot bind or run at Screenplay
-4.66.0 (PLAY0271, PLAY0268) and are stated in the design-mode document `invoicing-dues-design.md`,
+needs a received payment, `reads` + `require`): the legacy design control lacks
+`command reads protected` and retains PLAY0271/PLAY0268. Eligible reads can opt into
+v25; see command-surface protected-read admission and Stage refusal. The rules stay
+in the design-mode document `invoicing-dues-design.md`,
 never in prose here. It shows the category shapes; for a coverage example see `berth-reservations.md`.
 
 ```screenplay
@@ -54,6 +56,8 @@ module Invoicing
           amount Decimal = amount
       constraint IssueOnce
         unique event InvoiceIssued
+      screen IssueInvoice
+        action IssueInvoice for screen
 
       specification IssuingAnInvoice
         given caller
@@ -100,6 +104,9 @@ module Invoicing
       constraint SettleOrVoid
         unique event InvoiceSettled
         unique event InvoiceVoided
+      screen SettleOrVoidInvoice
+        action SettleInvoice for screen
+        action VoidInvoice for screen
 
       specification SettlingAnInvoice
         given caller
@@ -163,6 +170,8 @@ module Invoicing
       command RequestPayment
         invoiceId InvoiceId identifier
         produces event PaymentRequested
+      screen RequestPayment
+        action RequestPayment for screen
 
       specification RequestingPayment
         given caller
@@ -206,9 +215,28 @@ module Invoicing
             "C" => captured
             "D" => declined
         append PaymentGatewayResultReceived
+          when added
+            outcome = $.outcome
+            reason  = $.reason
+        append PaymentGatewayResultReceived
           when outcome
             outcome = $.outcome
             reason  = $.reason
+      event PaymentGatewayResultReceived
+        outcome GatewayOutcome
+        reason  String
+
+      specification TranslatingADeclinedCardResult
+        when capture PaymentGatewayResults
+          reference = "9c1f0a52-6a4e-4b1c-9f55-0d2c7b8e1a01"
+          outcome   = "D"
+          reason    = "Card declined"
+        then PaymentGatewayResultReceived
+          for "9c1f0a52-6a4e-4b1c-9f55-0d2c7b8e1a01"
+          outcome = "declined"
+          reason  = "Card declined"
+
+    slice Automation RecordPaymentOutcome
       reaction ReceivedTranslator
         when PaymentGatewayResultReceived
           outcome
@@ -221,19 +249,11 @@ module Invoicing
           produces PaymentDeclined
             reason = reason
         where outcome == "declined"
-      event PaymentGatewayResultReceived
-        outcome GatewayOutcome
-        reason  String
       event PaymentReceived
       event PaymentDeclined
         reason String
-
-      specification TranslatingADeclinedCardResult
-        when capture PaymentGatewayResults
-          reference = "9c1f0a52-6a4e-4b1c-9f55-0d2c7b8e1a01"
-          outcome   = "D"
-          reason    = "Card declined"
-        then PaymentGatewayResultReceived
+      specification RecordingADeclinedPayment
+        when append PaymentGatewayResultReceived
           for "9c1f0a52-6a4e-4b1c-9f55-0d2c7b8e1a01"
           outcome = "declined"
           reason  = "Card declined"
@@ -366,6 +386,8 @@ module Invoicing
           amount > 0 message "A top-up needs an amount above zero"
         produces event CreditToppedUp
           amount Decimal = amount
+      screen TopUpCredit
+        action TopUpCredit for screen
 
       specification ToppingUpCredit
         given caller

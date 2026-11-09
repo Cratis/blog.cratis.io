@@ -1,6 +1,6 @@
 ---
 name: cratis-screenplay-slice-design
-description: "Shape Screenplay slices from a discovered timeline: commands with reachable, authorized origins and traced inputs, rules placed by layer, a per-command refusal inventory, events-vs-views decisions, read models per screen component with queries that follow the business view, Level-1 screens, field lineage, state-transition tables, slice dependencies and the next slice. Use when designing slices after discovery, adding a capability or deciding command inputs, rule placement, read-model shape or screen data. Not for: stream boundaries or invariants across streams (use `cratis-screenplay-streams-and-consistency`), reactions and captures (use `cratis-screenplay-automations-and-translations`), which scenarios to write (use `cratis-screenplay-scenario-coverage`), or auditing a finished model (use `cratis-screenplay-model-review`)."
+description: Use when turning a discovered Screenplay timeline into commands, views and screens, or deciding inputs, refusal rules and field lineage. Not for stream identity, automation guarantees, scenario coverage or a finished-model audit.
 license: MIT
 ---
 <!-- cratis-ai-managed: skills/cratis-screenplay-slice-design/SKILL.md -->
@@ -39,8 +39,7 @@ Ask the batch below only for what the request leaves open: (1) origin of each ac
 ## Procedure
 
 1. **Fix the mode** for the scope (`cratis-screenplay-modeling-lifecycle`): design, executable
-   or renderable. It decides which shapes you may use (steps 6, 9). Read the existing model
-   before adding to it.
+   or renderable. It decides which shapes you may use (steps 6, 9). Read the existing model first.
 2. **Find each event's origin.** For every event ask who or what makes it happen and through
    which path: a persona's screen `action` or form, a reaction's `invokes`, a capture. The
    origin must be **reachable** (some screen, form, reaction or integration leads to the
@@ -55,8 +54,7 @@ Ask the batch below only for what the request leaves open: (1) origin of each ac
    separate reasons change these values, then split (`references/slicing.md` *Generic edits*).
    One input per thing the caller decides or supplies; `identifier` on the property naming the
    instance (omit only for allocation); inline `produces event <Name>` (no `for`) when the command owns the event; plain `produces <Name>` needs `for <identifier>`. Trace each input
-   (`references/field-lineage.md`) and list the values each rule reads: input, state or context
-   (`references/command-inventory.md`). A conditional input is a granularity question: two
+   (`references/field-lineage.md`) and list the values each rule reads: input, state or context. A conditional input is a granularity question: two
    decisions are two commands; one decision with a dependent rule is an implication
    (`require a == false or b > c`). Never a boolean attestation input (`confirmsX == true`)
    standing in for a rule. Place each rule in its layer (`references/rule-layers.md`). A rule
@@ -90,7 +88,7 @@ Ask the batch below only for what the request leaves open: (1) origin of each ac
 6. **Design the read side** (`references/read-model-design.md`). Enumerate every screen and
    automation first: one read model per screen component or automation need; the typical
    slice is `read model -> screen -> command -> event`. Pick the builder (declarative projection first, reducer when
-   guards cannot be expressed). The query follows the business view: a list where people scan a
+   guards cannot be expressed; a lookup `by` another identity type warns `PLAY0690`). The query follows the business view: a list where people scan a
    list, a keyed lookup where they open one thing. For **executable or renderable scope**, every
    read model needs one unambiguous identity: explicit trailing `key` first. Read `references/read-model-design.md` ("Executable identity of a read model") for the fallback order, the key decision table and the Stage rule.
 
@@ -104,6 +102,14 @@ Ask the batch below only for what the request leaves open: (1) origin of each ac
    (`references/read-model-design.md`). One actor's point of view
    per screen, at a real beat of the story, not one per persona for symmetry; know where the
    actor sees each state change's result. Beyond Level 1: `cratis-screenplay-ui-composition`.
+   **Placement** (Screenplay 6): a State Change slice's screen says what it fits, in order of
+   preference (`fits dialog, drawer, pane`); the hook that starts it (a `button` naming the slice
+   in a template's actions outlet) picks the first fit the page has free, and names a place
+   (`opens dialog|drawer|in slot <name>`) only when it needs another one. A command whose inputs
+   all resolve from the selected row or generated values can be issued by a `runs` hook and needs
+   no screen. Every State Change command needs an issuer (a screen action, a hook, an attached
+   behavior `execute` or a reaction; a form alone is not one), or `PLAY0533` warns on every check. Once the application
+   declares navigation, a screen nothing reaches (no hook, navigation or action leads to it) issues nothing.
 8. **Lineage pass.** After each field edit run `--check field-origins,input-surfaces`. Build the matrix in `references/field-lineage.md` from the `.play` files
    (read them), not from memory or an earlier summary. For each read model, write one line per
    contributing event in its StateView slice `documentation`: which fields it sets and why. An
@@ -123,7 +129,7 @@ Ask the batch below only for what the request leaves open: (1) origin of each ac
 
 - At most one `identifier` per command; never on an event property or read-model property (use `key`). At most one builder per read model (`PLAY0191`). Read `references/read-model-design.md` ("Identifier and key contract") for the exact rules.
 
-- A query's `by` goes on its own body line; `from`, single-result filters, scope, performer and composite `by` remain `PLAY0268`; equality filters on collections bind as ESM v14. Read `references/read-model-design.md` ("Query binding") for the binding rules.
+- A query's `by` goes on its own body line; `from`, single-result filters, scope and a list-query `by` block remain `PLAY0268` (a `performer` query is an opaque read left out of the executable model, while Stage renders its verified C# body: [performer bodies](../cratis-screenplay-read-surface/SKILL.md#performer-bodies-are-rendered); [version gate](../cratis-screenplay-toolchain/references/executable-subset.md#code-attachments-what-binds-what-never-does)); equality filters on collections bind as ESM v14. Read `references/read-model-design.md` ("Query binding") for the binding rules.
 
 - A `unique` constraint names a property the event declares directly; the constraint name is
   its identity (renaming starts an empty index).
@@ -147,7 +153,7 @@ collections, invariants, who sees which rows); report a finding only with a doma
 
 ## Public boundaries and view identity
 
-Translate crosses an application boundary (inbound consumes foreign public events; outbound folds private facts into exactly one local public event type); commands never publish public events. Mark view identity with trailing `key`; composite view keys remain unadmitted (`PLAY0268`) - keep the true identity and report the gap. Read [references/public-boundaries-and-keys.md](references/public-boundaries-and-keys.md) when a slice crosses an application boundary or a view needs a composite identity.
+Translate crosses an application boundary (inbound consumes foreign public events; outbound folds private facts into exactly one local public event type); commands never publish public events. Mark view identity with trailing `key`; flat composite view keys bind as ESM v27 (Requires Screenplay 4.204.0) - keep the true identity. Read [references/public-boundaries-and-keys.md](references/public-boundaries-and-keys.md) when a slice crosses an application boundary or a view needs a composite identity.
 
 ## Identity-affecting edits on an existing model
 
@@ -158,7 +164,9 @@ When `.screenplay/identities.json` exists, adding, removing or renaming an addre
 Slice design is done when these hold; otherwise report what is open.
 
 - [ ] Every command: origin reachable and authorized; every input traced; rules placed by
-      layer; stored-state rules recorded NOT enforced with a named target; no form-verb name.
+      layer; stored-state rules use admitted protected reads, or name the refused shape
+      and target gap; no form-verb name. Read [protected reads](../cratis-screenplay-command-surface/references/protected-reads.md)
+      for opt-in and Stage refusal; reference protection is not target realization.
 - [ ] Every command has a refusal inventory (success, each refusal with layer and message,
       denied persona); every gated command and query has a `then denied` row.
 - [ ] Every event is past tense, a specific change, and consumed or justified.

@@ -1,6 +1,11 @@
 <!-- cratis-ai-managed: skills/cratis-screenplay-legacy-extraction/references/intent-example.md -->
 # Intentional candidate example
 
+Legacy control: this candidate deliberately omits `command reads protected`, so its
+unenforced markers are about this source. Eligible command reads can instead opt
+into v25; inspect all reads before migration and keep target realization separate.
+Read [protected reads](../../cratis-screenplay-command-surface/references/protected-reads.md).
+
 A complete, compiling example of what extraction produces: one legacy write that touched two
 tables (`Checkins`, `Hooks`) is re-sliced into a single decision event plus a projection. The
 numbers in the slice descriptions (`E1`, `E6`, `Q3`) are evidence ids and open questions from
@@ -61,6 +66,8 @@ module Cloakroom
         unique ticketNumber on CoatTakenIn
         released by CoatHandedBack
         message "That ticket number is already in use"
+      screen TakeInCoat
+        action TakeInCoat for screen
       specification TakingInACoat
         given caller
           authenticated
@@ -118,6 +125,8 @@ module Cloakroom
           require CoatStatus.onHook == true
             message "That coat is not on a hook"
         produces event CoatHandedBack
+      screen HandBackCoat
+        action HandBackCoat for screen
       specification HandingBackACoat
         given caller
           authenticated

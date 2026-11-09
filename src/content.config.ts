@@ -1,4 +1,4 @@
-import { defineCollection } from 'astro:content';
+import { defineCollection, z } from 'astro:content';
 import { docsLoader } from '@astrojs/starlight/loaders';
 import { docsSchema } from '@astrojs/starlight/schema';
 import { blogSchema } from 'starlight-blog/schema';
@@ -7,7 +7,16 @@ export const collections = {
     docs: defineCollection({
         loader: docsLoader(),
         schema: docsSchema({
-            extend: (context) => blogSchema(context),
+            // `seoTitle` is the shorter title used for the <title> tag in search
+            // results; the post keeps its full `title` as the visible heading.
+            extend: (context) => blogSchema(context).extend({
+                seoTitle: z.string().max(60).optional(),
+                series: z.object({
+                    title: z.string().min(1),
+                    // Zero is the introduction; numbered parts start at one.
+                    order: z.number().int().nonnegative(),
+                }).optional(),
+            }),
         }),
     }),
 };

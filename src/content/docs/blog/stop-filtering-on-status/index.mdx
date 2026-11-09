@@ -1,5 +1,6 @@
 ---
 title: "Stop filtering on status"
+description: "Give each stage of an entity its own read model and let Chronicle move it between them with projection variants, not a Status column and nullable fields."
 date: 2026-10-13T09:30:00Z
 authors: einar
 excerpt: "Give each stage of an entity its own read model and let Chronicle move it from one to the next. No Status column, no pile of nullable fields, nothing to index just to find the backlog. How projection variants work, model-bound and fluent."
@@ -589,7 +590,7 @@ If your build can really finish before the pull request exists, that's still wor
 
 ## Sharing a mapping across variants
 
-Some properties every stage wants. A title is the obvious one. Repeating the mapping on each variant gets old, so model-bound projections have `[GlobalFor<TIdentity>]`: declare the mapping once, and it's merged into every variant in the group. Each client spells it its own way, and the [model-bound variants page](https://cratis.io/chronicle/projections/model-bound/variants/) has all five.
+Some properties every stage wants. A title is the obvious one. Repeating the mapping on each variant gets old, so model-bound projections have `[GlobalFor<TIdentity>]`: declare the mapping once, and it's merged into every variant in the group. Each client spells it its own way, and the [model-bound variants page](https://www.cratis.io/chronicle/projections/model-bound/variants/) has all five.
 
 {/* group:shared */}
 
@@ -1423,6 +1424,6 @@ And what do you get for it? The fastest thing that can possibly work, as I like 
 
 The next time you reach for a `Status` column, ask whether each stage deserves its own read model, either because it's a different thing or because you'd rather not filter on status for every query. If so, give it its own read model, name the event that makes an entity become it, and let Chronicle do the moving. That's a few attributes, or a few builder calls, and a status filter you never write.
 
-The full reference is in the docs, for both [model-bound variants](https://cratis.io/chronicle/projections/model-bound/variants/) and [fluent variants](https://cratis.io/chronicle/projections/declarative/variants/), and the [guide to choosing a read-model style](https://cratis.io/chronicle/projections/choosing-a-read-model-style/) is a good companion if you're still deciding between the ways to build one. How a read model gets queried afterwards, and how a live list learns about changes, is in [*From event to read model*](/from-event-to-read-model/).
+The full reference is in the docs, for both [model-bound variants](https://www.cratis.io/chronicle/projections/model-bound/variants/) and [fluent variants](https://www.cratis.io/chronicle/projections/declarative/variants/), and the [guide to choosing a read-model style](https://www.cratis.io/chronicle/projections/choosing-a-read-model-style/) is a good companion if you're still deciding between the ways to build one. How a read model gets queried afterwards, and how a live list learns about changes, is in [*From event to read model*](/from-event-to-read-model/).
 
 *Variants need Chronicle 19.1.0 or later, and the scenario behavior described here needs 19.57.1 or later.*

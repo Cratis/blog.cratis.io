@@ -1,6 +1,6 @@
 ---
 name: cratis-screenplay-modeling-lifecycle
-description: "Model first: load before any Cratis application work where a Screenplay `.play` model is, or should become, the source of truth. Holds the model-first decision rule, modes, independent verdicts V1-V5, the P0-P9 phases with Input / Carry-forward / Gate, stop-or-assume, identity ownership, approvals, untrusted content, session state and handoffs, then routes to ONE phase skill. Not for: Screenplay syntax or the compiler (use `cratis-screenplay-toolchain`), a single construct (use the `cratis-screenplay-*` construct skills), or Chronicle runtime diagnosis (use `cratis-chronicle-cli-operations`)."
+description: Use before application work to determine model-first obligations, or when selecting a Screenplay phase, verdict, approval or handoff. Not for construct syntax alone or Chronicle runtime diagnosis.
 license: MIT
 metadata:
   cratis-hint-paths: "**/*.play"
@@ -19,16 +19,20 @@ an unproven pass.
 
 ## Decide the level first (master copy; run once per request, from any entry point)
 
-1. **Opted in?** Only when (a) the model root (the folder holding the project's `.play` files, or the project's
-   configured root) holds a `.play` file **in the committed tree** (`git ls-tree -r --name-only HEAD` lists a `.play` file there, narrowed to `-- <root>` when a root is configured), or (b)
-   the project explicitly set `mcpServers.screenplay.root` in `.cratis/ai.json` (an empty configured
-   root counts). **Not opt-in:** an empty model folder or the MCP entry that `cratis ai
-   install`/`update` creates; an installed profile or skill; a `.play` file outside the root; a
-   staged or untracked `.play` file under the root (a draft). Committing a model under the root
-   is the team's act of acceptance and opts the repository in.
-   A committed file with uncommitted working-tree edits is a model change in progress: its HEAD version is the contract until the change is committed.
+1. **Opted in?** A committed `.play` file under the model root or an explicitly configured
+   `mcpServers.screenplay.root` in `.cratis/ai.json` opts in (even an empty configured root).
+   The invariant is in `general.md` ("Model first").
    A behavior is a **contract** only when an accepted (committed) model under the root covers it.
-   A direct user request to model a scope is consent for that scope. Evidence: `references/opt-in.md`. Read `references/opt-in.md` when checking opt-in evidence or model-root edge cases.
+   A direct user request to model a scope is consent for that scope. A committed model the project marks `modelFirst.frozen` in `.cratis/ai.json` is generated evidence, not opted in (reason `frozen-model`): read it, never regenerate or edit it unless the request names that `.play` path or model; a generic "regenerate all" skips it and says so. Run `scripts/model-first-status.mjs` from the repository with Node.js and Git:
+   `node <skill-directory>/scripts/model-first-status.mjs [--root <repository-relative-dir>] [--json]`.
+   Read-only roots: `--root`, configuration, then discovery from HEAD project paths (drafts only if none). Discovery prefers legacy `.cratis/screenplay/`, else the common folder, else `Source/`, `src/`, `Screenplay/`. It excludes hidden/build/docs/samples/examples/scratch/test fixtures from discovery and acceptance, including at `.`; explicit roots include everything beneath them.
+   This read-only opt-in detector is not MCP/CLI workspace discovery. For a new
+   workspace use [root selection](../cratis-screenplay-event-modeling/references/file-layout.md#locate-the-model):
+   code-only `Source/` or `src/` does not qualify; absent model/workspace state,
+   use repository-root `Screenplay/`.
+   Output: root, reason, frozen marker, file counts, drafts, model changes and the resolved `process` block. Exits: **0 opted in**, **1 not opted in**, **2 could not run** (Git/configuration/arguments). Treat 2 as blocked, not code-first.
+   Run `scripts/model-first-status.mjs --self-test` to plant and check verdict fixtures; it executes `scripts/model-first-self-test.mjs` and prints the checked count on success.
+   Read `references/opt-in.md` when checking the project configuration mechanism.
 2. **Not opted in:** continue code-first; never force a model (framework, brownfield,
    infrastructure, client and adapter work stays code-first). Only the entry-point agent or session
    may **propose a model**: at most once per session, never for trivial, bug-fix, infrastructure,
@@ -42,9 +46,9 @@ an unproven pass.
 | Situation | Level | Where the work goes |
 |---|---|---|
 | An accepted model covers the scope | **Model** | Change the `.play`, verify V1-V3, review, then render or gap-fill |
-| Opted in, but this scope has no model yet | **Model** | New behavior starts in discovery, then slice design |
+| Opted in, but this scope has no model yet | **Model** | New behavior starts in discovery, then slice design; a new model's application root starts with `command reads protected` (omit it only when the reads are not admissible, PLAY0781/PLAY0786) |
 | A computed rule inside a modeled slice | **Model + code attachment** | `csharp`/`file` block; it binds only as the construct allows (`cratis-screenplay-model-authoring`) |
-| Scope Stage cannot render yet (Stage renders supported event-triggered Automation; Translate/captures and refused reactions remain gap-fill. Mixed effects stay one reaction, `STAGE-ESM-037`; a hand-written realization must prove retry safety) | **Gap-fill code** | Hand-written; the `.play` slice and specs are the contract. `cratis-screenplay-render-and-gap-fill` separates an authorized existing generated base from fully hand-written delivery |
+| Scope Stage cannot render yet (Stage renders supported event-triggered Automation and bounded source-event capture/outbound Translate paths; refused shapes remain gap-fill. Mixed effects stay one reaction, `STAGE-ESM-037`; a hand-written realization must prove retry safety) | **Gap-fill code** | Hand-written; the `.play` slice and specs are the contract. `cratis-screenplay-render-and-gap-fill` separates an authorized existing generated base from fully hand-written delivery |
 | Outside call, transport or credentials | **Adapter code** | `Customizations/` or the host, applying `cratis-engineering-effect-boundaries` |
 | Infrastructure, clients, framework-profile repositories, brownfield not opted in | **Code** | Arc, Chronicle, spec and React skills; trivial changes keep the proportional-delegation policy |
 
@@ -76,7 +80,7 @@ or **critic** (P4-P5: strict, report first, fix in a separate batch).
 ## Verdicts (independent evidence, not a ladder)
 | Verdict | Meaning | Does not prove |
 |---|---|---|
-| V1 authorable | compiles, warnings as errors | meaning, binding |
+| V1 authorable | compiles, warnings as errors (declared gate) | meaning, binding |
 | V2 executable diagnostics | the executable model produces none | that specs run |
 | V3 binding-ready | the model binds | that any spec passes |
 | V4 reference specs run | engine, expected vs discovered | rendering or build health |
@@ -86,7 +90,7 @@ Report all five at checkpoints and handoffs, each a result or "not run: <reason>
 
 ## Lifecycle
 P0 intake, P1 discover, P2 model, P3 specify, P4 self-check, P5 independent review, P6 accept
-(bound to a source identity), P7 execute, P8 render or fall back, P9 verify. Each phase has
+(bound to a source identity; one role or split meaning and commit roles), P7 execute, P8 render or fall back, P9 verify. Each phase has
 **Input / Carry-forward / Gate** in `references/phases.md`. Read `references/phases.md` when entering, skipping, or transitioning between phases. Gates bind: a phase ends when its
 gate holds against the current `.play` and fresh tool output, never memory. A failing item is
 fixed, accepted by the user, or recorded as an open question with its assumption; never
@@ -104,7 +108,11 @@ assume visibly unattended and never rerun completed phases.
 ## Run protocol: stop or assume
 1. **Start**: read STATE.md; check the source identity; load the phase skill before authoring
    or judging; read the slice, specs and skill fully before concluding something is missing.
-   Discover tool capabilities once per session (`cratis-screenplay-toolchain`). One brief per
+   Discover tool capabilities once per session (`cratis-screenplay-toolchain`). **A model older
+   than the compiler's major is migrated before any edit**: a Screenplay 5 model runs
+   `screenplay migrate <model-root> --from 5 --to 6` as its own change, then compiles clean.
+   Read `references/version-migration.md` when a model writes a retired form or the compiler
+   names `screenplay migrate`. One brief per
    turn, one closed outcome: `references/per-turn-protocol.md`. Read `references/per-turn-protocol.md` when running a long-lived or delegated session that receives one brief at a time.
 2. **Scope**: only the addresses and phase the brief names; other defects go in the packet.
    One authoring agent per model root; reviewers and explainers are read-only.
@@ -146,7 +154,7 @@ never a state copy, an attestation flag, or `handler` prose.
 P5 needs a review in a fresh context by an agent that authored nothing in scope; label a same-model review as such, and the user decides whether it is enough. Read [references/independent-review.md](references/independent-review.md) for model-family choice and what each packet records.
 
 ## Session state, report and packet
-State lives in `.ai-work/screenplay/<model-slug>/STATE.md` (untracked, overwritten and bounded); the phase report is exhaustive; the handoff packet is about 40 lines and opens with `Outcome:`. Templates and full contents:
+State lives in `.ai-work/screenplay/<model-slug>/STATE.md` (untracked, overwritten and bounded). Projects may route decisions, work items, acceptance roles and agent addenda; read `references/project-process.md` when `.cratis/ai.json` has `process` or `modelFirst`. The phase report is exhaustive; the handoff packet is about 40 lines and opens with `Outcome:`. Templates and full contents:
 
   Read `references/handoff-template.md` when writing state, packets, questions, or edit requests; `references/phase-report-inventories.md` when producing a phase report; `references/reasoning-notes.md` when recording durable rationale in `documentation`; and `references/code-reading-and-tokens.md` before choosing code-reading scope or compressing output.
 

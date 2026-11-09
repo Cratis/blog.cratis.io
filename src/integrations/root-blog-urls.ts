@@ -69,6 +69,9 @@ export function rootBlogUrls(): AstroIntegration {
                     [/'\/blog\//g, "'/"],
                     [/\(\/blog\//g, '(/'],
                     [/url=\/blog\//g, 'url=/'],
+                    // The site is the blog; the plugin appends a redundant
+                    // blog title to the RSS channel (including RSS archives).
+                    [/(<channel>\s*<title>)Cratis Blog \| Blog(<\/title>)/g, '$1Cratis Blog$2'],
                 ];
                 let rewritten = 0;
                 for (const file of await listFiles(outDir)) {

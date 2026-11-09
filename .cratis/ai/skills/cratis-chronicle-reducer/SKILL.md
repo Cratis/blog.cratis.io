@@ -1,6 +1,6 @@
 ---
 name: cratis-chronicle-reducer
-description: Write a Chronicle IReducerFor reducer when model-bound projection attributes and the fluent IProjectionFor builder cannot express a read-model state transition. Covers the admission test, the exact accepted method signatures, the nullable-current requirement, deletion, passivity and event filtering. Use only after the projection options are genuinely exhausted; do not use for ordinary event-to-property mapping.
+description: Use when a Chronicle read-model transition needs branching, calculations or guards over prior state, or a reducer's discovery and delivery need diagnosis. Not for ordinary event-to-property mappings or external side effects.
 license: MIT
 ---
 <!-- cratis-ai-managed: skills/cratis-chronicle-reducer/SKILL.md -->
@@ -215,9 +215,12 @@ model type** and makes it passive as a whole: no sink, nothing materialized, and
 the instance is computed on demand when it is read. Reach for it when a
 command-side read needs the model current at the moment it is read. Passive is
 fresher, not safer: a passive reducer read captures no position and guards nothing,
-and a reducer (or a self-reducing model) is refused by
-decision reads. For a rule that must hold under concurrent writers use a flat
-projection with a decision read; see
+and a plain read of a reducer guards nothing. An unfiltered reducer without
+constructor dependencies (other than `ILogger<T>`; self-reducing models are exempt)
+is admitted by decision reads and by Arc read protection `On` (Chronicle 19.68.0);
+a filtered reducer or one with dependencies is refused, and no reducer is admitted in
+a stream-scoped read. For a rule that must hold under concurrent writers read an
+admitted model under `On`; see
 [choosing how a rule holds](../cratis-chronicle-decision-reads/references/choosing-how-a-rule-holds.md).
 
 ## Discovery, upgrades and ownership
@@ -232,12 +235,30 @@ event means no observer subscription; assembly membership alone is not event
 membership. Types implementing `IReducer` stay classic even with a self-shaped
 static helper.
 
+Requires Chronicle 19.72.0 for CHR0065 to warn on fold-like methods that are
+misnamed (`Reducer`/`reduce`) or not static and therefore never discovered.
+Check `dotnet list package`; older analyzers can leave those methods silent.
+
 Use the existing generic or Type `RegisterReducer` API for explicit self-model
 nomination too; there is no special self API. A self model cannot share ownership
 with a separate reducer, fluent projection or genuine model-bound mappings in the
 same store catalog: `AmbiguousReadModelBuilder` rejects it. `[Passive]`, sequence
 selection, filters and `[Reducer]` alone do not establish projection ownership.
 Remove the old builder when switching; registration is not a data migration.
+
+## Partition delivery
+
+Requires Chronicle 19.90.0 for concurrent .NET reducer partitions.
+
+Different partitions of one .NET reducer can run at the
+same time; batches for the same partition remain in arrival order. Keep shared
+collaborators thread-safe, or set
+`ChronicleOptions.Reducers.MaxConcurrentPartitions = 1`. The default is processor
+count capped at 8; values below 1 are refused. A global ordering assumption is
+not justified by per-partition ordering. Verified in the tagged sources listed
+by [connection options](../cratis-chronicle-client-dotnet/references/connection-options.md):
+`Source/Clients/DotNET/Reducers/ReducerOptions.cs`, `Reducers.cs` and
+`Observation/PartitionedDeliveryScheduler.cs`.
 
 ## Replay
 
@@ -251,8 +272,8 @@ Read [references/filtering.md](references/filtering.md) when restricting which e
 
 Start with `Specification` plus a direct call for pure reducer decisions:
 pass the event and current state explicitly and assert the returned next state.
-Add `ReadModelScenario<TReadModel>` only where event dispatch, filtering,
-metadata or read-model wiring contribute proof; drive the event sequence and
+Add one `ReadModelScenario<TReadModel>` per reducer for event dispatch, filtering,
+metadata and read-model wiring (the [decision table](../../rules/specs.scenarios.csharp.md)); drive the event sequence and
 assert on the resulting instance there. For the self example:
 
 Read [references/specification-example.md](references/specification-example.md) when you need a worked direct-call and `ReadModelScenario` spec.
@@ -273,10 +294,7 @@ prove transport, replay, encryption, erasure or sink migration. Cover, at minimu
 ## Route near misses
 
 - An accepted `.play` model under the model root covers the behavior, or the
-  repository is opted in (the root holds a committed `.play` file (`git ls-tree -r --name-only HEAD` lists a `.play` file there, narrowed to `-- <root>` when a root is configured), or the project set
-  `mcpServers.screenplay.root` in `.cratis/ai.json`; an empty directory, install
-  output, an uncommitted `.play` draft or a `.play` file outside the root does not count; master definition:
-  `cratis-screenplay-modeling-lifecycle`): change the model first with
+  repository is opted in (per `general.md` "Model first"; where `cratis-screenplay-modeling-lifecycle` is installed, run its `scripts/model-first-status.mjs`): change the model first with
   `cratis-screenplay-event-modeling`. If the Screenplay skills are not installed,
   say so and do not author `.play` from memory.
   Edit code here only for infrastructure, clients, adapters, Screenplay code

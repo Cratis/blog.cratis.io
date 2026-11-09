@@ -54,7 +54,7 @@ Titles and excerpts must match the body. Resolve a mismatch with a targeted clar
 
 Every factual claim about a Cratis product must be true of what is **released and public today**:
 
-- Describe only shipped, documented behavior. Link to the page on <https://cratis.io> that documents it.
+- Describe only shipped, documented behavior. Link to the page on <https://www.cratis.io> that documents it.
 - Experimental or early-development surfaces (for example the model-first layer) must be labeled as such in the same sentence that introduces them.
 - Omit unreleased products and roadmap asides unless they are necessary to the reader's decision. When relevant, state availability plainly (for example, "experimental" or "not yet published") without implying a release promise. Do not add boilerplate such as "no commitment implied".
 - Verify licensing claims against the named released products. Do not extend one product's license to an entire ecosystem or promise future licensing.
@@ -138,7 +138,7 @@ Conventions:
 
 - `authors` keys must exist in `src/data/authors.mjs`; add a new author there (with a signature) before referencing them — for a requester who is not already `einar`, `sindre`, or `cratis-team`, resolve them per “Resolve the author from the requester's GitHub identity” in `blog-workflow.md` first.
 - Reuse existing tags where possible (check other posts) before minting new ones.
-- Links to Cratis documentation are absolute (`https://cratis.io/...`) — the blog is a separate site.
+- Links to Cratis documentation are absolute (`https://www.cratis.io/...`) — the blog is a separate site.
 - The author signature block and byline render automatically; do not sign the post in the body text.
 
 ## 7. Verify the reader's path

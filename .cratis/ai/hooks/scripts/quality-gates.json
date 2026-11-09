@@ -1,7 +1,8 @@
 {
   "$comment": [
     "Quality gates run by the Stop hook (cratis-quality-gate.sh).",
-    "Data, not code: a consuming repository overrides this file (or points CRATIS_HOOKS_GATES at",
+    "Shipped defaults: .cratis/ai/hooks/scripts/quality-gates.json; project overrides: .cratis/ai/quality-gates.project.json.",
+    "Data, not code: a consuming repository patches gates by id (or points CRATIS_HOOKS_GATES at",
     "its own) without touching the script. Gates run in order and stop at the first failure.",
     "",
     "A gate runs only when the working tree contains a change matching one of its \u0022changed\u0022 globs,",
@@ -41,6 +42,9 @@
     "                   Mixed RUN/NO-OP directories report UNVERIFIED and exit 2, not a partial success.",
     "                   Gate commands read /dev/null so they cannot consume remaining directories.",
     "  command          argv array \u2014 executed directly, never through a shell (no eval)",
+    "  timeoutSeconds   optional integer 1..86400; deadline per command/directory, plus 1s TERM-to-KILL cleanup",
+    "                   (Pi\u0027s whole-tool deadline still applies); timeout exits 2, never a pass",
+    "  timeoutHint      narrower command to run when the gate times out; diagnostic text, never executed",
     "",
     "Managed corpus and adapter trees (.cratis/**, .pi/**, .claude/**) never count as a relevant change:",
     "a corpus update must not run a repository\u0027s application gates over files that are not its application.",
@@ -113,7 +117,9 @@
     },
     {
       "id": "backend-specs",
-      "description": "dotnet test (Debug, --no-build) \u2014 zero failures",
+      "description": "Built C# spec executables (Debug, no rebuild); VSTest-only fallback \u2014 zero failures",
+      "timeoutSeconds": 120,
+      "timeoutHint": "./\u003Caffected-project-dir\u003E/bin/Debug/\u003CTFM\u003E/\u003CAssemblyName\u003E (or dotnet \u003CTargetPath.dll\u003E without apphost); only VSTest: dotnet test \u003Cproject\u003E --configuration Debug --no-build. Repeat for affected dependents.",
       "changed": [
         "**/*.cs",
         "**/*.csproj",
@@ -139,11 +145,9 @@
         "**/*.sln"
       ],
       "command": [
-        "dotnet",
-        "test",
-        "--configuration",
-        "Debug",
-        "--no-build"
+        "bash",
+        "-c",
+        "exec bash \u0022$CRATIS_HOOKS_SCRIPTS_DIR/cratis-run-specs.sh\u0022 --configuration Debug --no-build"
       ]
     },
     {

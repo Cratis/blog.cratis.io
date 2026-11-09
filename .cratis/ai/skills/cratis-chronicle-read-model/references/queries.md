@@ -33,10 +33,17 @@ Chronicle extensions — Chronicle declares no `Observe` on `IMongoCollection<T>
 
 ## Discovery rules
 
-Arc discovers **public static** methods; private and compiler-generated methods
-are never queries. Use `[ReadModel(RequireQueryAttribute = true)]` and `[Query]`
-on intended endpoints when the type also has folds (`Create`/`Reduce`) or public
-helpers. `[Query]` alone does not hide siblings. ARC0026 checks invalid/ambiguous
+Arc discovers eligible **public static** methods on `[ReadModel]` types.
+Requires Arc 22.121.0: non-public methods are excluded even with `[Query]`, and
+ARC0029 warns on a non-public query-shaped method. A public query on an internal
+read-model type still works. On older Arc, internal statics are exposed too;
+keep helpers outside the read model when supporting those versions. Use
+`[ReadModel(RequireQueryAttribute = true)]` and `[Query]` on intended endpoints
+when the type also has folds (`Create`/`Reduce`); `[Query]` alone does not hide
+siblings. Requires Arc 22.27.1 for exclusion of private, protected, special-name
+and compiler-generated methods; older versions can expose private statics too.
+Check with `dotnet list package`; on older versions move helpers out rather
+than relying on visibility. ARC0026 checks invalid/ambiguous
 query declarations; ARCCHR0019 warns about fold-like statics exposed by convention.
 Requires Arc 22.90.0 for automatic exclusion of methods taking the model itself,
 including `Reduce(event, current)`; `[Query]` cannot force such a method into an
@@ -77,8 +84,19 @@ public static async Task<IEnumerable<<ReadModelName>>> All<PluralName>(
 public static async Task<<ReadModelName>?> <SingularName>ById(
     <IdType> id,
     IMongoCollection<<ReadModelName>> collection) =>
-    await collection.Find(model => model.Id == id).FirstOrDefaultAsync();
+    await collection.Find(Builders<<ReadModelName>>.Filter.Eq(model => model.Id, id)).FirstOrDefaultAsync();
 ```
+
+Query MongoDB with the native driver API (`Find`, `Builders<T>` filter, sort and
+projection definitions, `Aggregate` pipelines), not `collection.AsQueryable()`.
+LINQ is translated at execution time and an expression the driver cannot
+translate fails the request with `Expression not supported`; the native API has
+no such step. See the MongoDB rule.
+
+A `Find(...).ToListAsync()` result is **not** paged. Use it for a bounded set. A
+list that can grow is returned with `collection.Observe(<FilterDefinition>)`,
+which Arc pages and sorts for the client without the query writing `Skip`,
+`Take` or `OrderBy`; see the **cratis-arc-query-paging** skill.
 
 Name the method for what it returns — the name is the query's identity on the
 generated client surface.

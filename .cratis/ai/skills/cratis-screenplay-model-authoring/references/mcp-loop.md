@@ -10,6 +10,7 @@
 - Who owns the connection
 - The loop
 - One edit strategy
+- Reference continuity and located conflicts
 - Self-describing identity migration refusals
 - Identity state (`.screenplay/identities.json`)
 - Read-only views worth knowing
@@ -25,10 +26,26 @@ defined by `cratis-screenplay-modeling-lifecycle`. Discover the installed tool s
 
 ## Connect
 
+Never ask which folder to use before trying `open-workspace` with no arguments.
+Without a fixed root, it binds the client's single workspace root, else a launch
+directory holding `.play` files. Only after a no-root or multiple-roots response,
+pass `path`: the folder holding the project's models, otherwise the folder the
+user names. Without a project the server uses `Documents/Screenplay` in the user's
+home; do not invent a location. A fixed root can switch to the same model
+folder in a registered Git worktree of the same repository. Screenplay 4.236.1
+also admits an explicitly requested sibling from a code-only `Source/` or `src/`
+root, not arbitrary root changes; existing model/workspace state prevents that
+switch. An empty fixed root named `data` still cannot rebind; nested targets,
+links and unrelated nonempty folders remain refused. `semantic-diff` path sources
+share these checks. A Java project with only code in `src` selects
+`<project>/Screenplay`, not `<project>/src`. Read [sibling admission boundaries](mcp-tools.md#working-with-the-screenplay-mcp).
+
 1. Launch with a **fixed root**: `screenplay mcp <model-folder>`, or
    `cratis screenplay mcp <model-folder>`, or `cratis screenplay mcp` inside a
-   project, where the CLI locates the model (the project's `.play` files, else `Source/`
-   or `src/`, else a new `Screenplay/` folder; what the `cratis/screenplay` profile registers). Stdio, newline-delimited
+   project, where the CLI reuses model/workspace roots, else chooses repository-root
+   `Screenplay/`; code-only `Source/` or `src/` does not qualify (Requires Cratis CLI
+   3.93.1; `cratis --version`; older versions can select the code folder).
+   Discovery creates no directory; the first write does. Stdio, newline-delimited
    JSON-RPC, one sequential connection.
 2. Send `initialize`, then the `notifications/initialized` notification, **before
    any tool call**. Earlier calls fail with `-32600` "Initialize and send
@@ -168,6 +185,9 @@ connection. Passing `open-workspace.path` does **not** avoid it, because the err
    move or removal is that approval, also unattended: do not ask again per apply. Then `apply` with the **before**
    revisions. Every old handle and proposal is gone afterwards: re-read at the new
    revision.
+   For a PLAY0516 [wildcard-import repair](repairs.md#timeline-import-order), review
+   that future files will need explicit imports, then rediscover diagnostics and
+   repairs after the apply; never reuse the old ordering proposal.
 9. Verify: compile the whole folder (V1), read `executable-diagnostics` (V2,
    V3), and run `screenplay test <root> --format json` or workspace
    `run-specifications` (V4), naming the tool, version and source revision. A
@@ -210,9 +230,9 @@ connection. Passing `open-workspace.path` does **not** avoid it, because the err
 | Edit class | Examples | Route |
 | --- | --- | --- |
 | Address-preserving | descriptions; bodies of rules and expressions; mappings between members that already exist; any edit that adds, removes or renames no addressed element. Also every edit in a model with no `.screenplay/identities.json` except persisted names | bounded text edit of the `.play` file, then compile the folder; or `propose-ast` |
-| Catalog-changing (identity file present) | add, remove or rename a declaration (slice, command, event, read model, projection, ...), a property of a command, event, read model, composite type or trigger, a query, a query argument or a specification; create, delete, rename or move a mapped `.play` document (McpState refuses reopening with `IdentityMappingConflict`; use document operations in `propose-ast`); rename, remove or move an event, command, read model, constraint, module, feature or slice; move declarations between files (slices and features across logical parents: `propose-move`); contract evolution of a persisted event (new generation, property added, removed or retyped) | `propose-rename` or a reviewed `propose-ast`; never a blind text rename. Renaming a constraint resets its uniqueness index: ask first unless the request names it, then report the reset. A persisted event rename needs `id "OldName"` (added by default) |
-| Concept `generate` | set/change/remove strategy and modifiers | `propose-ast` replaces `ConceptSyntax.generation` (`GenerationSyntax`; omit/null to remove), or reviewed `propose-source`; never hand-edit `generate` text. Preserve other concept members and inspect executable diagnostics: sequence PLAY0682, preview strategies PLAY0268, generated-rule proofs PLAY0688/0689. |
-| Repair | `PLAY0166`, `0478`, `0469`, `0471`, `0479`, `0516`, `0563`, `0564`, `0565`, `0614`, `0653`, `0683`, `0684` (and recipe-only `0397`) | `propose-repair` with `formatting`; PLAY0166/0478 may pin attachment evidence (`pinRepairEvidence` and `expectedRepairEvidenceRevision`), never fix-all PLAY0478 |
+| Catalog-changing (identity file present) | add, remove or rename a declaration (slice, command, event, read model, projection, ...), a property of a command, event, read model, composite type or trigger, a query, a query argument or a specification; create, delete, rename or move a mapped `.play` document (McpState refuses reopening with `IdentityMappingConflict`; use document operations in `propose-ast`); rename, remove or move an event, command, read model, constraint, module, feature or slice; move declarations between files (slices and features across logical parents, and single declarations between slices: `propose-move`); contract evolution of a persisted event (new generation, property added, removed or retyped) | `propose-rename` or a reviewed `propose-ast`; never a blind text rename. Renaming a constraint resets its uniqueness index: ask first unless the request names it, then report the reset. A persisted event rename needs `id "OldName"` (added by default) |
+| Concept `generate` | set/change/remove strategy and modifiers | `propose-ast` replaces `ConceptSyntax.generation` (`GenerationSyntax`; omit/null to remove), or reviewed `propose-source`; never hand-edit `generate` text. Preserve other concept members and inspect executable diagnostics: sequence PLAY0682, generated secrets PLAY0268, generated-rule proofs PLAY0688/0689, finite-support failures PLAY0691/0692. Pattern/random/rule and checksum validation bind as ESM v21 (Requires Screenplay 4.172.0, `screenplay --version`; older compilers refuse PLAY0268). Read `mcp-tools.md#concept-generation` for `arguments`, exact support and `rules[]`, not parsed diagnostic prose. |
+| Repair | `PLAY0166`, `0478`, `0469`, `0471`, `0479`, `0516`, `0563`, `0564`, `0565`, `0614`, `0653`, `0683`, `0684` (and recipe-only `0397`); `PLAY0470` only with author intent ([destination intent repair](destination-intent-repair.md)) | `propose-repair` with `formatting`; PLAY0166/0478 may pin attachment evidence (`pinRepairEvidence` and `expectedRepairEvidenceRevision`), never fix-all PLAY0478 |
 | Inline event extraction | `produces event ...` to a declared event | `propose-extract-inline-event` |
 | Parser-invalid document | no editable handles | `propose-source` `replace-document` with corrected source, or typed `propose-ast` document replacement |
 | Unadmitted constructs | systems/operations, the `numbers exact` source mode | reviewed Authoring `propose-source` (whole documents) or `propose-ast` (typed edits); preserve intent and report PLAY0268 |
@@ -228,6 +248,33 @@ Neither action supports fix-all or pinned evidence. A concept change affects all
 uses; uniqueness changes append-time behavior. Derived regex, matches/checksum
 repairs and rule-proof status await phase 2b-2; details and source citations are in
 [concept generation](mcp-tools.md#concept-generation).
+
+## Reference continuity and located conflicts
+
+Requires Screenplay 4.211.0 (`screenplay --version`) for independent reference-edit batches and string document/path fields; older servers can refuse independent remove/add batches and emit object-shaped fields. Upgrade before relying on this contract.
+
+Batch independent reference removals and additions with different text in one
+proposal, just as in sequential proposals. For example, removing a constraint's
+`OrderRecalled` reference and adding a specification's `OrderLost` reference is
+accepted when the remaining checks pass. Occurrence identity follows exact
+correspondence, verified relocation pairing or trusted `propose-move` lineage;
+unmatched references are removals/additions, not inferred moves.
+
+Unmatched removed and added references with exactly the same text refuse as
+ambiguous, even across owners/documents and under `Draft`. Comparison is ordinal:
+qualification and case are not normalized; equal tail names alone are not identity.
+Preserve a moved reference with `propose-move` or explicit semantic migrations.
+`Safe` still refuses new unresolved references; matched references cannot lose a
+resolved target, silently rebind unchanged text or capture existing debt.
+
+On refusal, read `conflicts[].document` (document identity), `path` and `otherPath`
+as plain strings when present, not objects with nested values. A conflict without
+a document reports null. The message locates the reference text, member/role,
+portable document path and line:column; ambiguous batches list disappeared and
+introduced occurrences, capped at ten with a remaining count. Use these locations
+instead of bisecting the batch. `candidates` stays empty for reference-validator
+refusals; it is reserved for property-planner evidence. `propose-move` report
+document fields are strings too.
 
 ## Self-describing identity migration refusals
 
@@ -246,9 +293,14 @@ Requires Screenplay 4.89.0 or later (`screenplay --version`) for `identityMigrat
 
 ## Identity state (`.screenplay/identities.json`)
 
-- `apply` persists identities with the `.play` changes (probed: the file survives
-  restarts without `export-workspace`). `open-workspace` and read-only commands
-  never create it. Commit both.
+- `apply` persists identities with source or notes-only changes; they survive
+  restarts without `export-workspace`. `open-workspace` and read-only commands
+  never create the file. Commit identity state with the model and notes.
+- Containers anchor before binding when all documents parse and place; inspect
+  `containerIdentities` in `open-workspace` / `workspace-state`. Fix binding
+  through MCP proposals, not external edits after persisting a partial catalog.
+  Read [state and recovery](state-and-recovery.md) for the exact unbound reopen
+  exception and [model notes](model-notes.md) for targeting refusal reasons.
 - A model only ever edited as text has **no persisted identities** until the first
   `apply`. Whether a first apply is the intended initialization is not documented
   beyond "after the first apply, keep `.screenplay/identities.json`"; ask before

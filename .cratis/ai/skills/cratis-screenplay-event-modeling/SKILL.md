@@ -1,6 +1,6 @@
 ---
 name: cratis-screenplay-event-modeling
-description: "Entry point and router for model-first Cratis work: the short decision rule (model, or code), the nine-step workflow per behavior, the four slice types, the Cratis divergences from the generic method, the quick validation gate, file layout and what parsed-but-not-runnable means, then the phase skill to load next. Use when designing an information system, mapping a business process or information flow, deciding the event vocabulary or stream boundaries, turning a whiteboard model into `.play`, or when a request may change behavior in an application with a Screenplay model. Not for: Screenplay syntax and the compiler alone (use `cratis-screenplay-toolchain`), the lifecycle, verdicts and handoffs (use `cratis-screenplay-modeling-lifecycle`), or rendering a settled model (use `cratis-screenplay-render-and-gap-fill`)."
+description: Use when starting a Screenplay modeling task, mapping a business process or deciding where a modeled behavior change enters the workflow. Not for syntax-only questions, lifecycle verdicts or rendering a settled model.
 license: MIT
 ---
 <!-- cratis-ai-managed: skills/cratis-screenplay-event-modeling/SKILL.md -->
@@ -30,13 +30,7 @@ into the work that acts on them. Flag a real trade-off to the user instead of re
 
 **1. Decide the level (short form; master copy in `cratis-screenplay-modeling-lifecycle`).**
 Check first that the method skills are installed; installing them never opts a
-repository in. The work is **model-first** only in an opted-in repository: the model
-root (the folder holding the project's `.play` files) holds a committed `.play` file (`git ls-tree -r --name-only HEAD` lists a `.play` file there, narrowed to `-- <root>` when a root is configured), or the project explicitly set
-`mcpServers.screenplay.root` in `.cratis/ai.json`. An empty directory, install output,
-an installed skill, a `.play` file outside the root or an untracked or uncommitted draft is not
-opt-in; staged or untracked files under the root are drafts. A committed file with uncommitted
-working-tree edits is a model change in progress; its HEAD version is the contract until the
-change is committed. A behavior is a contract only when an accepted model under the root covers it.
+repository in. Decide opt-in per `general.md` "Model first"; where `cratis-screenplay-modeling-lifecycle` is installed, run its `scripts/model-first-status.mjs` for the decision, model root and drafts.
 Otherwise stay code-first. Only the entry-point session proposes a model (at most once
 per session, never for trivial, bug-fix, infrastructure, client, framework or
 brownfield-maintenance work; unattended: record the recommendation in the final report).
@@ -115,18 +109,19 @@ The independent verdicts V1 to V5 that report them are in
 `cratis-screenplay-modeling-lifecycle`.
 
 What binds depends on **which tool** you ask, so name the tool and its version:
-Read [references/parsed-not-runnable.md](references/parsed-not-runnable.md) (section "What binds depends on which tool") when stating what a tool binds or renders (`reads`/`concurrency` fail with `PLAY0271`; `persona` declarations are report-only; an older bundle reports *Slice '<name>' of type '<type>' is not admitted by ESM v1.*).
+Read [references/parsed-not-runnable.md](references/parsed-not-runnable.md) (section "What binds depends on which tool") when stating what a tool binds or renders (legacy reads and `concurrency` fail with `PLAY0271`; protected command reads opt into v25; `persona` declarations are report-only; an older bundle reports *Slice '<name>' of type '<type>' is not admitted by ESM v1.*).
 
 The ESM versions, the full disposition table and the Step 7 clock example's binding
 result are in [references/parsed-not-runnable.md](references/parsed-not-runnable.md)
 and `cratis-screenplay-toolchain` (`references/executable-subset.md`). Read `references/parsed-not-runnable.md` when determining the required ESM version or interpreting binding dispositions. Read `cratis-screenplay-toolchain`'s `references/executable-subset.md` when checking binder admission or reference-execution limits. Model the wider
 language freely when the `.play` file **is** the deliverable - documentation,
 review, a shared description of a system. Never read a clean `screenplay` run as
-evidence a construct works downstream.
+evidence a construct works downstream. New constructs can be admitted, each byte-changing one with its own ESM version, and count as delivered once Stage admits it or refuses it with a typed refusal. Model with what the installed compiler admits, and report a typed
+Stage, `cratis render` or Studio refusal as a platform gap.
 
 ## Locate the model
 
-Look first for the project's existing `.play` files: the folder holding them is the model; a new model goes under `Source/` or `src/`, else `Screenplay/`, never under `.cratis/`. Read [references/file-layout.md](references/file-layout.md) (section "Locate the model") when the location is unclear or source might be copied between repositories. `cratis ai install` manages `.cratis/ai/`, never model files.
+Look first for the project's existing `.play` model and workspace state; reuse that root. Code-only `Source/` or `src/` is not a model root; otherwise use repository-root `Screenplay/`, never `.cratis/`. Read [references/file-layout.md](references/file-layout.md) (section "Locate the model") when the location is unclear or source might be copied between repositories. `cratis ai install` manages `.cratis/ai/`, never model files.
 
 ## Verified product sources
 
@@ -174,21 +169,22 @@ Read [references/parsed-not-runnable.md](references/parsed-not-runnable.md) (sec
 Two divergences matter, and getting them wrong produces a model that will not
 compile or will not be safe. Both are deliberate.
 
-- **A command may read state.** The generic method forbids `ReadModel -> Command`
+- **A command may read state.** A newly scaffolded model starts its application root
+  with `command reads protected`; leave the preamble out only for a model whose reads are
+  not admissible (PLAY0781/PLAY0786). The generic method forbids `ReadModel -> Command`
   edges. Screenplay ships `reads <ReadModel> [as <alias>] [by <property>]` so the
-  model shows what a state-dependent decision consulted. **It is not a protected
-  (open limitation):** nothing checks at append time that the state is still current,
-  the executable model rejects `reads` and `concurrency` (`PLAY0271`), and adding
-  `concurrency` does not make the decision safe .
-  Write a state-dependent rule as `reads <View>` plus `require <expr> message "..."`
-  and mark it in the slice `description` as **not enforced in the model today**,
-  naming the target that must enforce it (Arc `[ProtectedDecision]` with
-  `DecisionRead<T>`, Chronicle's dynamic consistency boundary, or a constraint where
-  one fits). Model uniqueness as a `unique` constraint. Never copy state into a
+  model shows what a state-dependent decision consulted. Application-root
+  `command reads protected` admits eligible command reads as v25: absent state
+  rejects and matching decide/commit changes conflict. Read
+  [protected reads](../cratis-screenplay-command-surface/references/protected-reads.md)
+  for the strict shape and paths. Legacy reads remain PLAY0271; `concurrency` is
+  not protection and cannot combine with protected reads. Stage 4.138.0 renders protected reads as Arc read protection (`cratis render` gets it from the first CLI that bundles it; CLI 3.75.0 refuses them with STAGE-ESM-044); semantic Host/executor support is not generated-app protection.
+  Write state-dependent rules as `reads` plus `require` with an indented message;
+  mark refused shapes as unenforced and name the intended target mechanism. Model uniqueness as a `unique` constraint. Never copy state into a
   command input, add an attestation flag, or hide the rule in `handler` prose. Do not
   use `reads` to fetch data the command could carry as input. A reaction trigger
-  declares the views an automation decides from with the same `reads`, and the same
-  caveat applies.
+  declares consulted views with `reads`, but trigger reads remain unprotected;
+  decide in an invoked command instead.
 - **Some validation *does* belong in the model.** The generic method routes format
   rules to the type system. Screenplay's type system *is* the `concept`, and a
   concept carries its own `validate` block - so a format rule lives on the concept

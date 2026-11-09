@@ -1,6 +1,6 @@
 ---
 name: cratis-chronicle-event-constraints
-description: Enforce append-time uniqueness in Chronicle with the [Unique] attribute, [RemoveConstraint], and IConstraint, and specify the violation with EventScenario. Use when a rule must hold at the event store rather than in a command, so two concurrent appends cannot both win. Do not use for ordinary command input validation and do not use to create a projection.
+description: Use when Chronicle uniqueness or create-once rules must hold across concurrent appends from every writer. Not for ordinary input validation, capacity predicates or projection creation.
 license: MIT
 ---
 <!-- cratis-ai-managed: skills/cratis-chronicle-event-constraints/SKILL.md -->
@@ -16,13 +16,24 @@ Constraints are discovered automatically. There is no registration call.
 
 A constraint binds **every** writer, whichever client or service appends, so it is
 the mechanism for uniqueness and create-once. It cannot count, sum or test a
-predicate: capacity and stock rules need a decision read, a stream decision or an
+predicate: capacity and stock rules need a guarded read (read protection `On`), a stream decision or an
 aggregate. Read [choosing how a rule holds](../cratis-chronicle-decision-reads/references/choosing-how-a-rule-holds.md)
-when it is unclear which one a rule needs. Limits: the claim is settled after the
-durable append, so a failed index update can let a later duplicate
-through until a reindex; constraints apply per event store namespace and event
-sequence, so tenants in different namespaces can claim the same value; and a
-constraint is not re-run when the kernel retries a duplicate sequence number.
+when it is unclear which one a rule needs.
+
+Requires Chronicle 19.82.2 for constraint-index gap repair.
+
+A failed
+post-append index update marks a gap: subsequent governed appends repair the
+index from the event log or return `ConstraintIndexUnavailable` in the result's
+error collection without writing. Do not remove the constraint or blindly retry an unknown
+append outcome; see [append outcomes](../cratis-chronicle-client-dotnet/references/append-outcomes.md).
+Constraints apply per event store namespace and event sequence, so tenants in
+different namespaces can claim the same value. A constraint is not re-run when
+the kernel retries a duplicate sequence number.
+
+Verified in the tagged kernel sources listed by [append outcomes](../cratis-chronicle-client-dotnet/references/append-outcomes.md):
+`Source/Kernel/Core/EventSequences/EventSequence.AppendSettlement.cs` and
+`EventSequence.Validation.cs`.
 
 ## Verified product sources
 
@@ -44,18 +55,15 @@ memory.
 - The rule rejects **command input** — a range, a format, a cross-field
   condition: use `cratis-arc-command-validation`.
 - The rule is state-dependent (a count, a capacity, a status) and needs
-  concurrency protection: use enrolled stream/projection decision reads with
-  `cratis-arc-command-validation` and `cratis-chronicle-decision-reads`. Plain
-  injected models, validators and `Result<,>` alone remain advisory.
+  concurrency protection: use read protection `On` or stream decision reads with
+  `cratis-arc-command-validation` and `cratis-chronicle-decision-reads`. Injected
+  models and validators under `Off` (the default), and `Result<,>` alone, remain advisory.
 - You are creating or changing a read model that the rule reads: use
   `cratis-chronicle-read-model`.
 - You are writing the specification and want the `EventScenario` mechanics in
   depth: use `cratis-chronicle-event-specifications`.
 - An accepted `.play` model under the model root covers the behavior, or the
-  repository is opted in (the root holds a committed `.play` file (`git ls-tree -r --name-only HEAD` lists a `.play` file there, narrowed to `-- <root>` when a root is configured), or the project set
-  `mcpServers.screenplay.root` in `.cratis/ai.json`; an empty directory, install
-  output, an uncommitted `.play` draft or a `.play` file outside the root does not count; master definition:
-  `cratis-screenplay-modeling-lifecycle`): change the model first with
+  repository is opted in (per `general.md` "Model first"; where `cratis-screenplay-modeling-lifecycle` is installed, run its `scripts/model-first-status.mjs`): change the model first with
   `cratis-screenplay-event-modeling`. If the Screenplay skills are not installed,
   say so and do not author `.play` from memory.
   Edit code here only for infrastructure, clients, adapters, Screenplay code

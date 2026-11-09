@@ -1,6 +1,13 @@
 <!-- cratis-ai-managed: skills/cratis-screenplay-streams-and-consistency/references/streams-example.md -->
 # Example: streams, constraints and a recorded rule
 
+Legacy control: no `command reads protected` preamble is declared. The course-capacity
+payload-key fan-in remains refused even with opt-in; eligible active-enrolment reads
+can protect under v25, but reads plus concurrency cannot combine (PLAY0783). Read
+[protected reads](../../cratis-screenplay-command-surface/references/protected-reads.md)
+for admission and protected-read rendering (Stage 4.138.0; STAGE-ESM-044 otherwise). The legacy diagnostics below describe this
+control, not a blanket refusal of command reads.
+
 A complete design-mode model for course enrolment. It shows one business identity per stream,
 cross-stream references as payload, three kinds of uniqueness constraint, a state-dependent
 rule recorded as **NOT enforced in the model today**, a declared `concurrency` scope, and an
@@ -56,6 +63,8 @@ module Membership
       constraint UniqueMemberEmail
         unique email on MemberRegistered
         ignore casing
+      screen RegisterMember
+        action RegisterMember for screen
       specification RegisteringAMember
         given caller
           authenticated
@@ -101,6 +110,8 @@ module Courses
         seats    Int
         produces event CourseOpened
           seats Int = seats
+      screen OpenCourse
+        action OpenCourse for screen
       specification OpeningACourse
         given caller
           authenticated
@@ -178,6 +189,8 @@ module Courses
         released by EnrolmentWithdrawn
       constraint EnrolOnce
         unique event MemberEnrolled
+      screen EnrolMember
+        action EnrolMember for screen
       specification EnrollingAMember
         given caller
           authenticated
@@ -270,6 +283,8 @@ module Courses
           courseId CourseId = courseId
       constraint WithdrawOnce
         unique event EnrolmentWithdrawn
+      screen WithdrawEnrolment
+        action WithdrawEnrolment for screen
       specification WithdrawingAnEnrolment
         given caller
           authenticated

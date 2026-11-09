@@ -8,17 +8,29 @@ A slice is not always set off by a command. Name what does:
 | A view no event builds - its query has a `performer` | `given readmodel` …, `when query <Query>`, `then result` / `then no result` |
 | An automation driven by the clock | `given clock "<instant>"`, `when clock "<later instant>"` |
 | An automation driven by an application trigger | `when trigger <Trigger>` with the values it carries |
-| A translation driven by a capture | `given capture <Capture>` (the record as it was), `when capture <Capture>` (as it is now) |
+| A translation driven by a record capture | `given capture <Capture>` (the record as it was), `when capture <Capture>` (as it is now) |
+| A capture with `source events` | `given <FromEvent>`, `when append <FromEvent>`; capture-record fixtures are PLAY0701 |
+
+A first record is `added` only, including child and nested records; field-change,
+`and`/`or` and transition guards need earlier state for the same key. For first sight
+add a separate `when added` append; for an update seed `given capture`. Requires
+Screenplay 4.175.0 or later (`screenplay --version`); older record evaluators treat
+first-record fields as changed. Complete cases: captures-and-reactions
+[record capture specifications](../../cratis-screenplay-captures-and-reactions/references/record-capture-specifications.md).
+Event captures use the typed event fixtures and overlay rules in
+[public event captures](../../cratis-screenplay-automations-and-translations/references/public-events-and-direction.md).
 
 Use `given clock`, never `given time`, to state the scenario occurrence time and
 assert a value mapped from `$context.occurred`. In a command's `produces`, that
-mapping executes when the scenario has `given clock`. It is not the same as
-`$eventContext.occurred` in a projection, which the execution plan refuses (SKILL.md, "Reference execution — what actually runs").
+mapping executes when the scenario has `given clock`. `$eventContext.occurred` in a
+projection is the fact's occurrence time: the reference runner executes it in `from`,
+`every` and `children` blocks for facts appended during the run under `given clock`, and a
+`given` fact carries none (Unsupported).
 
 **Which tools bind these actions.** A compiler that admits ESM v6 binds the clock, trigger
 and capture actions, and the `Automation` and `Translate` slices, reactions and captures they
 drive; the reference runner executes them through `screenplay test` or MCP `run-specifications`,
-with the semantics in [Reactions and cascades](reactions-and-cascades.md). The complete example in
+with the semantics in [Reactions and one slice per specification](reactions-and-cascades.md). The complete example in
 that reference reports `executableReady` with no executable error in `open-workspace` readiness
 and `read-workspace` view `executable-diagnostics`.
 

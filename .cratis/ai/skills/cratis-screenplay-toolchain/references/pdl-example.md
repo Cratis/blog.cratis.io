@@ -1,7 +1,7 @@
 <!-- cratis-ai-managed: skills/cratis-screenplay-toolchain/references/pdl-example.md -->
 # Projection (PDL) example
 
-Projection forms that compile warning-free, bind on both tools and run in the reference runner without Unsupported results (`PlacingAnOrder`, `CancellingAnOrder`, `Depositing` and `RejectingAnEmptyCode` pass). The specifications exercise every, from, `set`, increment, remove with, all + count, add/subtract by, `clear` and the concept rules; `PlacingAnOrder` also runs the `children lines` block (through `LineAdded`) without asserting it; join, nested and variant groups bind but no specification drives them. Forms in this example: every, join, children, nested, clear with, remove with, increment/decrement, all + count, add/subtract by, set to, clear, no automap, literal mapping, variant group (no `=> RM`), concept rules not empty/max/length ==. `lineCount` is initialized in `OrderPlaced` and `shipping` is optional, because the reference runner requires every non-optional read-model property to be set after each fact. Rejected by the binder: more than one every/all block on one level (PLAY0268); `$eventContext.occurred.Week` (PLAY0273, derived value). Not in this example because they block the whole execution plan in the reference runner: a `remove via join` on a projection's own (root) level (`UnsupportedProjectionBlock`; it binds, but on Chronicle v19.32.0 it creates no removal subscription, so `CustomerDeleted` would not remove an `OrderView`), and any event-context value other than the event source identity in a projection, such as `$eventContext.occurred` (`UnsupportedEventContext`). Quick reference: [cheat-sheet.md](cheat-sheet.md). The `every` block here maps a literal to show the form. Carry a timestamp on the event with `$context.occurred` in the producing command when a view must show it.
+Projection forms that compile warning-free, bind on both tools and run in the reference runner without Unsupported results (`PlacingAnOrder`, `CancellingAnOrder`, `Depositing` and `RejectingAnEmptyCode` pass). The specifications exercise every, from, `set`, increment, remove with, all + count, add/subtract by, `clear` and the concept rules; `PlacingAnOrder` also runs the `children lines` block (through `LineAdded`) without asserting it; join, nested and variant groups bind but no specification drives them. Forms in this example: every, join, children, nested, clear with, remove with, increment/decrement, all + count, add/subtract by, set to, clear, no automap, literal mapping, variant group (no `=> RM`), concept rules not empty/max/length ==. `lineCount` is initialized in `OrderPlaced` and `shipping` is optional, because the reference runner requires every non-optional read-model property to be set after each fact. Rejected by the binder: more than one every/all block on one level (PLAY0268); `$eventContext.occurred.Week` (PLAY0273, derived value). Not in this example because the reference runner reports unsupported for every specification that reaches or asserts the projection (others run; `planIssues` lists the deferred issue): a `remove via join` on a projection's own (root) level (`UnsupportedProjectionBlock`; it binds, but on Chronicle v19.32.0 it creates no removal subscription, so `CustomerDeleted` would not remove an `OrderView`), and any event-context value other than the event source identity in a projection, such as `$eventContext.occurred` (`UnsupportedEventContext`). Quick reference: [cheat-sheet.md](cheat-sheet.md). The `every` block here maps a literal to show the form. Carry a timestamp on the event with `$context.occurred` in the producing command when a view must show it.
 
 ```screenplay
 // PDL forms that bind executable on both tools.
@@ -32,6 +32,8 @@ module Shop
         produces event LineAdded
           lineNumber Int = 1
           sku String = "A-1"
+      screen PlaceOrder
+        action PlaceOrder for screen
       specification PlacingAnOrder
         when PlaceOrder
           orderId    = "7a1c2e30-4b5d-4e6f-8a9b-0c1d2e3f4a5b"
@@ -59,6 +61,8 @@ module Shop
         lineNumber Int
         produces event LineRemoved
           lineNumber Int = lineNumber
+      screen RemoveLine
+        action RemoveLine for screen
     slice StateChange ShipOrder
       command ShipOrder
         orderId OrderId identifier
@@ -66,10 +70,14 @@ module Shop
         produces event Shipped
           carrier String = carrier
         produces event ShippingCleared
+      screen ShipOrder
+        action ShipOrder for screen
     slice StateChange CancelOrder
       command CancelOrder
         orderId OrderId identifier
         produces event OrderCancelled
+      screen CancelOrder
+        action CancelOrder for screen
       specification CancellingAnOrder
         given OrderPlaced
           for "7a1c2e30-4b5d-4e6f-8a9b-0c1d2e3f4a5b"
@@ -87,6 +95,8 @@ module Shop
         produces event CustomerRenamed
           name String = name
         produces event CustomerDeleted
+      screen RenameCustomer
+        action RenameCustomer for screen
     slice StateView OrderOverview
       readmodel OrderView
         orderId      OrderId
@@ -138,6 +148,8 @@ module Work
           title String = title
         produces event IssueTitleCorrected
           title String = title
+      screen OpenIssue
+        action OpenIssue for screen
     slice StateChange OpenPullRequest
       command OpenPullRequest
         issueId IssueId identifier
@@ -145,6 +157,8 @@ module Work
         produces event PullRequestCreated
         produces event BuildCompleted
           status String = status
+      screen OpenPullRequest
+        action OpenPullRequest for screen
     slice StateView WorkItems
       readmodel BacklogItem
         issueId IssueId
@@ -179,6 +193,8 @@ module Bank
         produces event Withdrawn
           amount Decimal = amount
         produces event Frozen
+      screen Deposit
+        action Deposit for screen
       specification Depositing
         when Deposit
           accountId = "5d1f0c2e-8a47-4c1b-9b3e-6f2a7c9d1e10"

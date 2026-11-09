@@ -21,8 +21,6 @@ I wrote up how it's put together:
 
 The part I like best: most of it is boring. Commands produce events, read models are projections, follow-up work is a reactor. That's the point.
 
-Studio is live and in beta, and some features are still preview or experimental. The post says which.
-
 Full walkthrough with the diagrams in the first comment.
 
 FIRST COMMENT
@@ -35,7 +33,7 @@ IMAGE
 Use studio-at-a-glance.png (it is the strongest single figure). Alt text: Browser and AI agent go through AuthProxy to Core, MCP and the lobby, which record into Chronicle.
 
 DO
-- Say "live and in beta" if Studio status comes up.
+- Don't promise dates or pricing in replies. Send people to cratis.studio.
 - Answer architecture questions in the comments with the post's own wording.
 - Link the AuthProxy post if someone asks about the edge.
 

@@ -1,6 +1,6 @@
 ---
 name: cratis-application-slice-conformance
-description: "Reconcile a Cratis slice's hand-written or gap-filled code and specifications with its contract (the `.play` slice and its specifications, else the agreed slice outline) in both directions: every contracted field, rule, event, read-model property and specification has a realization, and nothing in code lacks authority. Use when implementing a slice, re-delivering after a model change, finishing gap-fill after a render, or reviewing slice code. Not for: deciding what the slice should do (use `cratis-chronicle-event-modeling` or `cratis-screenplay-slice-design`), writing the specifications themselves (use `cratis-application-slice-specifications`), or rendering (use `cratis-screenplay-render-and-gap-fill`)."
+description: Use when finishing or reviewing hand-written slice code, gap-fill or re-delivery against its accepted model or outline. Not for deciding behavior, writing specifications or running the renderer.
 license: MIT
 ---
 <!-- cratis-ai-managed: skills/cratis-application-slice-conformance/SKILL.md -->
@@ -45,7 +45,7 @@ This skill is a method: it names no API of its own. When the Screenplay skills a
 | --- | --- |
 | Where each rule lives (validator, `Provide()`, handler result, constraint, exception) | `rules/vertical-slices.md` "The decision matrix"  |
 | A customization never makes a rejected model renderable; managed output is never hand-edited | Stage (`Customizations/` is the unmanaged seam; managed output is regenerated) |
-| A command `handler` never binds (PLAY0268), so that slice is gap-fill with the model as contract | Screenplay (diagnostic PLAY0268) |
+| Attached file or inline command handlers bind beside unconditional `produces` with a resolved body (Screenplay 4.250.0) and are otherwise refused with PLAY0800 (4.210.0 to 4.249.x refuse every attached handler; older binders report PLAY0268); pending handlers with unconditional productions bind v23 as described commands, but reached bodies are Unsupported ImplementationBody and Stage refuses STAGE-IMPL-002 even in Stub mode | Screenplay and Stage; use the model as the gap-fill contract |
 
 ## Procedure
 
@@ -53,17 +53,13 @@ This skill is a method: it names no API of its own. When the Screenplay skills a
 Find the contract before touching code; say which one you are using. These steps are enough on
 their own when the Screenplay skills are not installed; the master decision rule, when they
 are, is `cratis-screenplay-modeling-lifecycle` ("Decide the level first").
-1. An accepted `.play` model under the model root (the folder holding the project's `.play` files, or the root
-   set by `mcpServers.screenplay.root` in `.cratis/ai.json`) covers the slice (search
+Decide opt-in per `general.md` "Model first"; where `cratis-screenplay-modeling-lifecycle` is installed, run its `scripts/model-first-status.mjs` for the decision, model root and drafts.
+Staged or untracked `.play` files are drafts, not the contract; a `.play` outside the model root is not a contract.
+For a committed model with working-tree edits, HEAD remains the contract until the change is committed.
+1. An accepted `.play` model under the model root covers the slice (search
    `**/*.play` for the slice, command, event and read-model names): the `.play` slice and its
-   specifications are the contract. "Accepted" means the `.play` file is in the committed tree
-   (`git ls-tree -r --name-only HEAD` lists a `.play` file there, narrowed to `-- <root>` when a root is configured). Staged or untracked files under the
-   root are drafts, not contracts; a file outside the root is not a contract. A committed file
-   with uncommitted working-tree edits is a model change in progress: its HEAD version is the
-   contract until the change is committed.
-2. The repository is opted in (the root holds a committed `.play` file, or the project
-   explicitly set that root, even if it is empty; an empty unconfigured directory, install
-   output, an installed skill or an uncommitted draft does not count) but this
+   specifications are the contract.
+2. The repository is opted in but this
    scope has no model yet: new behaviour starts in discovery and slice design
    (`cratis-screenplay-discovery`, `cratis-screenplay-slice-design`); do not code first. If those
    skills are not installed, say so and do not author `.play` from memory.

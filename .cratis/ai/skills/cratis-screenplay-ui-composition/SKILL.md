@@ -1,6 +1,6 @@
 ---
 name: cratis-screenplay-ui-composition
-description: Compose the user interface of a Cratis Screenplay `.play` model — `layout` and responsive `arrangement`, screen/dialog templates, component data-context bindings, exposed template configuration, command forms and columns, navigation contributions, hierarchical outlets/routes, toolbar dialogs, package/icon selection, interaction `behavior`/`on`/`uses` wiring, `ui profile`, `theme`, localized `$strings`, and `file` references. Use when declaring the application shell, reusable screen shapes, component/package configuration, command forms, navigation/toolbars, click or submit behavior, or theming. Do not use for a screen's own data and actions.
+description: Use when declaring Screenplay shells, reusable templates, forms, navigation, interaction wiring, design systems or themes. Not for a screen's own query data and action contract; use cratis-screenplay-read-surface.
 license: MIT
 ---
 <!-- cratis-ai-managed: skills/cratis-screenplay-ui-composition/SKILL.md -->
@@ -21,26 +21,28 @@ a trigger value named `file` is written `@file`.
 ## Locate the model
 
 Look first for the project's existing `.play` files: their folder is the model.
-For a new model, check `Source/` or `src/`, else use `Screenplay/` at the repository
-root. Never put a model under `.cratis/` or hand-copy it between repositories.
+Reuse existing model/workspace roots; code-only `Source/` or `src/` does not
+qualify. Otherwise use repository-root `Screenplay/` ([discovery/version gates](../cratis-screenplay-event-modeling/references/file-layout.md#locate-the-model)). Never put a model under `.cratis/` or hand-copy it between repositories.
 `cratis ai install` manages `.cratis/ai/`, never model files. Keep explanatory
 Markdown in project documentation; `.play` is the single flow model.
 
 ## Product sources
 
 Tool versions: toolchain `SKILL.md`. UI statements come from Screenplay
-`screens.md`, `contributions.md`, `forms.md`, `templates.md`, `ui-profile.md`,
+`screens.md`, `outlets.md`, `contributions.md`, `navigation.md`, `sample-data.md`, `forms.md`, `templates.md`, `ui-profile.md`,
 `fixtures/screen-release-ui.play`, `layout-arrangement.md`, `interactions.md`, `theme.md`,
 `internationalization.md` and `file-references.md` under `Documentation/screenplay/`. Scene
-runtime sources: scaffold Scene tag, `Source/JavaScript/**`. This guidance does not verify
-UI rendering.
+runtime sources: scaffold Scene tag, `Source/JavaScript/**`. See
+[Scene v4.82.0 runtime boundaries](references/scene-runtime-boundaries.md) for
+exact query registration/submission, root-profile serialization and interaction
+limits. These host APIs are not new `.play` syntax and do not verify UI rendering.
 
 Every construct on this page is deferred from the executable model with
 information `PLAY0269`: it never blocks binding, and it is not evidence that a
 target renders it.
 
-The screens-release surface adds component data-context bindings, exposed template
-configuration, package/icon catalogs, manual form columns, hierarchical outlets,
+The screens-release surface adds component data-context bindings,
+exposed template configuration, package/icon catalogs, manual form columns, hierarchical slots,
 routes, toolbars and dialog destinations, each with a separate support level
 (authoring accepted, executable admitted, runtime implemented). Discover the
 installed shape through MCP `syntax-schema`; details:
@@ -62,6 +64,8 @@ work on a screen whose purpose is unsettled is rework.
    a board; that is optional, and the text review is enough. Do not
    use the Stage sandbox as the review: it renders only part of a screen, and
    nothing here establishes that Stage renders an authored screen faithfully.
+   A behavior walk of what commands change is a separate, optional check owned by
+   `cratis-stage-rendering-and-sandbox`.
 3. **Add structure only to screens whose Level 1 is agreed**: template, sections,
    forms, `on`/`uses`. Use Level 3 inline code last, only where Level 2 cannot
    say it.
@@ -80,15 +84,18 @@ Read `references/worked-flow.md` when a complete example is needed before compos
 
 ## `layout` — the application shell
 
-One per application, declared at the top level and selected by a `ui profile`.
+One or more per application, declared at the top level; a `ui profile` selects the shell with `root template <Name>`.
 A complete example:
 
 ```screenplay
 layout AppShell
+  category application
   topbar
-  navigation contributes Navigation
-  content
+  navigation panel
+  content page routed primary
   footer
+
+  outlet Navigation of navigation in navigation
 
   arrangement flow
     column
@@ -99,8 +106,13 @@ layout AppShell
       footer height 32
 ```
 
-A slot is declared once by name, optionally marked
-`contributes <ContributionPoint>` to make it a contribution target.
+Requires Screenplay 6.0 or later; migrate a Screenplay 5 model first (`cratis-screenplay-modeling-lifecycle`).
+
+A **slot** is a region content is placed in: each plain line, optionally followed by a role (`page`, `pane`,
+`panel`), `routed [by <param>]`, `primary` and `optional`, in that order. An **outlet** is a list of items the
+layout or a template offers: `outlet <name> of actions|filters|tabs|stats|navigation [for item|for screen] [in <slot>]`.
+The Screenplay 5 forms (a region `outlet`, `destination outlet`, `contributes`, `navigation topbar|sidebar`, a
+feature or module `toolbar`) are errors `PLAY0890`-`PLAY0896` that name the migration.
 
 ## `arrangement` — responsive `flow` or pixel-precise `freeform`
 
@@ -121,14 +133,18 @@ screen template MasterDetail
       main grow
 
 dialog template RegisterInvoiceDialog
+  category Dialog
   body
-  actions
+  footer
+  outlet actions of actions in footer
+    default cancel title "Cancel" runs close
+    default register title "Register" emphasis primary runs submit
 ```
 
 `fits slot <name>` says which slot of its parent the template fills. **A dialog
 template is a screen template in everything but one respect: it declares no
 `fits slot`, because a dialog occupies no slot of the structure it opens over** —
-writing one is an error.
+writing one is an error. Its buttons are an actions outlet (`runs close|submit` need no slice).
 
 A screen fills a template by naming it and providing slot bodies; a dialog is
 filled exactly the same way, because from the screen's side there is no
@@ -145,6 +161,8 @@ form RegisterInvoiceForm for RegisterInvoice
   field invoiceNumber label "Invoice #"
   field customerId    from item
   field total         compose using TotalCalculator
+  field category
+    choose from query AllCategories show name
   on submit navigate to InvoiceList
 ```
 
@@ -152,6 +170,8 @@ form RegisterInvoiceForm for RegisterInvoice
   `populate from item`.
 - `field <property>` takes at most one of `from <source>` or `compose using
   <Callback>`, plus an optional `label`.
+- `choose from query <Query> show <field>` makes a field a picker over a list query's rows (`PLAY0913`).
+  A field whose concept keys one list query's read model is a picker without it.
 - At most one `on submit navigate to <Screen> [by <param>]`, the one-line form.
   Any other `on` in a form body is a behavior attached to the form.
 
@@ -160,104 +180,72 @@ directive tree the way a `table` or `summary` does — it is found by its
 `for <Command>` binding wherever that command is invoked. A form sits at module
 level, so it disambiguates by module rather than by feature or slice.
 
-## `contribute`, toolbars, outlets and routes — navigation from elsewhere
+## The application shell: slots, outlets, hooks, blueprint references, sample data
 
-Excerpt, inside a `module` or `feature`; `Navigation` is the contribution point
-the layout above declares.
+This covers navigation outlets (topbar/sidebar, inherit/extend/override), outlets of actions, filters, tabs and stats,
+`contribute to`, hooks and placement, alongside blueprint references and sample data.
 
-```screenplay excerpt
-contribute to Navigation
-  navigate to InvoiceList
-  label "Invoices"
-  order 20
+The layout declares its navigation outlets with `default` items and one `logo`; a module, feature or screen
+**inherits** an outlet (the default), **extends** it (inherited items, then its own) or **overrides** it (its own only).
+
+```screenplay
+layout AppShell
+  category application
+  content page routed primary
+
+  outlet sidebar of navigation
+    default sales title "Sales" target Sales
+      item orders title "Orders" target Sales.Orders
+
+module Sales
+  outlet sidebar extends
+    item customers title "Customers" target Sales.Customers
+
+  feature Orders
+  feature Customers
 ```
 
-All three directives are optional and appear at most once each.
+- `contribute to <outlet>` adds an entry from any module or feature, next to the screens it belongs to
+  (`navigate to <Screen> [by <param>]`, `label`, `order`, `destination slot|dialog|external`, or item lines of the
+  outlet's kind). `by <param>` is a typed binding, never string interpolation.
+- **Placement.** The template offers places, the slice says which it fits, the hook picks one. A slice's screen lists
+  its fits in order of preference (`fits dialog, drawer, pane`). A **hook** - a `button` naming a State Change `slice` -
+  opens it in its first fit the page has free; write `opens dialog|drawer|in slot <name>` only when this hook needs
+  another place. `runs` issues the command without a form.
+- `show <Screen> by <param> from <element>.selection` in a template slot shows another screen for the selected row.
 
-**Resolution walks outward:** a contribution first looks for a
-`contributes <ContributionPoint>` slot among its **own module's** templates, then
-outward to the nearest enclosing structure that declares a matching point. Three
-tiers exist — application-wide (the layout declares the point), cross-module, and
-module-level.
-
-`navigate to <Screen> by <param>` is **not** string interpolation; it reuses the
-same typed navigate binding a screen action uses.
-
-⚠️ A navigation contribution also carries `id`, `icon`, `presentation`, `group` and
-`destination outlet <name> | dialog <DialogTemplate> | external "<route>"`; its `navigate to` takes
-`route`, `outlet` and `parameter` lines, and an undeclared outlet or dialog target is `PLAY0654`
-(`contributions.md`).
-
-Requires Screenplay 4.133.0 or later (`screenplay --version`) for `PLAY0654` on an undeclared outlet or dialog target.
-
-An explicit override for when nearest-enclosing is not the point you mean is
-not in the language. The screens-release vector
-(canonical `ScreenComposition` corpus v1) adds typed screen composition; a
-renderer that admits it renders it and passes the browser run. Report a refused form as a
-capability gap, never a flat-list fallback; Studio production proof is separate.
+Read [references/application-shell.md](references/application-shell.md) before writing any of it: slot roles, outlet
+kinds and modes, `hide`/`before`/`after`, contribution resolution, the module-only target rule (`PLAY0750`), hooks
+(`runs`, `opens`, `for item|for screen`, `enabled when`, `confirm`), `fits` and `show`, blueprint ranges, sample data,
+MCP editing and the review checklist.
 
 ## Interactions — what a click does
 
-A screen can say what it shows; an interaction says what happens when someone
-acts. Three words carry it:
-
-| Word | What it is |
-| --- | --- |
-| **Interaction trigger** | the `on <thing>` clause: `click`, `double click`, `select`, `submit`, `change`, `load`/`unload`, `enter`/`leave`, `event <Event>`, `interval <n> <unit>`, or a declared application trigger |
-| **Action** | a closed set: `execute`, `navigate to`/`navigate back`, `open dialog`/`close dialog`, `refresh`, `set … to`, `notify`, `confirm`, `raise` |
-| **Behavior** | a bundle of trigger-to-action bindings; inline (`on …`) or named (`behavior` + `uses`) |
+An interaction wires an `on <thing>` trigger to actions, inline or through named
+`behavior` + `uses`. This is closed UI wiring, not scripting; validation stays on
+the command. Trigger/action syntax is in [interaction example](references/interaction-example.md)
+and [guarded interactions](references/guarded-interactions.md).
 
 Guarded alternatives and `where` deprecation:
 [guarded interactions](references/guarded-interactions.md).
+Read [change alternatives](references/change-alternatives.md) when a component's
+`on change` should choose an action list by the changed item, such as a kanban move.
 
-Complete named/inline behavior example:
+Read [interaction example](references/interaction-example.md) when wiring a
+named confirmation behavior and an inline refresh to the same screen.
 
-```screenplay
-concept InvoiceId : Uuid
-
-behavior ConfirmThenExecute
-  parameter command
-  parameter message
-  on click
-    confirm message
-      on success
-        execute command
-
-module Invoicing
-  feature InvoiceManagement
-    slice StateChange CancelInvoice
-      command CancelInvoice
-        invoiceId InvoiceId identifier
-        produces event InvoiceCancelled
-      screen CancelInvoiceScreen
-        data InvoiceStatusView via query InvoiceStatusById by invoiceId
-        uses ConfirmThenExecute
-          command CancelInvoice
-          message "Cancel this invoice?"
-        on enter
-          refresh InvoiceStatusById
-            on failure
-              notify error "The invoice could not be loaded"
-    slice StateView InvoiceStatus
-      readmodel InvoiceStatusView
-        invoiceId InvoiceId
-        cancelled Bool
-      projection InvoiceStatuses => InvoiceStatusView
-        from InvoiceCancelled
-          invoiceId = $eventSourceId
-          cancelled = true
-      query InvoiceStatusById => InvoiceStatusView optional
-        by invoiceId InvoiceId
-```
-
-The inline event targets `invoiceId`; the projection gets it from event context.
+State every plain and toolbar `action`'s subject: `for item` (the chosen record fills its
+inputs) or `for screen` (no row does). Omitted, the compiler infers it from types, and a
+create action on a list can bind the selected row's id. Read
+[action subjects](references/action-subjects.md) when adding a screen action or when
+PLAY0817-PLAY0821 appear.
 Scalar/named `returns` bind and reference-execute (ESM v7).
 Renderer generation/response limits: command-surface `references/generated-values-and-responses.md`.
 Screenplay resolves response names in form submit and execute success (Requires Screenplay 4.148.0 or later);
 own failure use is PLAY0685. No ESM change; Scene runtime binding remains downstream.
 An existing success continuation does not imply a response contract.
-Read [response continuations](references/response-continuations.md) for precedence,
-nested/failure scopes, PLAY0485, examples and tagged evidence.
+Read [response continuations](references/response-continuations.md) for scope,
+precedence, PLAY0485 and examples.
 
 - Write the one-off case inline; name it with `behavior` when several places need
   the same wiring. A `uses` site must supply exactly the declared parameters
@@ -275,12 +263,52 @@ nested/failure scopes, PLAY0485, examples and tagged evidence.
 - **A declared `trigger` is not a UI event.** Use `on click`, not `trigger`, for a
   button. `on <Trigger>` observes an application trigger and `raise <Trigger>`
   fires one; that is where the two meet.
-- Interactions are a closed vocabulary, not a scripting language. Validation stays
-  on the command; the UI surfaces it.
 
-## `ui profile` and `theme`
+## `design system`, `theme` and `ui profile`
 
-A `ui profile` selects the layout, theme and `packages`, listed in override-priority order (a later package shadows an earlier one); `target platform` and `target size` accept any identifier, so a typo is silent. Read [references/ui-profile-and-theme.md](references/ui-profile-and-theme.md) when writing a profile or theme.
+The `design system` is the per-application contract; a `theme` implements it with values; a `ui profile` picks a theme, and `appearance` keeps only `color scheme` (`accent`, `corners`, `font`: `PLAY0929`). Read [references/design-system-and-themes.md](references/design-system-and-themes.md) first.
+
+A quoted theme name such as `theme "Scene Default Light"` needs Screenplay 4.227.0 (rules in the reference below).
+
+A `ui profile` selects the application shell with `root template` (an own layout or application-scope screen template, or `blueprint <B> <Name>` with an optional `version` pin), its shell `option` lines, an `appearance` block (`color scheme`), the template new screens start from (`new screens use template`), the theme and the `packages`, listed in override-priority order (a later package shadows an earlier one); `target platform` and `target size` accept any identifier, so a typo is silent. The legacy `layout <Name>` line inside a profile still reads but warns `PLAY0791`: write `root template`. `PLAY0790` to `PLAY0799` check the shell. Read [references/ui-profile-and-theme.md](references/ui-profile-and-theme.md) when writing a profile or fixing a shell diagnostic.
+
+## A deliverable app declares its identity, titles and labels
+
+Symptom: a rendered app titled "Cratis Stage" whose buttons and dialogs show raw command names. The renderer
+defaults to those when the model is silent, so declare, in every deliverable app:
+
+- the layout's `logo image "<path>" title "<text>"` inside a navigation outlet (the
+  application title the shell shows; `logo initials` is only valid in a profile's `identity`);
+- a `ui profile` with `root template`, shell `option` lines such as `option showFooter false`, and an `identity`
+  block (`name`, `logo initials`);
+- a `title "<text>"` in each screen and a navigation item `<id> title "<text>" target <Module.Feature>` per screen;
+- `label "<text>"` on **every** `action`.
+
+```screenplay excerpt
+layout AppShell
+  category application
+  content page routed primary
+
+  outlet sidebar of navigation
+    logo image "/assets/solocrm.svg" title "SoloCRM"
+    default organizations title "Organizations" target Crm.Organizations
+
+ui profile Desktop
+  target platform web
+  root template AppShell
+    option showFooter false
+  identity
+    name "SoloCRM"
+    logo initials "SC"
+```
+
+```screenplay excerpt
+screen Organizations
+  data OrganizationOverview[] via query AllOrganizations
+  title "Organizations"
+  action RegisterOrganization
+    label "New organization"
+```
 
 ## Localized strings
 
@@ -298,18 +326,23 @@ Localized text lives in companion `.strings` files and is referenced unquoted as
       `SKILL.md`).
 - [ ] Every screen in the flow has Level 1 reviewed before any layout, and every
       form field and screen field traces to a command or read-model property.
-- [ ] Every slot a `contribute` targets is declared `contributes <Point>` somewhere
-      that encloses it.
+- [ ] Every outlet a `contribute to` or an `outlet <name> extends` names is declared by a layout or template;
+      no Screenplay 5 form (`navigation topbar|sidebar`, `contributes`, feature `toolbar`, region `outlet`) remains.
+- [ ] Every State Change screen says what it `fits`; a hook names a place only when the automatic choice is wrong.
 - [ ] No `dialog template` declares `fits slot`.
+- [ ] Each `ui profile` names its shell with `root template`, not the legacy `layout` line (`PLAY0791`); a blueprint shell is listed under `packages` and its `version` pin is deliberate.
 - [ ] `packages` are ordered deliberately — later shadows earlier.
 - [ ] Every theme a profile selects is `compatible with` one of its packages.
 - [ ] `target platform` and `target size` values are spelled correctly; nothing
       checks them.
+- [ ] A deliverable app declares layout `logo ... title`, a `ui profile` with `option` lines and `identity`,
+      a `title` per screen and a `label` on every `action`.
 - [ ] User-visible text is `$strings.` where the application is localized.
 - [ ] No `file` reference is doing work the declaration should be doing.
 - [ ] Every click, submit and screen entry that does something has an `on` or
       `uses`; continuations sit only on actions that can fail.
-- [ ] Component bindings, exposed template values, manual form columns, toolbar items, outlets and routes all trace to typed data; no runtime fallback counts as delivery. Report authoring acceptance, executable admission and runtime
+- [ ] Navigation outlets, hooks, blueprint references and sample data follow `references/application-shell.md`: each level's outlet mode is deliberate, no module item targets another module, every hook names a State Change slice, buttons shared by a feature's screens extend the template's actions outlet once (`confirm` on destructive ones), every template has a `category`, and the active sample data pack is chosen once in the `ui profile`.
+- [ ] Component bindings, exposed template values, manual form columns, toolbar items, outlet items and routes all trace to typed data; no runtime fallback counts as delivery. Report authoring acceptance, executable admission and runtime
       implementation separately.
 
 ## Route near misses

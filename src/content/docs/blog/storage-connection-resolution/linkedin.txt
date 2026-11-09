@@ -1,0 +1,50 @@
+LINKEDIN POSITIONING: Where does each tenant's data live?
+Link: https://blog.cratis.io/storage-connection-resolution/
+(Post date 2026-10-17. Publish once the site deploys. Put the link in the first comment, not the post body.)
+
+ANGLE
+Your platform decides where a tenant's data lives, and the framework should ask instead of guess. A new capability in Chronicle and Arc, explained through one example you can run. The second hook: Arc is optional. The contract is plain REST, so a client with no Arc in it gets the same placement in a few dozen lines.
+
+AUDIENCE
+Architects and platform engineers running multi-tenant .NET systems: a database per customer, a server per region, a login that sees one tenant only. Secondary: existing Chronicle and Arc users who have had to bend naming conventions around their platform.
+
+POST (copy, adjust to taste)
+
+Where does each tenant's data live?
+
+If your platform decides (a server per region, a database per customer, a login that sees one tenant and nothing else), a framework that derives database names and connects with one credential gets in your way.
+
+Chronicle and Arc can now ask instead. The caller says what the connection is for: the storage, the purpose, the tenant. A resolver answers with only the parts it decides. Everything it leaves out stays as configured, and nothing changes until you configure it.
+
+In the post I wire one example three ways:
+- a Chronicle kernel that places each namespace with a naming rule, in configuration only
+- an Arc app that asks an HTTP endpoint for each tenant's database and login
+- a small client with no Arc in it that asks the same endpoint
+
+The contract is a plain JSON request and answer, so the endpoint can be written in anything. Arc is a convenience, not a requirement.
+
+The part worth reading even if you never use it: the example has a tenant the endpoint doesn't know. Chronicle's template places it anyway. The endpoint refuses it. Choosing a tenant is not authorizing it, and the post shows where that line sits.
+
+Link and the runnable example in the first comment.
+
+FIRST COMMENT
+Where does each tenant's data live? Storage connection resolution in Chronicle and Arc: https://blog.cratis.io/storage-connection-resolution/
+
+HASHTAGS (keep to 3)
+#multitenancy #dotnet #EventSourcing
+
+IMAGE
+Use where-the-tenants-land.png (the clearest single figure, with the refused row as the hook). Alt text: Three tenants and where their events and notes land. The third tenant's notes are refused.
+
+DO
+- Say the minimum versions if asked: Chronicle 19.74.2 or later, Arc 22.109.0 or later.
+- Be clear the kernel example uses a template, which needs configuration only.
+- Point to the contract page when someone asks about other languages.
+
+DON'T
+- Say "secure" or "guarantee". The post is about placement, not about making secrets safe.
+- Imply Chronicle itself calls an endpoint in this example. It uses a template.
+- Promise migration support. Changing a resolution points at a new place and doesn't move data.
+
+FOLLOW-UPS
+The initech row as a single image post: "Choosing a tenant is not authorizing it". Later, a post on the Chronicle kernel calling an endpoint, once that is covered end to end.

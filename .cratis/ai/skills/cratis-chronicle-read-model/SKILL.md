@@ -1,6 +1,6 @@
 ---
 name: cratis-chronicle-read-model
-description: Create a Chronicle read model and its query surface - past-tense event types, the read-model record and its key, choosing a projection or a reducer to build it, snapshot versus observable queries (including why Arc does not discover a query declared to return Subject or BehaviorSubject), and reading an instance directly through IReadModels. Use when creating a read model from scratch; for changing how an existing model is populated use the projection or reducer skill instead.
+description: Use when creating a Chronicle read model from scratch or choosing its C# Arc query surface. Not for changing only an existing model's event mappings or state transitions; use the projection or reducer sibling.
 license: MIT
 ---
 <!-- cratis-ai-managed: skills/cratis-chronicle-read-model/SKILL.md -->
@@ -76,7 +76,14 @@ public record <ReadModelName>(
   reserves those for compliance-subject tracking, and analyzer `CHR0035`
   rejects them.
 - `Cratis.Chronicle.ReadModels.IndexAttribute` (`[Index]`) marks a property for
-  indexing in the sink.
+  indexing in the sink, including SQL. `[CompositeIndex]` on the class declares ordered multi-property indexes and
+  `[Index(IsDescending = true)]` declares descending ones. Read
+  [indexing](references/indexing.md) for valid paths, flags and store-specific limits.
+- `[Sink("name")]` (`Cratis.Chronicle.Sinks`) on the read-model type stores it in a named sink the
+  Kernel configures, such as a reporting database in another engine; without it the read model uses
+  `ChronicleOptions.DefaultSinkName`, then the Kernel default. Never combine it with `[Passive]`
+  (`CHR0069`), and expect a replay when the sink changes. Read [sinks](references/sinks.md) before
+  choosing one.
 
 ### Shape the model for its consumer
 
@@ -130,7 +137,8 @@ builder when switching and verify storage/replay separately from output equality
 Read [projection behavior](../cratis-chronicle-projection/SKILL.md) for mappings
 and [reducers](../cratis-chronicle-reducer/SKILL.md) for complete signatures,
 null deletion, replay hooks and preserving admission/ordering guards. Reducers
-are source-keyed, have no native joins and are refused by decision reads.
+are source-keyed and have no native joins; decision reads and Arc read protection `On`
+admit only unfiltered reducers without constructor dependencies.
 
 ## Step 4 — Add a query surface, if the model is read from outside
 
@@ -215,8 +223,8 @@ current rather than eventually consistent.
 **Passive is fresher, not safer.** A materialized read may lag the log; a passive
 read is current when read. Neither captures a position or enrolls a guard, so
 neither makes a rule hold when two requests race. To guard a decision use a decision
-read over a flat, event-source-keyed projection with an `Id` property (reducers and
-self-reducing models are refused), a constraint for uniqueness, or an aggregate;
+read over an admitted projection or unfiltered dependency-free reducer, a
+constraint for uniqueness, or an aggregate;
 see [choosing how a rule holds](../cratis-chronicle-decision-reads/references/choosing-how-a-rule-holds.md).
 
 **`IMongoCollection<T>` reads only the sink.** It cannot compute passive state:
@@ -226,6 +234,13 @@ read-model parameter injection) when you need its computed state. Do not remove
 `[Passive]` merely to make a sink query work when the model contains secrets.
 Keep secret-bearing state on the protected access path; project only safe
 metadata into a separate list/search model.
+
+Requires Chronicle 19.77.3 for strongly consistent per-key projections to fold
+from the start on every read: passive, stream-scoped, wildcard-key and session
+reads immediately reflect revisions, redactions and joined-subject erasure.
+Earlier warm reads can retain old content. Each read costs O(key history), not
+an incremental suffix; prefer materialization for frequent long-history reads.
+Check the deployed kernel tag before relying on this freshness.
 
 The number of passive types is not itself a performance smell. Review event
 history length, invocation frequency, and the consistency/security requirement;
@@ -250,10 +265,7 @@ spans streams.
 ## Route near misses
 
 - An accepted `.play` model under the model root covers the behavior, or the
-  repository is opted in (the root holds a committed `.play` file (`git ls-tree -r --name-only HEAD` lists a `.play` file there, narrowed to `-- <root>` when a root is configured), or the project set
-  `mcpServers.screenplay.root` in `.cratis/ai.json`; an empty directory, install
-  output, an uncommitted `.play` draft or a `.play` file outside the root does not count; master definition:
-  `cratis-screenplay-modeling-lifecycle`): change the model first with
+  repository is opted in (per `general.md` "Model first"; where `cratis-screenplay-modeling-lifecycle` is installed, run its `scripts/model-first-status.mjs`): change the model first with
   `cratis-screenplay-event-modeling`. If the Screenplay skills are not installed,
   say so and do not author `.play` from memory.
   Edit code here only for infrastructure, clients, adapters, Screenplay code

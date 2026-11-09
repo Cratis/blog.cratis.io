@@ -11,7 +11,7 @@ tags:
 
 A few weeks ago we published [a walkthrough](/event-sourcing-in-dotnet-with-chronicle/) that scaffolded a full-stack Cratis application from the official .NET templates and built a small library feature by hand: three events, a read model, a React page. This post runs the same journey again with one difference — a human writes one short prompt, and [Claude Code](https://claude.com/claude-code) does the typing.
 
-Like that walkthrough, this is .NET development: the slices here are C# on ASP.NET Core, with [Arc](https://cratis.io/arc/) carrying commands and queries and Chronicle carrying the event log. And this time we start from the official .NET templates rather than an empty folder, because the interesting question is not whether an assistant can write C# — it is whether it can write *your* conventions. [Cratis AI](https://cratis.io/ai/) closes that gap from two sides: skills that teach the assistant how to build, and operating tools that let it inspect a live store. This post uses both:
+Like that walkthrough, this is .NET development: the slices here are C# on ASP.NET Core, with [Arc](https://www.cratis.io/arc/) carrying commands and queries and Chronicle carrying the event log. And this time we start from the official .NET templates rather than an empty folder, because the interesting question is not whether an assistant can write C# — it is whether it can write *your* conventions. [Cratis AI](https://www.cratis.io/ai/) closes that gap from two sides: skills that teach the assistant how to build, and operating tools that let it inspect a live store. This post uses both:
 
 | Piece | Version |
 | --- | --- |
@@ -22,19 +22,19 @@ Like that walkthrough, this is .NET development: the slices here are C# on ASP.N
 | `@cratis/components` npm package | 4.26.1 |
 | Chronicle container | `cratis/chronicle:19.33.3-development`, digest `sha256:9eab36c7ff1aa77d9fa10cea778d7ca38541e91e7f4a56074354e4cb3a3d4015` (Chronicle Server 19.33.3.0) |
 | Chronicle MCP server | `cratis/chronicle-mcp:1.4.0`, digest `sha256:0aebbb8be2d0d48982f38f8de4ff787e2769273b5d0227d9c8d1f50996b60b23` |
-| [Cratis CLI](https://cratis.io/cli/getting-started/) | 3.29.0 (Homebrew) |
+| [Cratis CLI](https://www.cratis.io/cli/getting-started/) | 3.29.0 (Homebrew) |
 | .NET SDK | 10.0.401 (`net10.0` target) |
 | Yarn | 4.18.1 |
 
 ## 1. Install the skills and the templates
 
-The skills are passive markdown — a `SKILL.md` your assistant loads when a task matches, plus rules for the conventions that are always on. The [Cratis CLI](https://cratis.io/cli/getting-started/) is the most reliable way to get them into a project, because it resolves the corpus once and configures every harness you name from the same source. [Profiles](https://cratis.io/ai/profiles/) pick the product guidance a repository needs — this is a full Arc-plus-Chronicle application with a React frontend, so the profile that matches is `cratis/application/csharp`, not the narrower `cratis/chronicle` and `cratis/arc` pair on their own.
+The skills are passive markdown — a `SKILL.md` your assistant loads when a task matches, plus rules for the conventions that are always on. The [Cratis CLI](https://www.cratis.io/cli/getting-started/) is the most reliable way to get them into a project, because it resolves the corpus once and configures every harness you name from the same source. [Profiles](https://www.cratis.io/ai/profiles/) pick the product guidance a repository needs — this is a full Arc-plus-Chronicle application with a React frontend, so the profile that matches is `cratis/application/csharp`, not the narrower `cratis/chronicle` and `cratis/arc` pair on their own.
 
 The template already makes that choice for you: it ships a `.cratis/ai.json` selecting `cratis/application/csharp` for C# and TypeScript, with adapters for Claude Code and five other harnesses. So once the project exists, installing the skills is one command inside it, `cratis ai update`, which you will run in step 2.
 
 It writes the resolved rules and skills into `.cratis/ai`, wires Claude Code's `.claude` folder to it, and records hashes in `.cratis/ai.manifest.json` so a later `cratis ai update` only touches what actually changed. In a repository without that selection, `cratis ai install --harnesses claude --profiles cratis/application/csharp --languages csharp,typescript` makes the same choice for Claude Code alone; run it without flags and it prompts for harnesses, profiles, and languages instead. Choosing `cratis/application/csharp` over the pair is what actually pulls in the frontend skills — `cratis-arc-react-page`, `cratis-components-styling`, and `cratis-application-react-specifications`, plus the dialog rules — the ones this post's React proxies and dialogs rely on.
 
-> Prefer a single harness with no CLI in the loop? The native path still works: `/plugin marketplace add Cratis/AI` → `/plugin install cratis@cratis` for Claude Code, the equivalent `plugin marketplace`/`plugin install` pair for Codex and Copilot, Cursor's committed marketplace manifest, or `pi install -l npm:@cratis/pi` for Pi. It is the quicker on-ramp for one developer, one tool — see the [agent harness guide](https://cratis.io/ai/harnesses/) for the exact command per host. The CLI is what this post uses because it is the one tool that stays correct across every harness on a team.
+> Prefer a single harness with no CLI in the loop? The native path still works: `/plugin marketplace add Cratis/AI` → `/plugin install cratis@cratis` for Claude Code, the equivalent `plugin marketplace`/`plugin install` pair for Codex and Copilot, Cursor's committed marketplace manifest, or `pi install -l npm:@cratis/pi` for Pi. It is the quicker on-ramp for one developer, one tool — see the [agent harness guide](https://www.cratis.io/ai/harnesses/) for the exact command per host. The CLI is what this post uses because it is the one tool that stays correct across every harness on a team.
 
 The templates are an ordinary NuGet package — the [Cratis.Templates repository](https://github.com/Cratis/Templates) documents every template it ships, this post uses the full-stack `cratis` one:
 
@@ -44,7 +44,7 @@ dotnet new install Cratis.Templates@1.7.3
 
 ## 2. Scaffold the application
 
-One command creates a complete full-stack application — ASP.NET Core with Arc, Chronicle for the event log, MongoDB for read models, and a React frontend with generated TypeScript proxies, arranged in vertical slices. [Build a full app](https://cratis.io/build-a-full-app/) walks the same shape by hand, slice by slice, if you want to see what the template scaffolds before an assistant touches it:
+One command creates a complete full-stack application — ASP.NET Core with Arc, Chronicle for the event log, MongoDB for read models, and a React frontend with generated TypeScript proxies, arranged in vertical slices. [Build a full app](https://www.cratis.io/build-a-full-app/) walks the same shape by hand, slice by slice, if you want to see what the template scaffolds before an assistant touches it:
 
 ```shell
 dotnet new cratis -n Library
@@ -210,7 +210,7 @@ One command, and the project gains `CHRONICLE.md` — the CLI's reference and op
 
 ## 5. Ask the store questions
 
-The second operating tool is the [Chronicle MCP server](https://cratis.io/chronicle-mcp/) — a containerized MCP endpoint straight into the running store:
+The second operating tool is the [Chronicle MCP server](https://www.cratis.io/chronicle-mcp/) — a containerized MCP endpoint straight into the running store:
 
 ```shell
 claude mcp add chronicle -s project \
@@ -246,7 +246,7 @@ That is exactly the selection the template's `.cratis/ai.json` already records, 
 
 ## Teams and multiple harnesses
 
-A solo developer with one tool can stop reading here — the templates and the Cratis CLI (or the native plugin, for a single harness) alone are the whole setup. For a repository shared by people *and* tools, the [team scenario](https://cratis.io/ai/scenarios/team-repository/) commits the same four things one selection produces: `.cratis/ai.json` (the chosen harnesses, profiles, and languages), the resolved `.cratis/ai/` corpus, `.cratis/ai.manifest.json` (which files are Cratis-managed and their installed hashes), and the harness adapters — symlinks or settings references — that point every tool back at that one corpus:
+A solo developer with one tool can stop reading here — the templates and the Cratis CLI (or the native plugin, for a single harness) alone are the whole setup. For a repository shared by people *and* tools, the [team scenario](https://www.cratis.io/ai/scenarios/team-repository/) commits the same four things one selection produces: `.cratis/ai.json` (the chosen harnesses, profiles, and languages), the resolved `.cratis/ai/` corpus, `.cratis/ai.manifest.json` (which files are Cratis-managed and their installed hashes), and the harness adapters — symlinks or settings references — that point every tool back at that one corpus:
 
 ```json
 {
@@ -257,7 +257,7 @@ A solo developer with one tool can stop reading here — the templates and the C
 }
 ```
 
-The point of the shared file is that nobody's editor settings become the source of truth: a new teammate — or a new AI tool — gets the same scope from the committed record, and `cratis ai update` stops before touching anything a person has since hand-edited, so an update stays a reviewed diff instead of a silent overwrite. The [multiple-harnesses scenario](https://cratis.io/ai/scenarios/multiple-harnesses/) adds the rule that keeps tools from drifting apart: every adapter points back at `.cratis/ai` rather than a separately maintained copy, and native, single-harness plugins remain available alongside the managed path for anyone who wants one tool without the shared corpus.
+The point of the shared file is that nobody's editor settings become the source of truth: a new teammate — or a new AI tool — gets the same scope from the committed record, and `cratis ai update` stops before touching anything a person has since hand-edited, so an update stays a reviewed diff instead of a silent overwrite. The [multiple-harnesses scenario](https://www.cratis.io/ai/scenarios/multiple-harnesses/) adds the rule that keeps tools from drifting apart: every adapter points back at `.cratis/ai` rather than a separately maintained copy, and native, single-harness plugins remain available alongside the managed path for anyone who wants one tool without the shared corpus.
 
 ## See it in the browser
 
@@ -291,8 +291,8 @@ Remove the containers and the scratch folder when you are done — event data li
 docker compose down
 ```
 
-- [Cratis AI](https://cratis.io/ai/) — the overview, and the [getting-started](https://cratis.io/ai/getting-started/) page for `cratis ai install` and the native plugin alternative.
+- [Cratis AI](https://www.cratis.io/ai/) — the overview, and the [getting-started](https://www.cratis.io/ai/getting-started/) page for `cratis ai install` and the native plugin alternative.
 - The [C# templates](https://github.com/cratis/templates) — the four templates this post started from, with their documentation.
-- [Arc](https://cratis.io/arc/) — the CQRS application framework: commands, queries, validation, and proxy generation.
-- The [agent harness guide](https://cratis.io/ai/harnesses/) — install, verify, and uninstall for every harness.
+- [Arc](https://www.cratis.io/arc/) — the CQRS application framework: commands, queries, validation, and proxy generation.
+- The [agent harness guide](https://www.cratis.io/ai/harnesses/) — install, verify, and uninstall for every harness.
 - The original [hand-written walkthrough](/event-sourcing-in-dotnet-with-chronicle/) — same destination, and still the best way to see every moving part yourself.

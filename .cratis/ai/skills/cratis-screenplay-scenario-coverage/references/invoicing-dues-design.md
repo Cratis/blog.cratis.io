@@ -1,7 +1,14 @@
 <!-- cratis-ai-managed: skills/cratis-screenplay-scenario-coverage/references/invoicing-dues-design.md -->
 # Invoicing and dues: design-mode document for the stored-state rules
 
-**Design mode, not binding-ready by design.** This document states the stored-state rules of the
+**Legacy control without `command reads protected`, not binding-ready by design.**
+Read [protected reads](../../cratis-screenplay-command-surface/references/protected-reads.md)
+for the opt-in alternative. Do not insert the preamble blindly: every read must meet
+finite event-source-keyed admission with removals. A v25 reference pass is not
+rendering: Stage admits v25 and renders protected reads from 4.138.0, and older bundles refuse them with STAGE-ESM-044. The comments and unenforced markers below describe
+this legacy control, not a general limit on command reads.
+
+**Design mode.** This document states the stored-state rules of the
 invoicing example as the skill requires (`reads <View>` + `require ... message`, marked NOT
 enforced in the slice `description`, target named). It compiles (V1, warnings as errors) but
 does not bind, and the only blockers are `reads` (PLAY0271) and `require` over
@@ -18,7 +25,7 @@ The excerpt's Stage API-availability comment describes the historical Stage 4.24
 scaffold. Stage 4.73.1's scaffold pins an Arc/Chronicle set (see the Stage skill's `references/rendered-application.md`): protected-read APIs are
 available to gap-fill (the "not in a Stage-rendered application" comment in the source is
 superseded), not emitted protection or `.play` rule admission. The
-original compiled source is retained unchanged.
+capture uses separate first-sight/update appends, with its local-event follow-up in Automation.
 
 ```screenplay expect PLAY0516 test=unbound
 // Scenario coverage design-mode example: stored-state rules of invoicing club dues (complete document).
@@ -52,6 +59,8 @@ module Invoicing
           amount Decimal = amount
       constraint IssueOnce
         unique event InvoiceIssued
+      screen IssueInvoice
+        action IssueInvoice for screen
 
     slice StateView OpenInvoices
       description "Todo list: membership means 'still to collect'. The rules below read it (it lags: an unguarded read is not protection)."
@@ -91,17 +100,24 @@ module Invoicing
             "C" => captured
             "D" => declined
         append PaymentGatewayResultReceived
+          when added
+            outcome = $.outcome
+            reason  = $.reason
+        append PaymentGatewayResultReceived
           when outcome
             outcome = $.outcome
             reason  = $.reason
+      event PaymentGatewayResultReceived
+        outcome GatewayOutcome
+        reason  String
+
+    slice Automation RecordPaymentOutcome
+      description "Gives PaymentReceived its producer: the translator reacts to the provider's external fact"
       reaction ReceivedTranslator
         when PaymentGatewayResultReceived
           outcome
           produces PaymentReceived
         where outcome == "captured"
-      event PaymentGatewayResultReceived
-        outcome GatewayOutcome
-        reason  String
       event PaymentReceived
 
     slice StateChange SettleOrVoidInvoice
@@ -125,6 +141,9 @@ module Invoicing
       constraint SettleOrVoid
         unique event InvoiceSettled
         unique event InvoiceVoided
+      screen SettleOrVoidInvoice
+        action SettleInvoice for screen
+        action VoidInvoice for screen
 
       specification SettlingAnOpenInvoice
         given caller
@@ -173,6 +192,8 @@ module Invoicing
             message "Only a received, not yet reversed payment can be reversed"   // NOT enforced: the view lags (PLAY0268 at binding)
         produces event PaymentReversed
           amount Decimal = amount
+      screen ReversePayment
+        action ReversePayment for screen
 
       specification ReversingAReceivedPayment
         given caller
@@ -188,9 +209,6 @@ module Invoicing
           invoiceId = "9c1f0a52-6a4e-4b1c-9f55-0d2c7b8e1a01"
           amount    = 130
         then PaymentReversed
-          for "9c1f0a52-6a4e-4b1c-9f55-0d2c7b8e1a01"
-          amount = 130
-        then RefundRequested
           for "9c1f0a52-6a4e-4b1c-9f55-0d2c7b8e1a01"
           amount = 130
 

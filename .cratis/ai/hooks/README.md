@@ -11,7 +11,9 @@ Three layers:
 |---|---|---|---|---|
 | Pattern pass | `PostToolUse` on a write | `scripts/cratis-pattern-scan.sh` | zero tokens until a match | appends a one-line reminder to context, never blocks |
 | Hard block | `PreToolUse` on a write | `scripts/cratis-guard-writes.sh` | zero | exits **2** — the write does not happen |
+| Hard block | `PreToolUse` on `Bash` | `scripts/cratis-guard-shell-writes.sh` | zero tokens; one batch Write/Edit classification | exits **2** — a protected reference requires read-only syntax throughout the command; best-effort, not a sandbox |
 | Hard block | `PreToolUse` on `Bash` | `scripts/cratis-guard-store-mutations.sh` | zero; parses only commands that mention `cratis` | exits **2** — the store-changing `cratis chronicle` command does not run |
+| Hard block | `PreToolUse` on `Bash` | `scripts/cratis-guard-secrets.sh` | zero; parses only commands that mention a credential-bearing tool or file | exits **2** — the guard is a **best-effort, defense-in-depth text filter, NOT a sandbox**: it refuses some harmless commands rather than model the whole shell. Real protection requires **OS-level sandboxing or file permissions**. A command is *tainted* when a protected file-name stem appears in any token, including option values, in any letter case, after quotes, backslashes and line continuations are removed. Only search regex text is exempt: `-e`/`--regexp` values, or the first operand when neither `-e` nor `-f` is present. `-f`/`--file` values and all other operands are paths, not exempt patterns. The stems are `.env`, `.pem`, `.p12`, `.pfx`, `id_rsa`, `id_ed25519`, `id_ecdsa`, `id_dsa`, `.netrc`, `.npmrc`, `.pgpass`, `.pypirc`, `.git-credentials`, `.kube/`, `kubeconfig`, `credentials`, `.docker/`, `/environ` and `run/secrets`. Stars, question marks, bracket expressions and grouped pathname patterns count as the characters they can match when the pattern retains at least two literal stem characters. A command is also tainted when an assignment value or any expanded word can contain a stem. A tainted command runs only when it is a single simple command with every word literal: `cat`, `head`, `tail`, `less`, `more`, `wc`, `grep`, `egrep`, `fgrep` or `rg` of paths that are not protected (such as `cat .env.example`); `test` of literal paths; or `cp SOURCE DEST` with no options and a source that is not protected (for example, `cp .env.example example.txt`; the shell-write guard separately refuses `.env` destinations). A single simple `ls` or `stat` may also take glob operands, but not variables, substitutions, wrappers or other shell structure. Tainted searches cannot recurse, search a directory with `rg`, omit `rg` path operands, or use value-taking options other than `-e`/`--regexp`. Every other tainted command is refused, including variables, command substitution, globs for content readers, loops, conditionals, pipes, redirections, here-strings, here-documents, wrappers, `bash -c`, `eval` and transfer tools. Shell-option changes are checked even without a protected stem: modifying `shopt`, `setopt`, `unsetopt` and `emulate` are refused. `extglob` is refused as an option, not merely as text. Shell invocation `-o`/`-O` options, including clustered flags, must name a supported option. Expanded `set` arguments are refused. Only `set` flags `e`, `u`, `x`, `f`, `v`, `E`, `T` and named options `errexit`, `nounset`, `pipefail`, `xtrace`, `verbose`, `noglob`, `errtrace`, `functrace` (including their `+` forms) are supported. The message names the stem: run the read on its own with literal paths, or put long text that mentions the name in a file. Commands without a stem keep the full analysis. In that analysis a variable can hold any value the command assigns to it anywhere, a positional parameter or an unquoted expansion with glob or space characters is unknown, and an unknown file operand is refused. Residual classes include **shell glob grammar across bash and zsh, option toggles, option arity and quote concatenation**, as well as runtime-generated names, inherited state, filesystem indirection, user-defined commands, external programs and scripts, and searches without a named protected path. These classes are not modeled exhaustively. Use OS-level sandboxing or file permissions, harness isolation and least privilege as the primary boundary. Token files and key-extension globs (`*.key`, `*.jks`) are refused only through the listed reader, input, `dd` and transfer commands; see [`secrets.md`](../rules/secrets.md) |
 | Hard block | `PreToolUse` on `Bash` | `scripts/cratis-guard-pr-body.sh` | fetches shared rules only for `gh pr create/edit` | exits **2** for inline bodies, invalid notes or conflicting release labels; warns and allows when offline with no cache |
 | Cleanup of delivered work | `PostToolUse` on `Bash` (`gh pr merge`, `git pull/merge/worktree`) and `SessionStart` (Pi: `tool_result` and `session_start`) | `scripts/cratis-cleanup-worktrees.sh --hook` | zero when the command is unrelated | never blocks; removes delivered worktrees and branches, reports what it kept |
 | Quality gate (Claude) | `Stop` | `scripts/cratis-quality-gate.sh` | one build/test run, only when relevant files changed | exits **2** — the turn does not end |
@@ -37,9 +39,9 @@ rather than overwriting — the rest of that file is yours — and re-copy after
 The markdown files in this folder (`agent-stop.md`, `pre-commit.md`) remain *lifecycle guidance* —
 they describe what a hook should do for tools that have no wiring yet.
 
-> Hooks are the one surface with no folder adapter: Claude Code reads `.claude/settings.json`;
-> the Pi harness bridges the same scripts to its own events through the `cratis-hooks`
-> extension under `../harnesses/pi/extensions/` (its `bash` tool feeds the store-mutation and PR-body guards, its
+> Hooks use native wiring rather than a shared folder adapter: Claude Code reads `.claude/settings.json`;
+> Codex has a shell-only adapter described below. The Pi harness bridges the same scripts to its own events through the `cratis-hooks`
+> extension under `../harnesses/pi/extensions/` (its `bash` tool feeds the store-mutation, secrets, shell-write and PR-body guards, its
 > `write` and `edit` tools the write guard); Copilot would read `.github/hooks/*.json`, and no
 > Copilot wiring ships yet.
 >
@@ -61,6 +63,50 @@ Tracked-file stability follows Git-visible contents, not byte-exact disk content
 conversion and Git's assume-unchanged or skip-worktree settings can hide raw disk changes. If you
 use those settings, independently verify raw file contents or remove the hiding settings before
 relying on this check.
+
+## Codex shell-command adapter (partial)
+
+[`../harnesses/codex/hooks.json`](../harnesses/codex/hooks.json) registers one native
+`PreToolUse` command running `hooks.mjs` for `^Bash$`. Per the
+[Codex hook contract](https://developers.openai.com/codex/hooks/), shell calls and unified
+`exec_command` calls are normalized to `tool_name: "Bash"`, with shell text in
+`tool_input.command`. The adapter requires that canonical payload, an absolute existing
+`cwd`, a nonempty `session_id`, and `hook_event_name: "PreToolUse"`. It does not match
+raw `exec_command` or invent tool aliases. `write_stdin` input to an already-running
+session does not trigger another `PreToolUse` check.
+
+The authoring setup (`yarn workspace @cratis/harness-setup run setup`) links
+`.codex/hooks.json` to the corpus asset, repairs owned stale links, and refuses occupied
+parents or user-owned hook files, even with `--force`. It leaves other Codex configuration
+alone. **Consumer activation through `cratis ai install/update` is not delivered by this
+adapter**: the CLI's Codex installation plan needs a separate change. Authoring setup
+and isolated fixtures are not evidence of installed or end-to-end Codex runtime coverage.
+
+The bridge runs the store-mutation, secrets, PR-body and shell-write guards through
+Bash, using the payload's working directory and inherited environment. It never executes
+the pending command. A denial is final; the later guard cannot override it. Malformed
+input, a missing managed guard, spawn failure, signal, unexpected nonzero exit, malformed
+JSON output, excessive output, or an internal deadline produces explicit denial JSON and
+exit **2**, not synthetic success. Child warnings are retained as model-visible context;
+child allow/rewrite decisions are not forwarded. Input is limited to 1 MiB and two seconds;
+each child has ten seconds plus bounded process-group termination/reaping, shorter than
+the native thirty-second hook deadline. Cleanup targets only the detached child process
+group on macOS/Linux; processes deliberately escaping that group are not contained.
+
+This is a guardrail, **not absolute enforcement**. Node, Bash and Git are required to
+launch the adapter; native callback failure, crash, timeout, or malformed-response behavior
+can fail open before a supported denial is received. Other local hook configurations and
+specialized tool paths are outside this adapter's control. The existing scripts retain
+their own deliberate allowances and limits: missing `jq` makes the store, secret and write guards refuse every call;
+the quality gate blocks changed trees (dry runs warn only), and pattern scanning warns once per session without blocking.
+PR checks can allow with an unchecked/offline warning; command-text parsing cannot see all indirect
+execution. Inherited `CRATIS_HOOKS_ALLOW_STORE_MUTATIONS=1` and existing script configuration
+are preserved. An adapter exit **0** is not proof that every underlying check ran.
+
+**Not wired:** `apply_patch`/file-write protection (a patch is not a single-file write),
+pattern scans, an explicit quality-gate tool, Stop gates, SessionStart, SessionEnd,
+and automatic worktree cleanup. Use the repository's explicit verification and cleanup
+workflows; this slice neither provides full hook parity nor completes Codex integration.
 
 ## Cleanup of delivered work
 
@@ -85,6 +131,22 @@ ignored records. Other ignored files (`node_modules`, build output) go with a de
   `--include-work-records` only after preserving any records you still need: it permits deleting
   `.ai-work/` content, but never overrides locks or other safety checks. Hook mode ignores this flag;
   automatic hooks never opt in.
+- **GitHub lookups.** The complete worktree and branch sweep is planned before any removal. Git
+  ancestry is checked first; only a plan needing more evidence triggers the single REST batch. It
+  reads the latest 100 closed pull requests, so older merged branches absent from that page are simply
+  kept. Only merged entries with the exact branch and head commit qualify. Hook runs share an atomic
+  stamp and cache under the Git common directory, with at most one request per repository every
+  15 minutes, including failed attempts. A fresh successful cache is reused. A failed request, invalid
+  response, or unavailable lock without a fresh successful cache aborts **all** removals in that sweep,
+  including ancestry-proven worktrees and branches, with a one-line notice. Failed attempts are marked
+  for the full window: later plans needing GitHub also abort all removals without retrying, while plans
+  needing only ancestry evidence proceed without GitHub. Locks older than 15 minutes can be reclaimed.
+  Manual runs are not throttled, but also use at most one request per run and abort all removals if
+  that request fails.
+- **Disable GitHub only.** Set `CRATIS_CLEANUP_NO_GH=1` to avoid all GitHub lookups while keeping
+  cleanup based on Git ancestry enabled. Missing `gh` or `jq`, a non-GitHub origin, or an invalid
+  repository slug also select ancestry-only cleanup before planning: unproven items are kept, with
+  no GitHub call, abort, or failed-attempt marker.
 - **Pin a long-lived worktree.** Use `git worktree lock <path>` to keep it out of cleanup; release the
   pin with `git worktree unlock <path>` when ready.
 - **Self-test.** `--self-test` plants delivered, dirty, unmerged, brand-new, work-record and locked cases
@@ -99,7 +161,7 @@ Rule numbers refer to the numbered list in [`../rules/general.md`](../rules/gene
 
 - Editing a file whose header marks it as Cratis-generated output — rule 15 `[contract]`
 - Writing content that opens with such a header (hand-authoring a "generated" proxy)
-- `Directory.Packages.props`, `global.json`, `NuGet.config` (also `NuGet.Config` and `nuget.config`),
+- `package.json`, `Directory.Packages.props`, `global.json`, `NuGet.config` (also `NuGet.Config` and `nuget.config`),
   `yarn.lock`, `package-lock.json`, `pnpm-lock.yaml`, `packages.lock.json` — unless the
   repository's dependency-manifest policy allows them (see below)
 - `.env`, `.env.*`, `*.env` — secrets
@@ -112,9 +174,91 @@ Rule numbers refer to the numbered list in [`../rules/general.md`](../rules/gene
 
 For agent controls, report the intended change rather than rewriting permissions or hooks.
 A person edits settings; `cratis ai update` replaces managed files using the CLI's filesystem
-operations, not agent Write/Edit calls. This guard checks **Write/Edit targets only**: shell
-redirection, `cp`, another tool or process can still write them. It is a guardrail, not a sandbox;
-do not use those routes to work around a block.
+operations, not agent Write/Edit calls. The shell-write guard scans the **whole command text**
+for protected references, including nested strings, heredoc bodies and option values. It
+removes simple quoting/escapes, checks case-insensitive spellings, and asks the write guard's
+`--references` batch mode to classify candidate paths relative to the hook cwd. Original
+spellings are retained too so existing generated headers can be checked on case-sensitive
+filesystems. Glob/bracket patterns are checked against that same policy; brace patterns
+are conservative. A directory containing owned controls/managed paths also counts, such as
+`.claude`, `.pi/extensions` or installed `.cratis/ai`; no second tree list lives in the shell
+guard. Other trees, including `.github/workflows`, count only if the write policy protects them.
+Dependency manifests, including `package.json`, retain their origin/opt-in allowances.
+
+**No protected reference: allow.** For example, `npm test`, `dotnet build`, `bash --version`,
+`bash --help` and `cd src && echo ok > out.txt` are unaffected. If any reference exists,
+**every simple command must be on this read-only allowlist**:
+
+Only the following **exact options** are exempt, because they select/present reads rather
+than create files or name helpers. Repository configuration can still run helpers for
+allowed Git verbs. Any other option denies, including long-option
+abbreviations and unlisted `--option=value` forms. `--` ends option checking; remaining
+arguments are operands. A lone `-` is a stdin operand. Value-free short flags may combine
+(e.g. `grep -ni`); value-taking forms must use the explicitly listed spelling.
+
+| Command | Permitted options |
+| --- | --- |
+| `cat` | `-n -A -v -e -t -s -b` |
+| `head`, `tail` | `-n N`, `-nN`, `-c N`, `-N` (numeric counts); no `-f` |
+| `wc` | `-l -w -c -m` |
+| `ls` | `-l -a -A -1 -h -d -R -t -r -F` |
+| `rg` | `-n` only; no long options |
+| `grep`, `egrep`, `fgrep` | `-n -i -r -R -l -L -c -v -w -x -F -E -H -h -o -q -s`; `-e PATTERN`, `-A N`, `-B N`, `-C N`; no long options |
+| `echo` | `-n -e -E` |
+| `printf`, `test`, `[`, `true`, `false`, `pwd` | None (in particular, no `printf -v`) |
+| `git status` | `-s -b --short --porcelain` |
+| `git diff` | `--stat --numstat --name-only --name-status --cached --staged --check -p -U<N> --no-color` |
+| `git log` | `--oneline --stat --name-only -n N -nN -<N> -p --no-color --format=<fmt> --pretty=<fmt> --follow` |
+| `git show` | `--stat --name-only -p --no-color --format=<fmt>` |
+| `git add` | `-A -u -p` |
+| `git commit` | `-m MSG`, `-mMSG`, `-a`, `-q`; `-F FILE` only for a literal non-protected file; no `--no-verify` |
+| `git blame`, `ls-files`, `rev-parse`, `check-ignore`, `grep` | None |
+
+The only global Git option exemption is a single separate `-C <dir>` with a literal,
+non-empty directory word not starting with `-`, followed by exactly one of these tails:
+`status --short`, `rev-parse HEAD`, `branch --show-current`, or `tag --list <pattern>`.
+The tag tail takes exactly one pattern not starting with `-` (for example, `'*7.321*'`).
+No extra words are accepted. Attached `-Cdir`/`-C=dir`, repeated `-C`, other verbs and
+all other global options (`-c`, `--git-dir`, `--work-tree`, `--no-pager`, `--exec-path`, etc.)
+remain denied. `-C` gives **no protection** from a hostile repository's configuration:
+fsmonitor, hooks, pager and diff/textconv helpers can still run. This is a syntax filter,
+not a repository sandbox.
+Git format values containing `%(` are not accepted. Index/commit operations are deliberate
+allowances, not general shell execution permission. Output-to-file options such as
+`git diff --output=...` are never exempt, even with a non-protected destination on a line
+that references a protected file.
+
+`gh` (all subcommands), `ag`, `sort`, `uniq`, `cut`, `jq`, `yq`, `less`, `more`, `stat`,
+`file`, `diff`, `cmp`, checksum tools, `realpath`, `dirname`, `basename`, `which` and `type`
+are not on this list: their option surfaces are deliberately not analysed here.
+
+Assignment prefixes and assignment-only commands are not allowlisted. Neither are wrappers,
+evaluators, shells or writer verbs. `cd`, `pushd` and `popd` are **not** allowlisted when a
+protected reference exists: `cd .claude && echo x > settings.json` refuses without tracking
+cwd or inferring destinations. Shells refuse regardless of stdin descriptor, lone `-`, or
+`-c` option spelling. Unparsed complex syntax, including substitutions and heredocs, refuses
+once a protected reference exists; no shell bodies are interpreted.
+
+Even an allowlisted command may not redirect output to a protected or non-literal target
+(`$`, backticks or pathname patterns). Literal ordinary output is permitted, for example
+`grep -n version package.json > /tmp/v.txt`; descriptor duplication such as `2>&1` is fine.
+`cat package.json`, `git diff -- package.json`, `git commit -m "Update package.json"` and
+`ls -la .env.example` are allowed reads/explicit index operations. `head -n 20 .env.example`
+is allowed too: the write policy protects that file, but reading is not writing (the secrets
+guard independently governs reads). `cp .env.example .env` refuses. Use the edit/write tools, or report
+the intended change; those tools retain their own protection and are not a bypass.
+
+Parser/classifier failures and bounded work limits fail closed (128 KiB command text,
+256 distinct candidates, 256 words per simple command, 64 simple commands, 64 existing glob
+matches and a bounded glob-intersection state space). Pattern and tree references can make
+this deliberately over-conservative.
+
+This is **best-effort, not a sandbox**. Runtime names assembled from variables without a
+protected name appearing literally are out of scope, as are aliases/functions, external
+scripts, tool configuration/hooks and symlinks created during execution. Existing generated
+headers are classified; content that would create a new generated header is not inspected by
+the shell filter. OS permissions/sandboxing remain the primary boundary. Do not use another
+route to work around a refusal.
 
 The generated-file check is anchored: the marker must be a comment opener at the start of one of
 the first five lines. A rule file or a document that merely *mentions* the marker is not blocked.
@@ -188,8 +332,8 @@ inside the command (`CRATIS_HOOKS_ALLOW_STORE_MUTATIONS=1 cratis …`) changes n
 
 The Bash guard is a no-op unless **both** target-repository opt-in conditions hold: the target is under
 `github.com/Cratis/`, and its `.github/workflows` contains a reusable Cratis/Workflows
-`verify-release-notes` or `verify-semver-label` caller (including the renamed
-`verify-release-intent` caller). Installing the corpus or `@cratis/pi` alone does not opt in a
+`verify-pull-request-policy` caller. The legacy `verify-release-notes`, `verify-semver-label` and
+`verify-release-intent` callers it replaced are still recognized. Installing the corpus or `@cratis/pi` alone does not opt in a
 consumer or personal repository. This scope applies to both Claude Code and Pi; the direct checker
 remains available explicitly in any repository. As in `gh`, an edit's PR URL takes priority over
 `--repo` / `-R`, then literal leading or inherited `GH_REPO`, then the current directory's `origin`.
@@ -209,6 +353,16 @@ execution, so it cannot validate a body that the command has yet to write, even 
 already exists. Dependabot's generated description remains exempt (including GitHub CLI's
 `app/dependabot` bot identity), but its release-intent label is still checked.
 
+A release that changes a hook script or its wiring must say in its release notes that consumers run
+`cratis ai update`: hooks are managed files, so a fix reaches a repository only once it updates.
+
+The direct checker exits non-zero, with remediation text, in a `github.com/Cratis/` repository whose
+workflows hold no policy caller (none of the recognized callers above): without one, nothing enforces the
+pull-request contract there, and a pass would claim otherwise. A repository outside Cratis still falls back to
+the reviewed pin below, and the Bash guard stays a no-op where there is no caller. A contract spec in the AI corpus's own
+verification runs the checker over vendored copies of the callers Cratis/Workflows publishes; with
+`CRATIS_CONTRACT_LIVE=1` it compares them with Cratis/Workflows `main`.
+
 Run the same checker directly:
 
 ```bash
@@ -216,14 +370,17 @@ node .cratis/ai/hooks/scripts/cratis-check-pr.mjs --body-file .ai-work/pr-body.m
 node .cratis/ai/hooks/scripts/cratis-check-pr.mjs --body-file .ai-work/pr-body.md --pr 123 --strict
 ```
 
-The checker fetches both marked programs from Cratis/Workflows' `verify-release-notes.yml` at
-the immutable commit SHA in the repository's own release-notes caller. If there is no such caller,
+The checker fetches both marked programs (`release-notes` and `release-notes-drift`) from
+Cratis/Workflows' `verify-pull-request-policy.yml` at the ref in the repository's own policy caller,
+and ignores the other programs marked in that file. Without a policy caller it fetches them from
+`verify-release-notes.yml` at the ref in a legacy release-notes caller. If there is neither,
 it uses the reviewed pin `40125b4fcae388e62ed9471edfffd0e991422f0a`. Floating callers such as `@main`
 fetch the programs at that ref; if the fetch fails, they use the bundled programs from the reviewed
 pin with a warning, so body validation is never silently skipped. Programs receive only the proposed PR
 metadata and `PATH`, `HOME`, and `LANG`, not inherited credentials or Node runtime options.
 The exact programs are cached by workflow blob SHA under
-`${XDG_CACHE_HOME:-~/.cache}/cratis/release-notes/<ref>/<sha>.cjs`. Offline, the newest complete
+`${XDG_CACHE_HOME:-~/.cache}/cratis/verify-pull-request-policy/<ref>/<sha>.cjs` for a policy caller and
+`${XDG_CACHE_HOME:-~/.cache}/cratis/release-notes/<ref>/<sha>.cjs` otherwise. Offline, the newest complete
 cached copy for that same pin is used with a warning. With no cache it reports **unchecked** and
 exits **3**; the hook passes through with that warning. Successful checks are silent in hook mode;
 real warnings go to Pi's context or Claude Code's JSON `systemMessage` and `additionalContext`. Exit **0** means no violations; **1** means invalid notes or
@@ -278,6 +435,9 @@ their explicit consent. Slice-only scope checks do not replace the repository's 
 
 ### Project-specific gate configuration
 
+Shipped defaults live in `.cratis/ai/hooks/scripts/quality-gates.json`, not `.cratis/ai/quality-gates.json`.
+Project overrides live in `.cratis/ai/quality-gates.project.json`. `CRATIS_HOOKS_GATES=<path>` replaces
+the defaults file; the project overrides still merge over that replacement by gate id.
 The shipped gates discover the repository's own solution and package, so most repositories need no
 configuration at all. An eligible root workspace or solution keeps repository-wide dispatch. Without
 one, discovery uses only each gate's matching, non-excluded changes and runs it once per affected
@@ -548,9 +708,42 @@ inapplicable gate remains a no-op. Pi preserves the script's diagnostics when pl
 The same shipped file therefore activates in application and framework repositories, and reports
 an empty plan without running gates in a repository that has no project at all.
 
-**Overriding it, in order of increasing force.** Set `workingDirectory` on a gate to pin one of
-several candidate projects; drop a `quality-gates.json` of your own in place of the shipped one; or
-point `CRATIS_HOOKS_GATES` at a file anywhere. None of them requires forking the script.
+**Overriding it.** Set `workingDirectory` on a gate in `.cratis/ai/quality-gates.project.json` to pin
+one of several candidate projects. For a replacement defaults file, point `CRATIS_HOOKS_GATES` at a
+file anywhere instead of editing the managed file. Neither requires forking the script.
+A missing defaults file reports both real configuration paths and runs no gates.
+
+**Per-gate deadlines.** `timeoutSeconds` is an optional integer from 1 to 86400, applied separately
+to each command/directory. Unset means no per-gate deadline; Pi's whole-tool deadline still applies
+and may expire first. The shipped `backend-specs` gate allows 120 seconds so a long solution-wide
+spec run stops with a named diagnostic rather than consuming the entire tool budget. On timeout,
+the script stops the command's process group (TERM, then KILL after one second), exits **2**, and
+reports **NOT VERIFIED**, the gate, its directory, log tail, and `timeoutHint` (advice, never executed).
+Commands that create separate sessions/process groups can escape this cleanup; this is not a sandbox.
+
+The default runs `cratis-run-specs.sh` through the absolute `CRATIS_HOOKS_SCRIPTS_DIR`
+exported by the gate, including nested solutions and bundled Pi installations. The runner
+requires Node, Bash and Git, the same prerequisites as the hooks (not an additional runtime). It evaluates
+MSBuild metadata without building, runs supported built xUnit v3/TUnit/native executables
+(or `dotnet <TargetPath.dll>` without apphost), and uses project-scoped `dotnet test --no-build`
+only for identified VSTest projects. Restore/build matching Debug outputs first. Missing or
+ambiguous metadata/output, custom application entrypoints, failed suites and zero-selected
+suites are not passes; unsupported runners need a repository-owned invocation override.
+
+For a large solution, replace the placeholder below with the affected project directory,
+TFM and AssemblyName and repeat for affected dependents. Use that executable's filter/report
+flags (see [running-specs](../skills/cratis-specifications-csharp/references/running-specs.md)),
+not VSTest logger switches. Override `command` rather than raising a timeout without diagnosis:
+
+```json
+{ "gates": [{ "id": "backend-specs", "command": ["./<project-dir>/bin/Debug/<TFM>/<AssemblyName>"], "timeoutSeconds": 120, "timeoutHint": "Run each affected project's built spec executable separately; dotnet test <project> --configuration Debug --no-build only for VSTest." }] }
+```
+
+This is not automatic affected-project selection: imported/conditional MSBuild references and
+linked or shared sources require evaluation to establish coverage safely. The default retains
+all solution projects, executing each test project independently rather than silently missing
+dependents. Non-test projects are explicitly skipped; a solution with none reports no verified
+specifications. A timeout is never a pass. Reports are local under `.ai-work/spec-runs/`.
 
 **Profile note.** The C# patterns are application-profile and scoped to `Source/**/*.cs`, which is
 the application source root [`../rules/general.md`](../rules/general.md) documents. A
@@ -576,6 +769,14 @@ the intended action and the permitted alternative; it does not loosen its own co
 Supply credentials through the environment, never echo them or place them in committed files.
 A missing or disabled hook is not evidence that a protected action is safe.
 
+The shipped `permissions.ask` rules (`git push`, `gh pr`) are for a person at a terminal. In
+`claude -p` an `ask` rule wins over `--dangerously-skip-permissions`, and with nobody to answer,
+the call is denied. A runner whose work includes pushing or opening pull requests answers those
+prompts with `--permission-prompt-tool` (an MCP tool that returns an allow decision); `deny` rules
+and denying hooks are settled first and still refuse. Do not drop the project settings with
+`--setting-sources user` instead: on Claude Code 2.1.280 that also stops the repository's
+`CLAUDE.md`, skills and hooks from loading.
+
 ## Method lineage
 
 | Idea | Used in | Credit |
@@ -589,7 +790,7 @@ Each is an explicit, auditable opt-out — none of them is a default.
 
 | Variable | Effect |
 |---|---|
-| `CRATIS_HOOKS_ALLOW_PROTECTED_WRITES=1` | bypasses all write protection, including generated files, `.env`, agent controls and installed trees, while set in the harness environment; use only for an explicitly requested protected write. Repository-scoped manifest allowance uses `.cratis/ai.json` instead and never bypasses those protections |
+| `CRATIS_HOOKS_ALLOW_PROTECTED_WRITES=1` | bypasses both Write/Edit and shell-write guards, including generated files, `.env`, agent controls and installed trees, while set in the harness environment; use only for an explicitly requested protected write. Repository-scoped manifest allowance uses `.cratis/ai.json` instead and never bypasses those protections |
 | `CRATIS_HOOKS_SKIP_SCAN=1` | disables the pattern pass |
 | `CRATIS_HOOKS_SKIP_GATE=1` | disables the quality gate |
 | `CRATIS_HOOKS_GATE_DRYRUN=1` | prints which gates would run, and why, then exits 0 |
@@ -597,6 +798,7 @@ Each is an explicit, auditable opt-out — none of them is a default.
 | `CRATIS_HOOKS_PATTERNS=<path>` | replaces the pattern file |
 | `CRATIS_HOOKS_GATES=<path>` | replaces the gate file (the project override still merges over it) |
 | `CRATIS_HOOKS_ALLOW_STORE_MUTATIONS=1` | allows `cratis chronicle` commands that change a live store; set by the person who authorized the mutation, in the environment the harness was started from |
+| `CRATIS_HOOKS_ALLOW_SECRET_READS=1` | allows commands the secrets guard blocks; set by the person who authorized the read, in the environment the harness was started from — an assignment inside the command is ignored |
 | `CRATIS_HOOKS_STORE_MUTATIONS=<path>` | replaces the store-mutation guard's command lists (the `.local.json` beside the script still extends them) |
 | `CRATIS_HOOKS_SUBPATH_REPORT=1` | prints every `@cratis/*` subpath reference and how it resolved, not only the failures |
 | `CRATIS_HOOKS_IMPORT_REPORT=1` | prints every `@cratis/*` named import binding and how it resolved, not only the failures |
@@ -608,9 +810,15 @@ Each is an explicit, auditable opt-out — none of them is a default.
   (macOS system bash) — no `mapfile`, no associative arrays, no GNU-only flags, `LC_ALL=C` on
   every sort and compare.
 - **Gate commands are an argv array**, executed directly. They never pass through a shell.
-- **`jq` is the dependency for the write, store-mutation, pattern and quality hooks.** They
-  degrade to a silent no-op when it is missing — a hook must never break a session. The
-  PR-body hook uses Node instead, and the checker uses Git and `gh` as described above.
+- **`jq` is the dependency for the write, store-mutation, secret, pattern and quality hooks.** The
+  write, store-mutation and secret guards refuse every call while it is missing (exit 2, with the
+  reason and the install hint on stderr). Without `jq`, the quality gate blocks changed trees with
+  an install hint (exit 2); dry runs warn with exit 0. Unchanged trees, non-Git directories,
+  Stop-hook re-entry and `CRATIS_HOOKS_SKIP_GATE=1` still exit 0 silently. A person accepting
+  unverified turn ends can set that escape hatch in the environment the harness was started from.
+  The pattern scan exits 0 with a one-line stderr notice at most once per session (or on each call
+  if session state is unavailable). The PR-body hook uses Node instead, and the checker uses Git
+  and `gh` as described above.
 - **Fail safe.** Malformed config, empty stdin, a missing file, a binary file, a file over 2 MB:
   all exit 0 silently. The one deliberate exception is the store-mutation guard's command lists:
   an unreadable shipped or local list is not an empty allowlist that happens to pass, so every `cratis chronicle`
@@ -644,11 +852,23 @@ jq -nc '{session_id:"t", cwd:"'"$PWD"'", tool_name:"Edit",
          tool_input:{file_path:"'"$PWD"'/Directory.Packages.props", new_string:"x"}}' \
   | bash .cratis/ai/hooks/scripts/cratis-guard-writes.sh; echo "exit=$?"
 
+# Shell-write guard: expect exit 2, then exit 0 for an ordinary destination
+jq -nc '{cwd:"'"$PWD"'", tool_name:"Bash", tool_input:{command:"echo x > .env"}}' \
+  | bash .cratis/ai/hooks/scripts/cratis-guard-shell-writes.sh; echo "exit=$?"
+jq -nc '{cwd:"'"$PWD"'", tool_name:"Bash", tool_input:{command:"echo x > notes.md"}}' \
+  | bash .cratis/ai/hooks/scripts/cratis-guard-shell-writes.sh; echo "exit=$?"
+
 # Store-mutation guard, both directions: expect exit 2, then exit 0 for the read-only neighbor
 jq -nc '{tool_name:"Bash", tool_input:{command:"cratis chronicle observers replay my-observer --yes"}}' \
   | bash .cratis/ai/hooks/scripts/cratis-guard-store-mutations.sh; echo "exit=$?"
 jq -nc '{tool_name:"Bash", tool_input:{command:"cratis chronicle observers list -o plain"}}' \
   | bash .cratis/ai/hooks/scripts/cratis-guard-store-mutations.sh; echo "exit=$?"
+
+# Secrets guard, both directions: expect exit 2, then exit 0 for the projected neighbor
+jq -nc '{tool_name:"Bash", tool_input:{command:"kubectl get pods -o json"}}' \
+  | bash .cratis/ai/hooks/scripts/cratis-guard-secrets.sh; echo "exit=$?"
+jq -nc '{tool_name:"Bash", tool_input:{command:"kubectl get pods -o name"}}' \
+  | bash .cratis/ai/hooks/scripts/cratis-guard-secrets.sh; echo "exit=$?"
 
 # Quality gate — show the dispatch plan without running anything
 jq -nc '{session_id:"t", cwd:"'"$PWD"'", stop_hook_active:false}' \

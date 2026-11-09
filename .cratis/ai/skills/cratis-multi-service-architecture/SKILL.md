@@ -1,6 +1,6 @@
 ---
 name: cratis-multi-service-architecture
-description: Design a system of several Cratis services that each own a Chronicle event store - store per service on one kernel, namespace alignment, public contract events and the outbox, the three consumer routes, at-least-once delivery and idempotent consumers, personal data across stores, contract versioning, and what Arc leaves to the application. Use when splitting an application into services, connecting two event stores, or publishing and consuming events across services. Not for running the services locally (use cratis-multi-service-local-orchestration), tenancy inside one store (use cratis-chronicle-multi-tenancy), or Screenplay models (use cratis-screenplay-streams-and-consistency).
+description: Use when splitting Cratis services, connecting event stores or designing public cross-service event contracts. Not for local process orchestration, tenancy within one store or Screenplay boundary modeling.
 license: MIT
 ---
 <!-- cratis-ai-managed: skills/cratis-multi-service-architecture/SKILL.md -->
@@ -155,9 +155,15 @@ of tags, and export only the fields consumers need. Read
 ## Versioning contracts
 
 A public event type follows the same generation and migration rules as a private
-one (`cratis-chronicle-event-type-migration`). Kernel subscriptions name event
-types by id and register them as generation 1, and the CLI's `subscriptions add`
-takes ids only. Prefer additive, optional changes to a contract; publish a new
+one (`cratis-chronicle-event-type-migration`). Requires Chronicle 19.66.0 for
+subscription-builder `WithGenerationDelivery(EventGenerationDelivery.Pinned)`
+with typed `WithEventType<TEvent>()` or `WithEventType(id, generation)` to pin
+forwarding into the target inbox. Both stores must register that generation;
+Compatibility remains the default. Read
+../cratis-chronicle-client-dotnet/references/pinned-generation-delivery.md when
+configuring subscription pins and failure behavior. The CLI's `subscriptions add`
+takes ids only; do not invent a generation flag. Prefer additive, optional changes
+to a contract; publish a new
 event type for a breaking change and keep publishing the old one until every
 consumer has moved, rather than adding a generation consumers may not handle.
 Version the contracts package with the contract, and never move a type between

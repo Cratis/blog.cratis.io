@@ -1,6 +1,6 @@
 ---
 name: cratis-chronicle-event-modeling
-description: Design a Chronicle event model before writing code - stream boundaries and event-source identities, commands, past-tense events, read models, automations and translations, compliance subjects, and the specification outline. Use when behavior, event vocabulary, stream boundaries, or a multi-slice flow is not yet settled. Do not use to draw or update an existing model diagram, and do not use for a mechanical change to a flow that is already decided.
+description: Use when hand-written Chronicle behavior, event vocabulary or stream boundaries are unsettled in a code-first repository. Not for opted-in .play model authoring, diagram-only edits or mechanical wiring.
 license: MIT
 ---
 <!-- cratis-ai-managed: skills/cratis-chronicle-event-modeling/SKILL.md -->
@@ -8,13 +8,10 @@ license: MIT
 # Chronicle event modeling
 
 > **Model-first check.** If an accepted model under the model root covers this scope, or the
-> repository is opted in (the root, the folder holding the project's `.play` files, holds a committed `.play`
-> file (`git ls-tree -r --name-only HEAD` lists a `.play` file there, narrowed to `-- <root>` when a root is configured), or the project explicitly set `mcpServers.screenplay.root` in
-> `.cratis/ai.json`), the model is the source of truth: use
+> repository is opted in (per `general.md` "Model first"; where `cratis-screenplay-modeling-lifecycle` is installed, run its `scripts/model-first-status.mjs`), the model is the source of truth: use
 > `cratis-screenplay-event-modeling` (and the lifecycle in
 > `cratis-screenplay-modeling-lifecycle`, which holds the master definition)
-> instead of this skill. An empty directory, install output, a `.play` file
-> outside the root or an untracked or uncommitted draft is not consent. This skill is for
+> instead of this skill. This skill is for
 > hand-written C# models where the repository has not opted in (never force a
 > model; only the entry-point session proposes one, at most once per session), and for
 > code-level work against an already accepted contract (stream identity,
@@ -105,6 +102,20 @@ Do not append an event for derived or aggregate state. Project it from the sourc
 events instead; an event that records a total is a fact that can disagree with
 its own inputs.
 
+## Only domain facts, never repeats
+
+Append only real domain facts. A tick, a heartbeat, a `…Requested`/`…Started`/`…Skipped`/`…Undecided`
+event whose only job is to wake a reactor, a "last looked" timestamp, usage or cost telemetry and a
+non-answer such as "could not decide" are not facts; orchestrate with a durable job, a state machine,
+a reminder, a command operation or `ICommandPipeline` instead. An observation command (webhook, poll,
+sweep, retry, classifier) compares with current state and appends nothing when nothing changed.
+`…Changed` must be a real change, and a counter built from `[Increment]`/`[Decrement]` needs commands
+that refuse non-transitions. Read [references/event-log-hygiene.md](references/event-log-hygiene.md)
+when modeling an event vocabulary, an observation command or a counter, or measuring a log that grows
+faster than the product's activity. Read
+[references/event-log-cleanup-rollout.md](references/event-log-cleanup-rollout.md) when a release removes
+or reshapes many event types and the stored data must be repaired.
+
 ## Public facts and streams that end
 
 Declare source vocabulary with `IEventSource`, `[EventSource]` and `[EventStream]`;
@@ -146,14 +157,16 @@ If a field can only be filled by reaching into another behavior's read model to
 a wrong stream boundary. Fix the model. A read-only cross-slice read through
 Chronicle is allowed where the rule needs it (an injected read model read by
 explicit key, or a `[Passive]` projection for a current read; a rule that must hold under
-concurrency needs a decision read or constraint, see
+concurrency needs read protection `On`, a stream decision or a constraint, see
 [choosing how a rule holds](../cratis-chronicle-decision-reads/references/choosing-how-a-rule-holds.md)); see
 Cross-slice patterns in `rules/vertical-slices.md`. Make such a read deliberate
 and name it in the brief, with the consistency it needs: a rule that must hold
 under concurrency needs enrolled guarded reads, not plain injection or a stale
-materialized snapshot. In Arc v22.75.0 use `IStreamReads`/`StreamDecision` for one
-stream or `[ProtectedDecision]` + admitted `DecisionRead<T>` for projected state;
-`Result<,>` alone supplies rejection, not a concurrency guard.
+materialized snapshot. In Arc use read protection `On` with the read model as a
+validator or `Handle()` parameter for projected state, a per-stream read model or
+`IStreamReads`/`StreamDecision` for one stream (`[ProtectedDecision]` +
+`DecisionRead<T>` is the older per-command opt-in); `Result<,>` alone supplies
+rejection, not a concurrency guard.
 
 ## Compliance modeling
 

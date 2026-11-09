@@ -41,7 +41,7 @@ V2 executable diagnostics:    <clean | n diagnostics: codes | not run: reason>
 V3 binding-ready:             <ready | blocked: codes | not run: reason>
 V4 reference specs run:       <route, expected vs discovered, passed/failed/unsupported; overall unbound | not run: no route>
 V5 rendered, target-verified: admission <...>; publication <...>; build <...>; tests <...>   (each "not run: reason" when absent)
-Gaps: <capability gaps and tool-version gaps, e.g. a false PLAY0285 on cascades from a cratis before 3.28.2 bundle>
+Gaps: <capability gaps and tool-version gaps, e.g. `then invokes` unreadable by a compiler older than 4.246.0>
 
 ## Inventory (read-only audit; MCP describe-application view=summary, find-assertion-gaps)
 Modules n, features n, slices n (StateChange n, StateView n, Automation n, Translate n),
@@ -168,8 +168,8 @@ it. Verify the answer became a specification, a description or a project-owned
 decision record; a resolved note is not behavioral proof. Ask the owner to reanchor
 or resolve affected notes before source apply; resolution alone leaves an orphan.
 
-The optional `--open-questions fail` gate is a standalone `screenplay` option; the
-CLI-bundled compiler can lack it. Report it separately from V1–V5. Evidence: Screenplay
+The optional `--open-questions fail` gate exists on the standalone `screenplay` tool and on
+`cratis screenplay validate` (CLI 3.60.0 or later). Report it separately from V1–V5. Evidence: Screenplay
 `Documentation/screenplay/model-notes.md`,
 `Documentation/screenplay/mcp/reference.md`; source lines in the linked guide.
 

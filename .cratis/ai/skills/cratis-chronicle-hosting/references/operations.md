@@ -27,18 +27,46 @@ clearing one does not clear the other. Inspect the cause before authorizing clea
 or retry. Subscriber timeout abandons waiting, not subscriber work: redelivery
 can overlap work that still runs, so side effects must remain idempotent.
 
+Requires Chronicle 19.109.0 for abandoned-delivery holds.
+Requires Chronicle 19.110.0 for webhook quarantine probes.
+
+`observers.abandonedDeliveryHold` defaults to 300 seconds **after the delivery
+deadline**. A positive value below `subscriberTimeout` uses that timeout instead;
+zero or less disables the hold. Retry/catch-up/replay wait for a barrier on the
+**original subscriber activation**, not a replacement client. An unavailable
+original silo is not proof that its work drained. Late results are discarded;
+a late reducer result cannot write to its sink.
+
+The hold is bounded, not cancellation: user code might still run after expiry,
+so external side effects must remain idempotent. Clearing persisted failure
+history followed by restart loses that history. Inspect abandoned-delivery logs
+and metrics before reducing the hold. Verified in
+`Documentation/hosting/configuration/observers.md` and
+`Source/Kernel/Core/Observation/Observer.DeliveryFences.cs`.
+
 Quarantine persists through grain deactivation. Watchdog ticks and catch-up/replay
 completion do not end it. An operator clear or a fresh subscription does;
 a kernel restart only helps observers that actually receive a fresh subscription.
 Event-store subscriptions remain quarantined until operator clear. Recovery can
-quarantine again if the cause remains.
+quarantine again if the cause remains. Webhooks are an exception: eligible
+quarantines can probe with a **real pending event** and
+resume after success. Read [webhook policy](webhooks.md) before promising an
+operator that quarantine prevents all traffic; webhook timeout cancellation
+also drains the HTTP operation before starting another delivery.
 
 Projection replay and catch-up each use a **single globally ordered job step**;
 a new catch-up failure stops that step rather than letting other sources proceed.
 Full replay is inactive until completion, then routes to catch-up/live unless
 quarantined. Partition quarantine stops that partition's automatic retries;
 observer quarantine suppresses automatic recovery for the whole observer.
-Sources: `Documentation/concepts/observers.mdx`,
+Projection replay skips a failed partition while continuing
+healthy partitions, then schedules failed partitions for recovery after replay
+completes. Catch-up still stops its ordered step on a new failure. Replaying
+**global** projections is refused before any write (Requires Chronicle 19.101.3). For MongoDB
+catch-up/bulk-write upgrade repairs, read
+[projection definition changes](../../cratis-chronicle-projection/references/definition-changes.md).
+
+Sources (verified through **v19.110.1**): `Documentation/concepts/observers.mdx`,
 `Documentation/projections/registration-lifecycle.md`, and
 `Source/Kernel/Core/Observation/Jobs/{CatchUpObserver,ReplayObserver}.cs`.
 
@@ -65,6 +93,32 @@ Requires 19.55.2 for catch-up/replay progress to wait for confirmed buffered wri
 on every silo and resume from the last durable position after a failed window.
 Check the kernel version and shutdown logs; neither guarantee makes an interrupted
 external effect exactly once.
+
+Requires Chronicle 19.77.4 for an observer replaced by a newer connected client
+to hand over to a still-connected older client when the newer one disconnects.
+The newest registration wins while both are connected; the older handler does
+not receive event types only the departed client handled. Check the kernel tag;
+older kernels can leave that observer stopped.
+
+### Job acceptance and bounded recovery
+
+Requires Chronicle 19.80.0 for `IJobs.Stop` and `IJobs.Resume` to return
+`JobCommandResult` with `Accepted` and a refusal reason. A completed RPC is not
+an accepted operation: inspect the result. `RetryFailedPartitions` retries
+partitions through bounded per-partition jobs without reopening a concluded
+replay. Do not invent a CLI flag for this contract operation.
+
+Timed-out job steps retry up to five attempts. Replay work has at most 16
+partition steps active, but projection replay/catch-up still use the single
+ordered step above; do not generalize partition parallelism to projections.
+Running jobs whose steps concluded over two minutes ago are reconciled, and
+replay-complete notifications retry. These recovery paths do not clear quarantine or
+prove historical completeness. Check the kernel/client version before relying
+on acceptance results; older clients do not expose them.
+
+Requires Chronicle 19.77.2 for stopped/deactivated catch-up and replay steps to
+drain within the job-step stop timeout and resume from their durable checkpoint.
+This does not make external effects exactly once.
 
 ### Next-event lookup failures
 
